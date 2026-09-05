@@ -26,6 +26,11 @@ The application reconciles `https://github.com/Schywi/experiments.git` at
 `main`, with `config/openresty` rendered as a Helm chart into the `openresty`
 namespace. The chart path is expected to exist on the selected revision.
 
+The Vector data-plane application is defined separately in
+`applications/vector.yaml`. It renders `config/vector` into the `worm-lab`
+namespace and uses the same public repository source, automated pruning, and
+self-healing policy.
+
 ## Unpushed local source mode
 
 Argo CD cannot read a developer's host filesystem directly. Until a change is

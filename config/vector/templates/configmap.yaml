@@ -1,0 +1,51 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "vector.fullname" . }}
+  labels:
+    {{- include "vector.labels" . | nindent 4 }}
+data:
+  vector.toml: |
+    [api]
+    enabled = true
+    address = "0.0.0.0:8686"
+
+    [sources.worker_events]
+    type = "http_server"
+    address = "0.0.0.0:8080"
+    encoding.codec = "json"
+
+    [transforms.expand_batch]
+    type = "remap"
+    inputs = ["worker_events"]
+    source = '''
+    if !is_array(.events) {
+      abort
+    }
+    . = unnest(.events) ?? abort
+    '''
+
+    [transforms.unwrap_event]
+    type = "remap"
+    inputs = ["expand_batch"]
+    source = '''
+    . = .events ?? abort
+    if !is_string(.worm_id) || !is_integer(.sequence) ||
+       !is_number(.x) || !is_number(.y) || !is_integer(.occurred_at) {
+      abort
+    }
+    '''
+
+    [sinks.regression]
+    type = "http"
+    inputs = ["unwrap_event"]
+    uri = {{ .Values.regression.ingestURL | quote }}
+    method = "post"
+    encoding.codec = "json"
+    request.concurrency = 1
+    request.retry_attempts = 5
+    request.retry_initial_backoff_secs = 1
+    request.retry_max_duration_secs = 5
+    batch.max_events = 1
+    buffer.type = "memory"
+    buffer.max_events = 1200

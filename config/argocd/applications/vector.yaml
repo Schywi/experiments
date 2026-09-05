@@ -1,0 +1,27 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: worm-vector
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: bounded-worm-lab
+    app.kubernetes.io/managed-by: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/Schywi/experiments.git
+    targetRevision: main
+    path: config/vector
+    helm:
+      releaseName: vector
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: worm-lab
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
