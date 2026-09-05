@@ -10,6 +10,13 @@
 - Make atomic commits: each commit must contain one coherent, independently
   reviewable change and include the related `bd` issue identifier in its message.
 
+## Repository Layout
+
+Keep the top level intentionally small: `/config` contains deployable platform
+configuration, `/docs` is local-only planning material, and `Tiltfile` stays at
+the repository root. Add application code under a future, explicitly approved
+directory rather than recreating platform-specific top-level trees.
+
 This project uses **bd** (beads) for issue tracking. Run `bd onboard` to get started.
 
 ## Quick Reference
