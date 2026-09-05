@@ -10,7 +10,7 @@ repo_root="$(cd -- "${script_dir}/../.." && pwd)"
 "${script_dir}/install-cilium.sh"
 "${script_dir}/validate.sh"
 
-helm upgrade --install openresty "${repo_root}/config/openresty" \
+helm upgrade --install cilium-dashboard "${repo_root}/config/openresty" \
   --namespace openresty \
   --create-namespace \
   --wait \

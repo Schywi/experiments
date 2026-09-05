@@ -61,7 +61,7 @@ local_resource(
 
 local_resource(
     "openresty-dashboard",
-    "helm upgrade --install openresty " + CONFIG_DIR + "/openresty --namespace openresty --create-namespace --wait",
+    "helm upgrade --install cilium-dashboard " + CONFIG_DIR + "/openresty --namespace openresty --create-namespace --wait",
     deps=[CONFIG_DIR + "/openresty"],
     resource_deps=["cilium-validate"],
     trigger_mode=TRIGGER_MODE_MANUAL,
