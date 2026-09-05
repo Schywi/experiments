@@ -1,0 +1,24 @@
+{{- if .Values.networkPolicy.enabled }}
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: {{ include "openresty-dashboard.fullname" . }}
+  labels:
+    {{- include "openresty-dashboard.labels" . | nindent 4 }}
+spec:
+  endpointSelector:
+    matchLabels:
+      {{- include "openresty-dashboard.selectorLabels" . | nindent 6 }}
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: {{ .Release.Namespace | quote }}
+    {{- range .Values.networkPolicy.allowedNamespaces }}
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: {{ . | quote }}
+    {{- end }}
+    {{- if .Values.networkPolicy.allowHost }}
+    - fromEntities:
+        - host
+    {{- end }}
+{{- end }}

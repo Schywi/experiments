@@ -1,0 +1,37 @@
+# Public, non-secret defaults for the OpenResty Hubble UI proxy.
+
+replicaCount: 1
+
+image:
+  repository: openresty/openresty
+  tag: "1.27.1.2-alpine"
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 80
+  annotations: {}
+
+# The Cilium Hubble UI is installed by the Cilium chart in kube-system by
+# default. Keep this a DNS name so no cluster-specific address is committed.
+hubble:
+  service: hubble-ui.kube-system.svc.cluster.local
+  port: 80
+
+networkPolicy:
+  enabled: true
+  # The release namespace is always allowed. Add namespaces here when an
+  # explicitly approved in-cluster frontend needs to reach this proxy.
+  allowedNamespaces: []
+  # Host traffic is needed for kubectl port-forward and remains node-local;
+  # it does not expose the ClusterIP outside the cluster.
+  allowHost: true
+
+resources: {}
+
+podAnnotations: {}
+podLabels: {}
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
