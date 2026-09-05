@@ -10,6 +10,10 @@ command -v kubectl >/dev/null 2>&1 || {
   echo "kubectl is required" >&2
   exit 1
 }
+command -v docker >/dev/null 2>&1 || {
+  echo "docker is required" >&2
+  exit 1
+}
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd -- "${script_dir}/../.." && pwd)"
@@ -20,12 +24,16 @@ values_file="${repo_root}/config/helm/cilium/values.yaml"
   exit 1
 }
 
-# 1.16.5 is a known chart/app pairing. Upgrade this pin deliberately alongside
-# a compatibility review for the selected k3s/Kubernetes version.
 CILIUM_VERSION="${CILIUM_VERSION:-1.16.5}"
-K8S_SERVICE_HOST="${K8S_SERVICE_HOST:-127.0.0.1}"
-K8S_SERVICE_PORT="${K8S_SERVICE_PORT:-6443}"
 HELM_TIMEOUT="${HELM_TIMEOUT:-10m}"
+CLUSTER_NAME="${K3D_CLUSTER_NAME:-cilium-lab}"
+SERVER_CONTAINER="k3d-${CLUSTER_NAME}-server-0"
+K8S_SERVICE_HOST="${K8S_SERVICE_HOST:-$(docker inspect --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "${SERVER_CONTAINER}" 2>/dev/null || true)}"
+
+if [[ -z "${K8S_SERVICE_HOST}" ]]; then
+  echo "could not resolve the k3d server container IP; is ${CLUSTER_NAME} running?" >&2
+  exit 1
+fi
 
 helm repo add cilium https://helm.cilium.io --force-update
 helm repo update cilium
@@ -34,9 +42,9 @@ helm upgrade --install cilium cilium/cilium \
   --namespace kube-system \
   --version "${CILIUM_VERSION}" \
   --values "${values_file}" \
-  --set-string "k8sServiceHost=${K8S_SERVICE_HOST}" \
-  --set "k8sServicePort=${K8S_SERVICE_PORT}" \
+  --set-string k8sServiceHost="${K8S_SERVICE_HOST}" \
+  --set k8sServicePort=6443 \
   --wait \
   --timeout "${HELM_TIMEOUT}"
 
-echo "Cilium ${CILIUM_VERSION} installed; run config/k3s/validate.sh to verify readiness"
+echo "Cilium ${CILIUM_VERSION} installed in the k3d cluster"

@@ -1,6 +1,6 @@
 # Public baseline values for the Cilium Helm chart.
 #
-# The API endpoint is supplied by config/k3s/install-cilium.sh at install time;
+# The API endpoint is supplied by config/k3d/install-cilium.sh at install time;
 # do not put a machine-specific address or credential in this file.
 kubeProxyReplacement: true
 
