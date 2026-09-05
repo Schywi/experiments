@@ -1,0 +1,23 @@
+# Public-repository baseline for the official argo-cd Helm chart.
+#
+# Keep Argo CD private by default. TLS and authentication are intentionally
+# enabled; local-only overrides must never be committed to this repository.
+
+configs:
+  cm:
+    create: true
+    admin.enabled: true
+  params:
+    create: true
+    server.insecure: "false"
+    server.disable.auth: "false"
+  rbac:
+    create: true
+    policy.default: ""
+
+server:
+  service:
+    type: ClusterIP
+  ingress:
+    enabled: false
+
