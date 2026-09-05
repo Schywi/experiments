@@ -7,6 +7,8 @@ tags:
   - cilium
   - webassembly
   - lua
+  - wasmtime
+  - runwasi
   - golang
   - vector
   - elixir
@@ -33,6 +35,14 @@ Each component has exactly one job.
 | Kubernetes | Schedule pods, restart failed containers, and enforce resource limits | Application-level reproduction policy |
 
 The worker is self-replicating by intent: it asks to reproduce. The Go controller is the only actor that can turn that request into a new pod. This keeps the experiment bounded and prevents every worker from needing RBAC permission to create or scale workloads.
+
+## Execution and observability decision
+
+One worm is one Kubernetes Pod. The worker Pod uses a Wasm runtime class backed by the pinned `runwasi` Wasmtime shim rather than a conventional Linux application container. This removes the need for a general-purpose guest userspace while retaining Kubernetes scheduling, cgroup limits, restart behavior, and a separate Cilium endpoint for every worm.
+
+The alternative is a Lua executor Pod hosting many logical Lua VMs. That model has higher runtime density, but all logical worms share one network namespace, IP address, Cilium identity, and NetworkPolicy. Hubble would show only the executor-to-service flow, not one endpoint per worm. It is intentionally rejected for this experiment because Cilium visibility is more important than maximum logical-instance density.
+
+The worker Deployment therefore scales real Pods. Every worker has its own `app=lua-worker` label and a unique pod identity, so Hubble can show its flow to Vector and to the replicator. We accept Kubernetes-per-Pod overhead in exchange for that direct topology view.
 
 ## Minimal topology
 
