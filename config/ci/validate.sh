@@ -56,3 +56,25 @@ for chart_file in "${charts[@]}"; do
   rm -f -- "${rendered_manifest}"
   trap - RETURN
 done
+
+# Validate the pinned remote Cilium chart with the same values used by the
+# k3d bootstrap. This catches chart/value drift that local charts cannot see.
+cilium_version="${CILIUM_VERSION:-1.13.4}"
+cilium_values="${repo_root}/config/helm/cilium/values.yaml"
+
+echo "Rendering remote Cilium chart: ${cilium_version}"
+"${helm_bin}" repo add cilium https://helm.cilium.io --force-update
+"${helm_bin}" repo update cilium
+"${helm_bin}" template ci-cilium cilium/cilium \
+  --namespace kube-system \
+  --version "${cilium_version}" \
+  --values "${cilium_values}" \
+  --set-string k8sServiceHost=127.0.0.1 \
+  --set-string k8sServicePort=6443 \
+  --include-crds |
+  "${kubeconform_bin}" \
+    -strict \
+    -summary \
+    -ignore-missing-schemas \
+    -schema-location "${schema_location}" \
+    -

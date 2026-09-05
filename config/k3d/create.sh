@@ -28,9 +28,49 @@ if k3d cluster list --no-headers 2>/dev/null | awk '{print $1}' | grep -Fxq "${C
   if [[ "${running}" != "true" ]]; then
     echo "Starting existing k3d cluster '${CLUSTER_NAME}'"
     k3d cluster start "${CLUSTER_NAME}"
-  else
-    echo "k3d cluster '${CLUSTER_NAME}' is already running"
   fi
+
+  expected_memory_bytes=$((2 * 1024 * 1024 * 1024))
+  actual_memory_bytes="$(docker inspect --format '{{.HostConfig.Memory}}' "${server_container}" 2>/dev/null || true)"
+  if [[ "${actual_memory_bytes}" != "${expected_memory_bytes}" ]]; then
+    echo "existing cluster '${CLUSTER_NAME}' server memory is ${actual_memory_bytes} bytes; expected exactly ${expected_memory_bytes}" >&2
+    exit 1
+  fi
+
+  server_count="$(docker ps -a --filter "label=k3d.cluster=${CLUSTER_NAME}" --filter 'label=k3d.role=server' --format '{{.Names}}' | wc -l | tr -d ' ')"
+  agent_count="$(docker ps -a --filter "label=k3d.cluster=${CLUSTER_NAME}" --filter 'label=k3d.role=agent' --format '{{.Names}}' | wc -l | tr -d ' ')"
+  if [[ "${server_count}" != "1" || "${agent_count}" != "0" ]]; then
+    echo "existing cluster '${CLUSTER_NAME}' must have exactly one server and zero agents (found servers=${server_count}, agents=${agent_count})" >&2
+    exit 1
+  fi
+
+  actual_image="$(docker inspect --format '{{.Config.Image}}' "${server_container}")"
+  if [[ "${actual_image}" != "${K3S_IMAGE}" ]]; then
+    echo "existing cluster '${CLUSTER_NAME}' uses ${actual_image}; expected ${K3S_IMAGE}" >&2
+    exit 1
+  fi
+
+  actual_command="$(docker inspect --format '{{json .Config.Cmd}}' "${server_container}")"
+  for required_arg in \
+    '"--flannel-backend=none"' \
+    '"--disable-network-policy"' \
+    '"--disable-kube-proxy"' \
+    '"--disable=traefik"' \
+    '"--disable=servicelb"'; do
+    if [[ "${actual_command}" != *"${required_arg}"* ]]; then
+      echo "existing cluster '${CLUSTER_NAME}' is missing required k3s argument ${required_arg}" >&2
+      exit 1
+    fi
+  done
+
+  loadbalancer="k3d-${CLUSTER_NAME}-serverlb"
+  api_mapping="$(docker port "${loadbalancer}" 6443/tcp 2>/dev/null || true)"
+  if [[ "${api_mapping}" != *"127.0.0.1:${API_PORT}"* ]]; then
+    echo "existing cluster '${CLUSTER_NAME}' API binding is '${api_mapping}'; expected 127.0.0.1:${API_PORT}" >&2
+    exit 1
+  fi
+
+  echo "k3d cluster '${CLUSTER_NAME}' is running with the required 2 GiB single-server configuration"
   exit 0
 fi
 

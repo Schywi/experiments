@@ -44,8 +44,7 @@ helm upgrade --install cilium cilium/cilium \
   --version "${CILIUM_VERSION}" \
   --values "${values_file}" \
   --set-string k8sServiceHost="${K8S_SERVICE_HOST}" \
-  --set k8sServicePort=6443 \
-  --take-ownership \
+  --set-string k8sServicePort=6443 \
   --wait \
   --timeout "${HELM_TIMEOUT}"
 
