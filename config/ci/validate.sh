@@ -12,7 +12,7 @@ kubeconform_bin="${KUBECONFORM_BIN:-kubeconform}"
 # APIs used by the platform charts.
 kubernetes_schema_version="${KUBERNETES_SCHEMA_VERSION:-v1.31.0}"
 schema_location="https://raw.githubusercontent.com/yannh/kubernetes-json-schema/master/${kubernetes_schema_version}-standalone-strict/{{.ResourceKind}}{{.KindSuffix}}.json"
-charts_root="${repo_root}/config/helm"
+charts_root="${repo_root}/config"
 
 command -v "${helm_bin}" >/dev/null 2>&1 || {
   echo "helm is required" >&2
@@ -34,7 +34,7 @@ fi
 for chart_file in "${charts[@]}"; do
   chart_dir="$(dirname -- "${chart_file}")"
   chart_name="$(basename -- "${chart_dir}")"
-  rendered_manifest="$(mktemp)"
+  rendered_manifest="$(mktemp --suffix=.yaml)"
   trap 'rm -f -- "${rendered_manifest}"' RETURN
 
   echo "Linting Helm chart: ${chart_dir#"${repo_root}"/}"
