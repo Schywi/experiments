@@ -25,6 +25,12 @@ directory rather than recreating platform-specific top-level trees.
 - Keep Argo CD reachable only through its internal ClusterIP. Never add a
   public LoadBalancer, ingress, or host-wide port binding for it.
 
+## Tilt Runtime Control
+
+- Agents are forbidden from running `tilt up` or `tilt down`.
+- Agents must not trigger, stop, kill, restart, or otherwise control any Tilt
+  process or runtime. Only the user operates Tilt.
+
 This project uses **bd** (beads) for issue tracking. Run `bd onboard` to get started.
 
 ## Quick Reference
