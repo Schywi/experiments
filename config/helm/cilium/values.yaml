@@ -2,17 +2,48 @@
 #
 # The API endpoint is supplied by config/k3d/install-cilium.sh at install time;
 # do not put a machine-specific address or credential in this file.
-kubeProxyReplacement: true
+# Cilium 1.13.4 expects a string mode; Boolean true fails chart rendering.
+kubeProxyReplacement: "strict"
+
+# Keep every Cilium workload on a reviewed, immutable image reference.
+image:
+  repository: quay.io/cilium/cilium
+  tag: v1.13.4
+  digest: sha256:bde8800d61aaad8b8451b10e247ac7bdeb7af187bb698f83d40ad75a38c1ee6b
+  useDigest: true
+  pullPolicy: IfNotPresent
 
 ipam:
   mode: kubernetes
 
 operator:
   replicas: 1
+  image:
+    repository: quay.io/cilium/operator
+    tag: v1.13.4
+    genericDigest: sha256:09ab77d324ef4d31f7d341f97ec5a2a4860910076046d57a2d61494d426c6301
+    useDigest: true
+    pullPolicy: IfNotPresent
 
 hubble:
   enabled: true
   relay:
     enabled: true
+    image:
+      repository: quay.io/cilium/hubble-relay
+      tag: v1.13.4
+      digest: sha256:bac057a5130cf75adf5bc363292b1f2642c0c460ac9ff018fcae3daf64873871
+      useDigest: true
+      pullPolicy: IfNotPresent
   ui:
     enabled: true
+    backend:
+      image:
+        repository: quay.io/cilium/hubble-ui-backend
+        tag: v0.11.0@sha256:14c04d11f78da5c363f88592abae8d2ecee3cbe009f443ef11df6ac5f692d839
+        pullPolicy: IfNotPresent
+    frontend:
+      image:
+        repository: quay.io/cilium/hubble-ui
+        tag: v0.11.0@sha256:bcb369c47cada2d4257d63d3749f7f87c91dde32e010b223597306de95d1ecc8
+        pullPolicy: IfNotPresent
