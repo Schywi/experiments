@@ -13,9 +13,9 @@ GITOPS_CONFIG_DIR = CONFIG_DIR + "/argocd"
 # their manifests are added under config/.
 watch_file(CONFIG_DIR)
 
-# All cluster-changing actions are manual resources. This keeps `tilt ci` and
-# opening the UI side-effect free. The `platform-bootstrap` resource is the
-# one-click path; the individual resources remain available for debugging.
+# `platform-bootstrap` is the user-facing automatic path: running `tilt up`
+# executes the complete k3d -> Cilium -> OpenResty -> Argo CD chain. The
+# individual resources remain manual for debugging and targeted reruns.
 local_resource(
     "platform-bootstrap",
     CLUSTER_CONFIG_DIR + "/bootstrap.sh",
@@ -29,8 +29,7 @@ local_resource(
         CONFIG_DIR + "/openresty",
         CONFIG_DIR + "/argocd",
     ],
-    trigger_mode=TRIGGER_MODE_MANUAL,
-    auto_init=False,
+    auto_init=True,
 )
 
 local_resource(
