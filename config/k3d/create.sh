@@ -23,19 +23,25 @@ if [[ "${MEMORY_LIMIT}" != "2g" ]]; then
 fi
 
 if k3d cluster list --no-headers 2>/dev/null | awk '{print $1}' | grep -Fxq "${CLUSTER_NAME}"; then
-  echo "k3d cluster '${CLUSTER_NAME}' already exists"
+  server_container="k3d-${CLUSTER_NAME}-server-0"
+  running="$(docker inspect --format '{{.State.Running}}' "${server_container}" 2>/dev/null || true)"
+  if [[ "${running}" != "true" ]]; then
+    echo "Starting existing k3d cluster '${CLUSTER_NAME}'"
+    k3d cluster start "${CLUSTER_NAME}"
+  else
+    echo "k3d cluster '${CLUSTER_NAME}' is already running"
+  fi
   exit 0
 fi
 
-# One Docker-backed k3s server, no agents and no k3d load balancer. The server
-# is the only cluster container and is hard-capped at 2 GiB.
+# One Docker-backed k3s server and no agents. The k3d load balancer exposes the
+# API on localhost; the k3s server container is hard-capped at 2 GiB.
 k3d cluster create "${CLUSTER_NAME}" \
   --image "${K3S_IMAGE}" \
   --servers 1 \
   --agents 0 \
-  --no-lb \
   --servers-memory "${MEMORY_LIMIT}" \
-  --port "127.0.0.1:${API_PORT}:6443@server:0" \
+  --api-port "127.0.0.1:${API_PORT}" \
   --k3s-arg "--flannel-backend=none@server:0" \
   --k3s-arg "--disable-network-policy@server:0" \
   --k3s-arg "--disable-kube-proxy@server:0" \

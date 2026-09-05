@@ -24,7 +24,8 @@ values_file="${repo_root}/config/helm/cilium/values.yaml"
   exit 1
 }
 
-CILIUM_VERSION="${CILIUM_VERSION:-1.16.5}"
+# 1.13.4 is pinned to the local image set used by this development cluster.
+CILIUM_VERSION="${CILIUM_VERSION:-1.13.4}"
 HELM_TIMEOUT="${HELM_TIMEOUT:-10m}"
 CLUSTER_NAME="${K3D_CLUSTER_NAME:-cilium-lab}"
 SERVER_CONTAINER="k3d-${CLUSTER_NAME}-server-0"
@@ -44,6 +45,7 @@ helm upgrade --install cilium cilium/cilium \
   --values "${values_file}" \
   --set-string k8sServiceHost="${K8S_SERVICE_HOST}" \
   --set k8sServicePort=6443 \
+  --take-ownership \
   --wait \
   --timeout "${HELM_TIMEOUT}"
 

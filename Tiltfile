@@ -14,8 +14,25 @@ GITOPS_CONFIG_DIR = CONFIG_DIR + "/argocd"
 watch_file(CONFIG_DIR)
 
 # All cluster-changing actions are manual resources. This keeps `tilt ci` and
-# opening the UI side-effect free while still giving local developers one-click
-# entry points for the Docker-backed, 2 GiB-capped k3d workflow.
+# opening the UI side-effect free. The `platform-bootstrap` resource is the
+# one-click path; the individual resources remain available for debugging.
+local_resource(
+    "platform-bootstrap",
+    CLUSTER_CONFIG_DIR + "/bootstrap.sh",
+    deps=[
+        CLUSTER_CONFIG_DIR + "/bootstrap.sh",
+        CLUSTER_CONFIG_DIR + "/create.sh",
+        CLUSTER_CONFIG_DIR + "/import-images.sh",
+        CLUSTER_CONFIG_DIR + "/install-cilium.sh",
+        CLUSTER_CONFIG_DIR + "/validate.sh",
+        CONFIG_DIR + "/helm/cilium/values.yaml",
+        CONFIG_DIR + "/openresty",
+        CONFIG_DIR + "/argocd",
+    ],
+    trigger_mode=TRIGGER_MODE_MANUAL,
+    auto_init=False,
+)
+
 local_resource(
     "k3d-create",
     CLUSTER_CONFIG_DIR + "/create.sh",
@@ -34,10 +51,37 @@ local_resource(
 )
 
 local_resource(
-    "openresty-dashboard",
-    "helm upgrade --install openresty " + CONFIG_DIR + "/openresty --namespace observability --create-namespace --wait",
-    deps=[CONFIG_DIR + "/openresty"],
+    "cilium-validate",
+    CLUSTER_CONFIG_DIR + "/validate.sh",
+    deps=[CLUSTER_CONFIG_DIR + "/validate.sh"],
     resource_deps=["cilium-install"],
+    trigger_mode=TRIGGER_MODE_MANUAL,
+    auto_init=False,
+)
+
+local_resource(
+    "openresty-dashboard",
+    "helm upgrade --install openresty " + CONFIG_DIR + "/openresty --namespace openresty --create-namespace --wait",
+    deps=[CONFIG_DIR + "/openresty"],
+    resource_deps=["cilium-validate"],
+    trigger_mode=TRIGGER_MODE_MANUAL,
+    auto_init=False,
+)
+
+local_resource(
+    "argocd-install",
+    CONFIG_DIR + "/argocd/install.sh",
+    deps=[CONFIG_DIR + "/argocd/install.sh", CONFIG_DIR + "/argocd/values.yaml"],
+    resource_deps=["cilium-validate"],
+    trigger_mode=TRIGGER_MODE_MANUAL,
+    auto_init=False,
+)
+
+local_resource(
+    "argocd-application",
+    "kubectl apply --filename " + CONFIG_DIR + "/argocd/applications/openresty.yaml",
+    deps=[CONFIG_DIR + "/argocd/applications/openresty.yaml"],
+    resource_deps=["openresty-dashboard", "argocd-install"],
     trigger_mode=TRIGGER_MODE_MANUAL,
     auto_init=False,
 )
