@@ -13,9 +13,9 @@ GITOPS_CONFIG_DIR = CONFIG_DIR + "/argocd"
 # their manifests are added under config/.
 watch_file(CONFIG_DIR)
 
-# `platform-bootstrap` is the user-facing automatic path: running `tilt up`
-# executes the complete k3d -> Cilium -> OpenResty -> Argo CD chain. The
-# individual resources remain manual for debugging and targeted reruns.
+# `platform-bootstrap` is an explicit aggregate/debug path. The default
+# `tilt up` path below initializes each platform branch independently after
+# k3d creation, so OpenResty and Argo CD do not wait for Cilium validation.
 local_resource(
     "platform-bootstrap",
     CLUSTER_CONFIG_DIR + "/bootstrap.sh",
@@ -29,24 +29,30 @@ local_resource(
         CONFIG_DIR + "/openresty",
         CONFIG_DIR + "/argocd",
     ],
-    auto_init=True,
+    auto_init=False,
 )
 
 local_resource(
     "k3d-create",
     CLUSTER_CONFIG_DIR + "/create.sh",
     deps=[CLUSTER_CONFIG_DIR + "/create.sh"],
-    trigger_mode=TRIGGER_MODE_MANUAL,
-    auto_init=False,
+    auto_init=True,
+)
+
+local_resource(
+    "k3d-import-images",
+    CLUSTER_CONFIG_DIR + "/import-images.sh",
+    deps=[CLUSTER_CONFIG_DIR + "/import-images.sh"],
+    resource_deps=["k3d-create"],
+    auto_init=True,
 )
 
 local_resource(
     "cilium-install",
     CLUSTER_CONFIG_DIR + "/install-cilium.sh",
     deps=[CLUSTER_CONFIG_DIR + "/install-cilium.sh", CONFIG_DIR + "/helm/cilium/values.yaml"],
-    resource_deps=["k3d-create"],
-    trigger_mode=TRIGGER_MODE_MANUAL,
-    auto_init=False,
+    resource_deps=["k3d-import-images"],
+    auto_init=True,
 )
 
 local_resource(
@@ -54,26 +60,23 @@ local_resource(
     CLUSTER_CONFIG_DIR + "/validate.sh",
     deps=[CLUSTER_CONFIG_DIR + "/validate.sh"],
     resource_deps=["cilium-install"],
-    trigger_mode=TRIGGER_MODE_MANUAL,
-    auto_init=False,
+    auto_init=True,
 )
 
 local_resource(
     "openresty-dashboard",
     "helm upgrade --install cilium-dashboard " + CONFIG_DIR + "/openresty --namespace openresty --create-namespace --wait",
     deps=[CONFIG_DIR + "/openresty"],
-    resource_deps=["cilium-validate"],
-    trigger_mode=TRIGGER_MODE_MANUAL,
-    auto_init=False,
+    resource_deps=["k3d-create"],
+    auto_init=True,
 )
 
 local_resource(
     "argocd-install",
     CONFIG_DIR + "/argocd/install.sh",
     deps=[CONFIG_DIR + "/argocd/install.sh", CONFIG_DIR + "/argocd/values.yaml"],
-    resource_deps=["cilium-validate"],
-    trigger_mode=TRIGGER_MODE_MANUAL,
-    auto_init=False,
+    resource_deps=["k3d-create"],
+    auto_init=True,
 )
 
 local_resource(
@@ -81,6 +84,5 @@ local_resource(
     "kubectl apply --filename " + CONFIG_DIR + "/argocd/applications/openresty.yaml",
     deps=[CONFIG_DIR + "/argocd/applications/openresty.yaml"],
     resource_deps=["openresty-dashboard", "argocd-install"],
-    trigger_mode=TRIGGER_MODE_MANUAL,
-    auto_init=False,
+    auto_init=True,
 )

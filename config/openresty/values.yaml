@@ -26,11 +26,14 @@ networkPolicy:
   # The release namespace is always allowed. Add namespaces here when an
   # explicitly approved in-cluster frontend needs to reach this proxy.
   allowedNamespaces: []
-  # Host traffic is needed for kubectl port-forward and remains node-local;
-  # it does not expose the ClusterIP outside the cluster.
-  allowHost: true
 
-resources: {}
+resources:
+  requests:
+    cpu: 10m
+    memory: 16Mi
+  limits:
+    cpu: 100m
+    memory: 64Mi
 
 podAnnotations: {}
 podLabels: {}

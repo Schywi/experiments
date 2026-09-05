@@ -26,10 +26,11 @@ then install Cilium:
 config/k3d/bootstrap.sh
 ```
 
-The root `Tiltfile` exposes `platform-bootstrap` as the one-click equivalent
-of that sequence. It creates k3d, installs and validates Cilium, deploys
-OpenResty, installs no-auth Argo CD, and applies the Argo CD Application.
-Individual Tilt resources are available when a step needs to be rerun alone.
+The root `Tiltfile` initializes the k3d, image-import, Cilium, OpenResty, and
+no-auth Argo CD resources on `tilt up`. OpenResty and Argo CD depend only on
+k3d creation; they do not wait for Cilium validation. The explicit
+`platform-bootstrap` resource remains available for a full aggregate run and
+applies the Argo CD Application after all branches have been attempted.
 
 The bootstrap imports the pinned local runtime images before installation. The
 k3d create script disables Flannel, kube-proxy, Traefik, and ServiceLB so
