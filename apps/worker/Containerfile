@@ -1,0 +1,6 @@
+# OCI artifact consumed by the runwasi Wasmtime runtime handler.
+# `dist/worm.component.wasm` is produced by the component build outside this
+# image; this keeps the final artifact base-image-free and reproducible.
+FROM scratch
+COPY dist/worm.component.wasm /worker.wasm
+ENTRYPOINT ["/worker.wasm"]
