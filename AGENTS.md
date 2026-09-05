@@ -1,5 +1,15 @@
 # Agent Instructions
 
+## Public Repository and Commit Safety
+
+- This is a public repository. Never commit credentials, tokens, private keys,
+  kubeconfigs, certificates, `.env` files, or other secrets.
+- Keep potential secret-bearing local files ignored. If a secret must be managed
+  declaratively in the future, use Sealed Secrets (or another reviewed secret
+  encryption mechanism) and commit only the encrypted manifest.
+- Make atomic commits: each commit must contain one coherent, independently
+  reviewable change and include the related `bd` issue identifier in its message.
+
 This project uses **bd** (beads) for issue tracking. Run `bd onboard` to get started.
 
 ## Quick Reference
