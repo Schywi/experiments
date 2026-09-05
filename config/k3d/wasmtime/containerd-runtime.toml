@@ -1,0 +1,4 @@
+# Add this stanza to the k3s-managed containerd template. Do not replace the
+# generated containerd configuration file: k3s regenerates it on restart.
+[plugins."io.containerd.grpc.v1.cri".containerd.runtimes.wasmtime]
+  runtime_type = "io.containerd.wasmtime.v1"

@@ -1,0 +1,8 @@
+apiVersion: node.k8s.io/v1
+kind: RuntimeClass
+metadata:
+  name: wasmtime
+  labels:
+    app.kubernetes.io/name: wasmtime
+    app.kubernetes.io/part-of: bounded-worm-lab
+handler: wasmtime

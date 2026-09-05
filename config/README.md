@@ -19,6 +19,11 @@ config/
     └── validate.sh            # node, Cilium, and Hubble readiness checks
 ```
 
+`config/k3d/wasmtime/` contains a separately invoked, checksum-pinned
+preparation package for adding the runwasi Wasmtime shim to the existing k3d
+server. It deliberately does not run as part of bootstrap because it mutates
+and restarts the server node; see its README before use.
+
 The scripts expect Docker, k3d, Helm, and kubectl. Create the local cluster,
 then install Cilium:
 

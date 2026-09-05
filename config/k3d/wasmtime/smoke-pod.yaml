@@ -1,0 +1,40 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: worm-lab
+  labels:
+    app.kubernetes.io/part-of: bounded-worm-lab
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: wasmtime-smoke
+  namespace: worm-lab
+  labels:
+    app.kubernetes.io/name: wasmtime-smoke
+    app.kubernetes.io/part-of: bounded-worm-lab
+spec:
+  runtimeClassName: wasmtime
+  restartPolicy: Never
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+    - name: wasi-demo
+      image: ghcr.io/containerd/runwasi/wasi-demo-app@sha256:1a5ef678e7425a98de8166d9e289e09e21d8a82312ad7e5c8bf9b961bb1f2666
+      imagePullPolicy: IfNotPresent
+      resources:
+        requests:
+          cpu: 5m
+          memory: 8Mi
+        limits:
+          cpu: 25m
+          memory: 16Mi
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop:
+            - ALL
+        readOnlyRootFilesystem: true
