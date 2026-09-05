@@ -1,16 +1,17 @@
 # Public-repository baseline for the official argo-cd Helm chart.
 #
-# Keep Argo CD private by default. TLS and authentication are intentionally
-# enabled; local-only overrides must never be committed to this repository.
+# This cluster is a private, Docker-backed k3d development cluster. The user
+# explicitly requested headless/no-auth Argo CD; exposure remains ClusterIP
+# only with ingress disabled.
 
 configs:
   cm:
     create: true
-    admin.enabled: true
+    admin.enabled: false
   params:
     create: true
-    server.insecure: "false"
-    server.disable.auth: "false"
+    server.insecure: "true"
+    server.disable.auth: "true"
   rbac:
     create: true
     policy.default: ""
@@ -20,4 +21,3 @@ server:
     type: ClusterIP
   ingress:
     enabled: false
-

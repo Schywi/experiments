@@ -17,6 +17,14 @@ configuration, `/docs` is local-only planning material, and `Tiltfile` stays at
 the repository root. Add application code under a future, explicitly approved
 directory rather than recreating platform-specific top-level trees.
 
+## Argo CD Authentication
+
+- Authentication is prohibited for the requested private k3d development
+  cluster. Keep Argo CD headless/no-auth with `server.insecure: "true"`,
+  `server.disable.auth: "true"`, and the admin account disabled.
+- Keep Argo CD reachable only through its internal ClusterIP. Never add a
+  public LoadBalancer, ingress, or host-wide port binding for it.
+
 This project uses **bd** (beads) for issue tracking. Run `bd onboard` to get started.
 
 ## Quick Reference
