@@ -8,17 +8,22 @@ config/argocd/install.sh
 ```
 
 The default values deliberately provide the requested headless/no-auth Argo CD
-mode while keeping the server private to the k3d cluster:
+mode while keeping the server Service internal to the k3d cluster:
 
 - `server.insecure` is explicitly `"true"`.
 - `server.disable.auth` is explicitly `"true"`.
 - the built-in admin account is disabled.
-- the server service is `ClusterIP` and its ingress is disabled.
+- the server service is `ClusterIP`; local access is provided by the Cilium
+  Ingress Controller using `argocd.localhost`.
 - no repository credentials or other secrets are stored here.
 
-This mode is intentionally limited to the private k3d development cluster. Do
-not expose this service through a public LoadBalancer, ingress, or host-wide
-port binding.
+This mode is intentionally limited to the private k3d development cluster.
+The Cilium Ingress listener is bound by k3d to `127.0.0.1:8080`; it is not a
+public LoadBalancer or host-wide binding.
+
+The Argo route is defined in `argocd-ingress.yaml` and is applied alongside
+the Hubble route by `config/k3d/install-cilium.sh`. Open
+`http://argocd.localhost:8080/` from the local machine.
 
 The Vector data-plane application is defined separately in
 `applications/vector.yaml`. It renders `config/vector` into the `worm-lab`

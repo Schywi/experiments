@@ -38,7 +38,7 @@ else
 fi
 
 if ((bootstrap_status == 0)); then
-  echo "k3d, Cilium Ingress, and Argo CD are ready; Hubble UI is at http://localhost:8080/"
+  echo "k3d, Cilium Ingress, and Argo CD are ready; Hubble UI is at http://localhost:8080/ and Argo CD is at http://argocd.localhost:8080/"
 else
   echo "Platform bootstrap attempted all independent branches; inspect the warnings above" >&2
 fi

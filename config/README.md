@@ -45,9 +45,10 @@ The
 k3d create script disables Flannel, kube-proxy, Traefik, and ServiceLB so
 that Cilium owns networking. It creates exactly one server and no agents; the
 server container is hard-capped at 2 GiB. k3d's small API load balancer binds
-the Kubernetes API to localhost port 6445. Cilium's Ingress Controller routes
-`http://localhost:8080/` to the internal Hubble UI ClusterIP Service through
-the k3d-mapped NodePort 30080. `CILIUM_VERSION` is pinned in the script and
+the Kubernetes API to localhost port 6445. Cilium's shared Ingress Controller
+uses the k3d-mapped NodePort 30080, bound to `127.0.0.1:8080`: host
+`localhost` routes to Hubble UI and host `argocd.localhost` routes to the
+internal Argo CD server Service. `CILIUM_VERSION` is pinned in the script and
 should only be changed in a reviewed update.
 
 No credentials, kubeconfigs, certificates, tokens, or other secret-bearing

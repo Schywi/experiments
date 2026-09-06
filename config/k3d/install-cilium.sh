@@ -19,6 +19,7 @@ script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd -- "${script_dir}/../.." && pwd)"
 values_file="${repo_root}/config/helm/cilium/values.yaml"
 ingress_file="${repo_root}/config/helm/cilium/hubble-ui-ingress.yaml"
+argocd_ingress_file="${repo_root}/config/argocd/argocd-ingress.yaml"
 
 [[ -f "${values_file}" ]] || {
   echo "Cilium values file not found: ${values_file}" >&2
@@ -26,6 +27,10 @@ ingress_file="${repo_root}/config/helm/cilium/hubble-ui-ingress.yaml"
 }
 [[ -f "${ingress_file}" ]] || {
   echo "Hubble Ingress manifest not found: ${ingress_file}" >&2
+  exit 1
+}
+[[ -f "${argocd_ingress_file}" ]] || {
+  echo "Argo CD Ingress manifest not found: ${argocd_ingress_file}" >&2
   exit 1
 }
 
@@ -54,5 +59,6 @@ helm upgrade --install cilium cilium/cilium \
   --timeout "${HELM_TIMEOUT}"
 
 kubectl apply --filename "${ingress_file}"
+kubectl apply --filename "${argocd_ingress_file}"
 
 echo "Cilium ${CILIUM_VERSION} installed in the k3d cluster"
