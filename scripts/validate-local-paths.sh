@@ -140,6 +140,7 @@ validate_worm_bindings() {
   require_text "${image_build_script}" '--pull' 'Worm image builds do not refresh base images'
   require_text "${image_build_script}" '--no-cache' 'Worm image builds use the Docker layer cache'
   require_text "${repo_root}/config/k3d/import-images.sh" 'docker pull' 'platform images are not refreshed before import'
+  require_text "${repo_root}/config/k3d/import-images.sh" 'short_reference="${expected_reference#docker.io/}"' 'Docker Hub digest normalization is missing'
   require_text "${repo_root}/config/k3d/import-images.sh" 'k3d runtime does not contain imported image' 'platform imports are not verified in k3d'
   require_text "${repo_root}/config/metallb/build-and-import.sh" '--no-cache' 'MetalLB image builds use the Docker layer cache'
   require_text "${repo_root}/config/metallb/build-and-import.sh" 'k3d runtime does not contain imported image' 'MetalLB imports are not verified in k3d'

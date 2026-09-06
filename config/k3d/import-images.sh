@@ -36,7 +36,9 @@ for index in "${!images[@]}"; do
   expected_digest="${expected_digests[${index}]}"
   if [[ -n "${expected_digest}" ]]; then
     expected_reference="${image%:*}@${expected_digest}"
-    docker image inspect --format '{{range .RepoDigests}}{{println .}}{{end}}' "${image}" | grep -Fxq "${expected_reference}" || {
+    short_reference="${expected_reference#docker.io/}"
+    docker image inspect --format '{{range .RepoDigests}}{{println .}}{{end}}' "${image}" |
+      grep -Fxq -e "${expected_reference}" -e "${short_reference}" || {
       echo "local image digest does not match the pinned Docker Hub reference: ${expected_reference}" >&2
       exit 1
     }
