@@ -71,6 +71,7 @@ validate_metallb_path() {
   require_text "${repo_root}/config/metallb/Dockerfile.speaker" 'docker.io/golang:1.22.7' 'MetalLB speaker builder is not Docker Hub addressed'
   require_not_text "${repo_root}/config/k3d/lifecycle.sh" '"${script_dir}/delete.sh"' 'Tilt lifecycle deletes the cluster on startup'
   require_text "${repo_root}/config/k3d/create.sh" '--subnet "${DOCKER_SUBNET}"' 'k3d Docker subnet is not pinned for MetalLB'
+  require_text "${repo_root}/config/k3d/create.sh" 'docker port "${loadbalancer}" 30080/tcp' 'k3d Hubble port check inspects the wrong container'
   require_text "${repo_root}/Tiltfile" 'METALLB_CONFIG_DIR = CONFIG_DIR + "/metallb"' 'Tiltfile does not include MetalLB configuration'
   require_text "${repo_root}/Tiltfile" 'deps=[CONFIG_DIR, METALLB_CONFIG_DIR, "Tiltfile"]' 'Tilt platform resource does not depend on MetalLB configuration'
   require_text "${repo_root}/config/k3d/validate.sh" 'rollout status "${deployment}"' 'platform validation does not wait for Argo deployments'

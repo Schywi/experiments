@@ -71,7 +71,7 @@ if k3d cluster list --no-headers 2>/dev/null | awk '{print $1}' | grep -Fxq "${C
     exit 1
   fi
 
-  hubble_mapping="$(docker port "${server_container}" 30080/tcp 2>/dev/null || true)"
+  hubble_mapping="$(docker port "${loadbalancer}" 30080/tcp 2>/dev/null || true)"
   if [[ "${hubble_mapping}" != *"127.0.0.1:8080"* ]]; then
     echo "existing cluster '${CLUSTER_NAME}' Hubble ingress binding is '${hubble_mapping}'; expected 127.0.0.1:8080" >&2
     exit 1

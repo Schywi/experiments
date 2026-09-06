@@ -20,10 +20,10 @@ helm upgrade --install metallb metallb/metallb \
   --version "${version#v}" \
   --set controller.image.repository=metallb-controller \
   --set controller.image.tag="${version}" \
-  --set controller.image.pullPolicy=IfNotPresent \
+  --set controller.image.pullPolicy=Never \
   --set speaker.image.repository=metallb-speaker \
   --set speaker.image.tag="${version}" \
-  --set speaker.image.pullPolicy=IfNotPresent \
+  --set speaker.image.pullPolicy=Never \
   --set speaker.frr.enabled=false \
   --wait \
   --timeout "${helm_timeout}"
