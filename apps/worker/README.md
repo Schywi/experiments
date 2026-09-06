@@ -51,7 +51,7 @@ The OCI package is base-image-free.  Once a reproducible component build has
 written `dist/worm.component.wasm`, package it with:
 
 ```sh
-make package IMAGE=registry.example/worm-worker:0.1.0
+make package IMAGE=docker.io/local/worm-worker:tilt
 ```
 
 The deployed Pod must use `runtimeClassName: wasmtime` and pass the three

@@ -1,6 +1,6 @@
 SHELL := /bin/sh
 
-IMAGE ?= ghcr.io/example/worm-worker:dev
+IMAGE ?= docker.io/local/worm-worker:tilt
 WASM := dist/worm.component.wasm
 
 .PHONY: test static-check package
