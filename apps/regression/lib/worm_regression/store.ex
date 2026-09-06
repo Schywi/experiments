@@ -71,8 +71,10 @@ defmodule WormRegression.Store do
   defp validate(event, now_ms, window_ms) when is_map(event) do
     with worm_id when is_binary(worm_id) and byte_size(worm_id) > 0 <- value(event, :worm_id),
          sequence when is_integer(sequence) and sequence >= 0 <- value(event, :sequence),
-         x when finite_number?(x) <- value(event, :x),
-         y when finite_number?(y) <- value(event, :y),
+         x <- value(event, :x),
+         true <- finite_number?(x),
+         y <- value(event, :y),
+         true <- finite_number?(y),
          occurred_at when is_integer(occurred_at) <- value(event, :occurred_at),
          true <- occurred_at >= now_ms - window_ms,
          true <- occurred_at <= now_ms do
