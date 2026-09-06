@@ -13,7 +13,7 @@ spec:
   project: default
   source:
     repoURL: https://github.com/Schywi/experiments.git
-    targetRevision: 592d7f531aa4b51b9c1bb0e28b8180717a15a7ec
+    targetRevision: 592d7f51cdb71416dd5261868b39a1046be96b15
     path: apps/controller/chart
     helm:
       releaseName: worm-controller

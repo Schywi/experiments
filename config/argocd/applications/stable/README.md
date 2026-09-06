@@ -14,7 +14,7 @@ Choose exactly one ownership mode before deployment:
   the pinned release.
 
 The Applications pin the Git source to release revision
-`592d7f531aa4b51b9c1bb0e28b8180717a15a7ec`. Controller, regression, and worker
+`592d7f51cdb71416dd5261868b39a1046be96b15`. Controller, regression, and worker
 images use the matching immutable local content tag `dc3e359`; those images
 must already be built and imported into the target k3d node before an Argo
 sync. No registry push is implied.
