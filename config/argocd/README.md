@@ -25,6 +25,13 @@ The Vector data-plane application is defined separately in
 namespace and uses the same public repository source, automated pruning, and
 self-healing policy.
 
+The bounded Worm stable handoff is defined separately under
+`applications/stable/`. Those four Applications pin a full Git revision and
+require an explicit manual sync. Register that directory only after choosing
+Argo ownership and stopping the Tilt Worm resources; never register it
+together with `applications/vector.yaml`, which describes the same Vector
+resources.
+
 ## Unpushed local source mode
 
 Argo CD cannot read a developer's host filesystem directly. Until a change is
