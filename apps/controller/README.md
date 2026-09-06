@@ -15,3 +15,13 @@ controller instance. New intent IDs increment `status.desiredReplicas` up to
 
 The controller needs RBAC for `worms`, `worms/status`, and only the target
 Deployment's `deployments/scale` subresource when deployed.
+
+## Local k3d image
+
+Tilt supplies a content-addressed image reference to the local build script.
+The script builds it locally and imports it into the existing `cilium-lab`
+cluster; it never pushes an image to a remote registry.
+
+```sh
+./build-and-import.sh docker.io/local/worm-controller:dev
+```

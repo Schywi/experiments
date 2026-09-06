@@ -1,0 +1,25 @@
+# syntax=docker/dockerfile:1
+# Build the controller from its locked Go module graph. Both base images are
+# Docker Hub references; the final image has only the statically linked binary
+# and the CA bundle needed to authenticate to the Kubernetes API.
+FROM docker.io/golang:1.26.0-bookworm AS build
+
+WORKDIR /src
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . ./
+
+ARG TARGETOS=linux
+ARG TARGETARCH
+RUN CGO_ENABLED=0 GOOS="$TARGETOS" GOARCH="$TARGETARCH" \
+    go build -trimpath -ldflags='-s -w -buildid=' -o /out/controller ./cmd/controller
+
+FROM scratch
+
+COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+COPY --from=build /out/controller /controller
+
+USER 65532:65532
+ENTRYPOINT ["/controller"]

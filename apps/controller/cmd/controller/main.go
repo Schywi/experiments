@@ -14,14 +14,15 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 )
 
 func main() {
 	var metricsAddr, probeAddr, listen string
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "metrics address")
-	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "health probe address")
-	flag.StringVar(&listen, "listen-address", ":8082", "replication intent HTTP address")
+	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8083", "health probe address")
+	flag.StringVar(&listen, "listen-address", ":8081", "replication intent HTTP address")
 	flag.Parse()
 	namespace, name := os.Getenv("WORM_NAMESPACE"), os.Getenv("WORM_NAME")
 	if namespace == "" || name == "" {
@@ -36,6 +37,12 @@ func main() {
 		panic(err)
 	}
 	if err := (&controller.WormReconciler{Client: mgr.GetClient()}).SetupWithManager(mgr); err != nil {
+		panic(err)
+	}
+	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
+		panic(err)
+	}
+	if err := mgr.AddReadyzCheck("readyz", healthz.Ping); err != nil {
 		panic(err)
 	}
 	go func() {

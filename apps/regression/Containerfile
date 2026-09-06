@@ -1,0 +1,28 @@
+# syntax=docker/dockerfile:1
+# Docker Hub's maintained Elixir image supplies the pinned BEAM runtime used
+# for both dependency compilation and execution.
+FROM docker.io/hexpm/elixir:1.16.3-erlang-26.2.5-debian-bookworm-20240212-slim AS build
+
+WORKDIR /app
+ENV MIX_ENV=prod
+
+RUN mix local.hex --force && mix local.rebar --force
+
+COPY mix.exs mix.lock ./
+RUN mix deps.get --only prod && mix deps.compile
+
+COPY config ./config
+COPY lib ./lib
+RUN mix compile
+
+FROM docker.io/hexpm/elixir:1.16.3-erlang-26.2.5-debian-bookworm-20240212-slim
+
+WORKDIR /app
+ENV MIX_ENV=prod \
+    PORT=4000
+
+COPY --from=build /app /app
+
+USER 65532:65532
+EXPOSE 4000
+CMD ["mix", "run", "--no-halt"]
