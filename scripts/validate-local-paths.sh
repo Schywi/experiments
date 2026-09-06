@@ -75,6 +75,9 @@ validate_metallb_path() {
   require_text "${repo_root}/config/k3d/create.sh" '--registry-create "${REGISTRY_NAME}:0.0.0.0:${REGISTRY_PORT}"' 'k3d local registry is not created with the cluster'
   require_text "${repo_root}/config/k3d/create.sh" 'docker port "${loadbalancer}" 30080/tcp' 'k3d Hubble port check inspects the wrong container'
   require_text "${repo_root}/Tiltfile" 'METALLB_CONFIG_DIR = CONFIG_DIR + "/metallb"' 'Tiltfile does not include MetalLB configuration'
+  require_text "${repo_root}/Tiltfile" 'local(PLATFORM_LIFECYCLE + " --once")' 'Tilt reset does not run during Tiltfile evaluation'
+  require_text "${repo_root}/Tiltfile" '    cmd="true",' 'Tilt platform gate is not a completed preflight resource'
+  require_not_text "${repo_root}/Tiltfile" 'serve_cmd=PLATFORM_LIFECYCLE' 'Tilt starts cluster reset as a long-running resource'
   require_text "${repo_root}/Tiltfile" 'deps=[CONFIG_DIR, METALLB_CONFIG_DIR, "Tiltfile"]' 'Tilt platform resource does not depend on MetalLB configuration'
   require_text "${repo_root}/config/k3d/validate.sh" 'rollout status "${deployment}"' 'platform validation does not wait for Argo deployments'
   if rg -q --fixed-strings -- 'docker.io/local/' "${repo_root}/Tiltfile" "${repo_root}/apps" "${repo_root}/config/metallb"; then

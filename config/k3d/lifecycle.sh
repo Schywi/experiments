@@ -13,8 +13,10 @@ trap 'exit 143' TERM
 K3D_CLUSTER_NAME="${cluster_name}" "${script_dir}/delete.sh"
 K3D_CLUSTER_NAME="${cluster_name}" "${script_dir}/bootstrap.sh"
 
-echo "Tilt is using fresh k3d cluster '${cluster_name}'."
-while true; do
-  sleep 3600 &
-  wait $!
-done
+if [[ "${1:-}" != "--once" ]]; then
+  echo "Tilt is using fresh k3d cluster '${cluster_name}'."
+  while true; do
+    sleep 3600 &
+    wait $!
+  done
+fi

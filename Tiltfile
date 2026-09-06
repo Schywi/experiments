@@ -8,15 +8,19 @@ CLUSTER_CONFIG_DIR = CONFIG_DIR + "/k3d"
 METALLB_CONFIG_DIR = CONFIG_DIR + "/metallb"
 PLATFORM_LIFECYCLE = CLUSTER_CONFIG_DIR + "/lifecycle.sh"
 LOCAL_REGISTRY = "k3d-cilium-lab-registry.localhost:5000"
-default_registry(LOCAL_REGISTRY)
 watch_file(CONFIG_DIR)
 
-# lifecycle.sh owns the complete platform gate: k3d, Cilium, MetalLB,
-# LoadBalancer ingress, Argo CD, and HTTP validation. Workloads below depend on
-# this resource and cannot be applied until that gate succeeds.
+# Run the destructive reset while Tiltfile evaluation is still in progress.
+# This completes before Tilt registers or applies any Kubernetes workload, so
+# the Kubernetes client starts with the kubeconfig generated for the new API.
+local(PLATFORM_LIFECYCLE + " --once")
+default_registry(LOCAL_REGISTRY)
+
+# The platform reset above is the gate: k3d, Cilium, MetalLB, LoadBalancer
+# ingress, Argo CD, and HTTP validation must finish before Worm resources run.
 local_resource(
     "local-platform",
-    serve_cmd=PLATFORM_LIFECYCLE,
+    cmd="true",
     deps=[CONFIG_DIR, METALLB_CONFIG_DIR, "Tiltfile"],
     auto_init=True,
 )
