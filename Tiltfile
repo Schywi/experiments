@@ -50,15 +50,15 @@ k8s_yaml(helm("apps/controller/chart", name="worm-controller", namespace=WORM_NA
 k8s_resource("worm-controller", resource_deps=["local-platform"])
 
 k8s_yaml(helm("apps/regression/chart", name="worm-regression", namespace=WORM_NAMESPACE))
-k8s_resource("worm-regression", resource_deps=["worm-controller"])
+k8s_resource("regression", resource_deps=["worm-controller"])
 
 k8s_yaml(helm("config/vector", name="worm-vector", namespace=WORM_NAMESPACE))
-k8s_resource("worm-vector", resource_deps=["worm-regression"])
+k8s_resource("vector", resource_deps=["regression"])
 
 k8s_yaml(helm("apps/worker/chart", name="worm-worker", namespace=WORM_NAMESPACE))
 k8s_resource(
     "worm-worker",
-    resource_deps=["worm-controller", "worm-vector"],
+    resource_deps=["worm-controller", "vector"],
 )
 
 # This is a namespace-level visibility resource, not a second deployment
@@ -66,5 +66,5 @@ k8s_resource(
 local_resource(
     "worm-lab",
     cmd="true",
-    resource_deps=["worm-controller", "worm-regression", "worm-vector"],
+    resource_deps=["worm-controller", "regression", "vector", "worm-worker"],
 )
