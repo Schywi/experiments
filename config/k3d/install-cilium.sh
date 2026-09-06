@@ -18,9 +18,14 @@ command -v docker >/dev/null 2>&1 || {
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd -- "${script_dir}/../.." && pwd)"
 values_file="${repo_root}/config/helm/cilium/values.yaml"
+ingress_file="${repo_root}/config/helm/cilium/hubble-ui-ingress.yaml"
 
 [[ -f "${values_file}" ]] || {
   echo "Cilium values file not found: ${values_file}" >&2
+  exit 1
+}
+[[ -f "${ingress_file}" ]] || {
+  echo "Hubble Ingress manifest not found: ${ingress_file}" >&2
   exit 1
 }
 
@@ -47,5 +52,7 @@ helm upgrade --install cilium cilium/cilium \
   --set-string k8sServicePort=6443 \
   --wait \
   --timeout "${HELM_TIMEOUT}"
+
+kubectl apply --filename "${ingress_file}"
 
 echo "Cilium ${CILIUM_VERSION} installed in the k3d cluster"

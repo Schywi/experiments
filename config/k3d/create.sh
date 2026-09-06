@@ -70,6 +70,12 @@ if k3d cluster list --no-headers 2>/dev/null | awk '{print $1}' | grep -Fxq "${C
     exit 1
   fi
 
+  hubble_mapping="$(docker port "${server_container}" 30080/tcp 2>/dev/null || true)"
+  if [[ "${hubble_mapping}" != *"127.0.0.1:8080"* ]]; then
+    echo "existing cluster '${CLUSTER_NAME}' Hubble ingress binding is '${hubble_mapping}'; expected 127.0.0.1:8080" >&2
+    exit 1
+  fi
+
   echo "k3d cluster '${CLUSTER_NAME}' is running with the required 2 GiB single-server configuration"
   exit 0
 fi
@@ -82,6 +88,7 @@ k3d cluster create "${CLUSTER_NAME}" \
   --agents 0 \
   --servers-memory "${MEMORY_LIMIT}" \
   --api-port "127.0.0.1:${API_PORT}" \
+  --port "127.0.0.1:8080:30080@server:0" \
   --k3s-arg "--flannel-backend=none@server:0" \
   --k3s-arg "--disable-network-policy@server:0" \
   --k3s-arg "--disable-kube-proxy@server:0" \

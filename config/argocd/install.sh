@@ -41,5 +41,3 @@ kubectl --namespace "${ARGOCD_NAMESPACE}" rollout status \
   deployment/"${ARGOCD_RELEASE}"-server --timeout="${HELM_TIMEOUT}"
 
 echo "Argo CD ${ARGOCD_CHART_VERSION} installed in namespace ${ARGOCD_NAMESPACE}"
-echo "Apply config/argocd/applications/openresty.yaml after the OpenResty chart is available"
-
