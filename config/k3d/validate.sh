@@ -14,7 +14,9 @@ command -v curl >/dev/null 2>&1 || {
 kubectl wait --for=condition=Ready nodes --all --timeout="${KUBECTL_TIMEOUT:-5m}"
 kubectl --namespace kube-system rollout status daemonset/cilium --timeout="${KUBECTL_TIMEOUT:-5m}"
 kubectl --namespace kube-system rollout status deployment/cilium-operator --timeout="${KUBECTL_TIMEOUT:-5m}"
-kubectl --namespace kube-system exec daemonset/cilium -- cilium status --wait
+# The pinned Cilium v1.13.4 in the Pod does not support the newer --wait flag.
+# Rollout status checks above already wait for the daemonset and operator.
+kubectl --namespace kube-system exec daemonset/cilium -- cilium status
 
 if kubectl --namespace kube-system get deployment/cilium-hubble-relay >/dev/null 2>&1; then
   kubectl --namespace kube-system rollout status deployment/cilium-hubble-relay --timeout="${KUBECTL_TIMEOUT:-5m}"

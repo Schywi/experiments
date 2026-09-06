@@ -1,7 +1,8 @@
 # Local development entrypoint for the public experiments repository.
 #
-# Tilt owns the complete k3d lifecycle. Starting this Tiltfile creates a fresh
-# cluster; stopping Tilt removes that cluster and its Docker resources.
+# Tilt drives the k3d lifecycle without destroying an existing cluster. Stop
+# Tilt to preserve the cluster; set TILT_DELETE_CLUSTER_ON_EXIT=true only when
+# an explicit teardown is intended.
 
 CONFIG_DIR = "config"
 CLUSTER_CONFIG_DIR = CONFIG_DIR + "/k3d"
