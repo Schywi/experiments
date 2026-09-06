@@ -8,6 +8,8 @@ CONFIG_DIR = "config"
 CLUSTER_CONFIG_DIR = CONFIG_DIR + "/k3d"
 METALLB_CONFIG_DIR = CONFIG_DIR + "/metallb"
 PLATFORM_LIFECYCLE = CLUSTER_CONFIG_DIR + "/lifecycle.sh"
+LOCAL_REGISTRY = "k3d-cilium-lab-registry.localhost:5000"
+default_registry(LOCAL_REGISTRY)
 watch_file(CONFIG_DIR)
 
 # lifecycle.sh owns the complete platform gate: k3d, Cilium, MetalLB,
@@ -31,29 +33,9 @@ local_resource(
 
 WORM_NAMESPACE = "worm-lab"
 
-custom_build(
-    "worm-controller:tilt",
-    "apps/controller/build-and-import.sh \"$EXPECTED_REF\" /tmp/worm-controller-tilt-image-ref",
-    deps=["apps/controller"],
-    disable_push=True,
-    outputs_image_ref_to="/tmp/worm-controller-tilt-image-ref",
-)
-
-custom_build(
-    "worm-regression:tilt",
-    "apps/regression/build-and-import.sh \"$EXPECTED_REF\" /tmp/worm-regression-tilt-image-ref",
-    deps=["apps/regression"],
-    disable_push=True,
-    outputs_image_ref_to="/tmp/worm-regression-tilt-image-ref",
-)
-
-custom_build(
-    "worm-worker:tilt",
-    "apps/worker/build-and-import.sh \"$EXPECTED_REF\" /tmp/worm-worker-tilt-image-ref",
-    deps=["apps/worker"],
-    disable_push=True,
-    outputs_image_ref_to="/tmp/worm-worker-tilt-image-ref",
-)
+docker_build("worm-controller", "apps/controller", dockerfile="apps/controller/Containerfile")
+docker_build("worm-regression", "apps/regression", dockerfile="apps/regression/Containerfile")
+docker_build("worm-worker", "apps/worker", dockerfile="apps/worker/Containerfile")
 
 k8s_yaml(helm("apps/controller/chart", name="worm-controller", namespace=WORM_NAMESPACE))
 k8s_resource("worm-controller", resource_deps=["local-platform"])

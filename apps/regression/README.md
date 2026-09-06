@@ -22,10 +22,4 @@ mix run --no-halt
 
 ## Local k3d image
 
-Tilt supplies a content-addressed image reference to the local build script.
-The script builds it locally and imports it into the existing `cilium-lab`
-cluster; it never pushes an image to a remote registry.
-
-```sh
-./build-and-import.sh worm-regression:dev
-```
+Tilt builds this image and delivers it through the k3d local registry.

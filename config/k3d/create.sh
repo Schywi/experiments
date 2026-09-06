@@ -17,6 +17,8 @@ MEMORY_LIMIT="${K3D_MEMORY_LIMIT:-2g}"
 API_PORT="${K3D_API_PORT:-6445}"
 CREATE_TIMEOUT="${K3D_CREATE_TIMEOUT:-5m}"
 DOCKER_SUBNET="${K3D_DOCKER_SUBNET:-172.20.0.0/16}"
+REGISTRY_NAME="${K3D_REGISTRY_NAME:-cilium-lab-registry.localhost}"
+REGISTRY_PORT="${K3D_REGISTRY_PORT:-5000}"
 
 if [[ "${MEMORY_LIMIT}" != "2g" ]]; then
   echo "K3D_MEMORY_LIMIT must remain 2g; refusing a larger cluster" >&2
@@ -65,6 +67,14 @@ if k3d cluster list --no-headers 2>/dev/null | awk '{print $1}' | grep -Fxq "${C
   done
 
   loadbalancer="k3d-${CLUSTER_NAME}-serverlb"
+  registry_container="k3d-${REGISTRY_NAME}"
+  registry_running="$(docker inspect --format '{{.State.Running}}' "${registry_container}" 2>/dev/null || true)"
+  registry_mapping="$(docker port "${registry_container}" 5000/tcp 2>/dev/null || true)"
+  if [[ "${registry_running}" != "true" || "${registry_mapping}" != *":${REGISTRY_PORT}"* ]]; then
+    echo "existing cluster '${CLUSTER_NAME}' is missing the k3d registry ${REGISTRY_NAME}:${REGISTRY_PORT}; recreate it with the current create.sh" >&2
+    exit 1
+  fi
+
   api_mapping="$(docker port "${loadbalancer}" 6443/tcp 2>/dev/null || true)"
   if [[ "${api_mapping}" != *"127.0.0.1:${API_PORT}"* ]]; then
     echo "existing cluster '${CLUSTER_NAME}' API binding is '${api_mapping}'; expected 127.0.0.1:${API_PORT}" >&2
@@ -97,6 +107,7 @@ k3d cluster create "${CLUSTER_NAME}" \
   --servers-memory "${MEMORY_LIMIT}" \
   --api-port "127.0.0.1:${API_PORT}" \
   --subnet "${DOCKER_SUBNET}" \
+  --registry-create "${REGISTRY_NAME}:0.0.0.0:${REGISTRY_PORT}" \
   --port "127.0.0.1:8080:30080@server:0" \
   --k3s-arg "--flannel-backend=none@server:0" \
   --k3s-arg "--disable-network-policy@server:0" \

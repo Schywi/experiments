@@ -1,7 +1,7 @@
 image:
   repository: worm-regression
   tag: tilt
-  pullPolicy: Never
+  pullPolicy: IfNotPresent
 
 resources:
   requests:

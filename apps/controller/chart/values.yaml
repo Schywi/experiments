@@ -1,7 +1,7 @@
 image:
   repository: worm-controller
   tag: tilt
-  pullPolicy: Never
+  pullPolicy: IfNotPresent
 
 namespace:
   create: true

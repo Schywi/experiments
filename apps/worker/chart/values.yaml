@@ -1,7 +1,7 @@
 image:
   repository: worm-worker
   tag: tilt
-  pullPolicy: Never
+  pullPolicy: IfNotPresent
 
 replicaCount: 1
 
