@@ -136,6 +136,31 @@ run_scaling_model() {
   "${script_dir}/model/check-scaling-model.sh"
 }
 
+run_argo_checks() {
+  section 'Stable Argo ownership manifests'
+  local stable_dir="${repo_root}/config/argocd/applications/stable"
+  local file app_name
+  local -a applications=(controller regression vector worker)
+
+  [[ -d "${stable_dir}" ]] || fail 'stable Argo application directory is missing'
+  for app_name in "${applications[@]}"; do
+    file="${stable_dir}/${app_name}.yaml"
+    [[ -f "${file}" ]] || fail "stable Argo application is missing: ${app_name}"
+    rg -q '^kind: Application$' "${file}" || fail "not an Argo Application: ${file}"
+    rg -q '^    targetRevision: [0-9a-f]{40}$' "${file}" ||
+      fail "Argo source is not pinned to a full Git revision: ${file}"
+    rg -q 'server: https://kubernetes\.default\.svc$' "${file}" ||
+      fail "Argo destination is not the in-cluster API: ${file}"
+    if rg -q '^    automated:' "${file}"; then
+      fail "stable Argo application must require an explicit manual sync: ${file}"
+    fi
+  done
+
+  if rg -n 'type: (LoadBalancer|NodePort)|ingress\.enabled: true' "${stable_dir}"; then
+    fail 'stable Argo manifests contain public exposure settings'
+  fi
+}
+
 main() {
   require_command rg
   run_go_checks
@@ -143,6 +168,7 @@ main() {
   run_worker_checks
   run_helm_checks
   run_scaling_model
+  run_argo_checks
   printf '\nverify: all checks passed\n'
 }
 

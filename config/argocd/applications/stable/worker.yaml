@@ -1,0 +1,29 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: worm-worker
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: bounded-worm-lab
+    app.kubernetes.io/managed-by: argocd
+    experiments.io/ownership: argocd-stable
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/Schywi/experiments.git
+    targetRevision: dc3e3596f6a2ff721fb0c8ec51aa07cd78621c82
+    path: apps/worker/chart
+    helm:
+      releaseName: worm-worker
+      parameters:
+        - name: image.tag
+          value: dc3e359
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: worm-lab
+  syncPolicy:
+    syncOptions:
+      - CreateNamespace=true
+      - PruneLast=true
