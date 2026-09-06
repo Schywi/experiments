@@ -1,7 +1,7 @@
 image:
-  repository: docker.io/local/worm-controller
+  repository: worm-controller
   tag: tilt
-  pullPolicy: IfNotPresent
+  pullPolicy: Never
 
 namespace:
   create: true

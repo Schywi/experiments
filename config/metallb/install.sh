@@ -18,10 +18,10 @@ helm upgrade --install metallb metallb/metallb \
   --namespace metallb-system \
   --create-namespace \
   --version "${version#v}" \
-  --set controller.image.repository=docker.io/local/metallb-controller \
+  --set controller.image.repository=metallb-controller \
   --set controller.image.tag="${version}" \
   --set controller.image.pullPolicy=IfNotPresent \
-  --set speaker.image.repository=docker.io/local/metallb-speaker \
+  --set speaker.image.repository=metallb-speaker \
   --set speaker.image.tag="${version}" \
   --set speaker.image.pullPolicy=IfNotPresent \
   --set speaker.frr.enabled=false \

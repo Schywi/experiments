@@ -1,7 +1,7 @@
 image:
-  repository: docker.io/local/worm-worker
+  repository: worm-worker
   tag: tilt
-  pullPolicy: IfNotPresent
+  pullPolicy: Never
 
 replicaCount: 1
 

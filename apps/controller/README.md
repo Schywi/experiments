@@ -23,5 +23,5 @@ The script builds it locally and imports it into the existing `cilium-lab`
 cluster; it never pushes an image to a remote registry.
 
 ```sh
-./build-and-import.sh docker.io/local/worm-controller:dev
+./build-and-import.sh worm-controller:dev
 ```

@@ -8,8 +8,8 @@ command -v k3d >/dev/null 2>&1 || { echo "k3d is required" >&2; exit 1; }
 cluster_name="${K3D_CLUSTER_NAME:-cilium-lab}"
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 version="v0.14.9"
-controller_image="docker.io/local/metallb-controller:${version}"
-speaker_image="docker.io/local/metallb-speaker:${version}"
+controller_image="metallb-controller:${version}"
+speaker_image="metallb-speaker:${version}"
 
 docker build --file "${script_dir}/Dockerfile.controller" \
   --tag "${controller_image}" "${script_dir}"

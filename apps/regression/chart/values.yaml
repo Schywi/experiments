@@ -1,7 +1,7 @@
 image:
-  repository: docker.io/local/worm-regression
+  repository: worm-regression
   tag: tilt
-  pullPolicy: IfNotPresent
+  pullPolicy: Never
 
 resources:
   requests:

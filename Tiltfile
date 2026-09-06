@@ -32,24 +32,27 @@ local_resource(
 WORM_NAMESPACE = "worm-lab"
 
 custom_build(
-    "docker.io/local/worm-controller:tilt",
-    "apps/controller/build-and-import.sh \"$EXPECTED_REF\"",
+    "worm-controller:tilt",
+    "apps/controller/build-and-import.sh \"$EXPECTED_REF\" /tmp/worm-controller-tilt-image-ref",
     deps=["apps/controller"],
     disable_push=True,
+    outputs_image_ref_to="/tmp/worm-controller-tilt-image-ref",
 )
 
 custom_build(
-    "docker.io/local/worm-regression:tilt",
-    "apps/regression/build-and-import.sh \"$EXPECTED_REF\"",
+    "worm-regression:tilt",
+    "apps/regression/build-and-import.sh \"$EXPECTED_REF\" /tmp/worm-regression-tilt-image-ref",
     deps=["apps/regression"],
     disable_push=True,
+    outputs_image_ref_to="/tmp/worm-regression-tilt-image-ref",
 )
 
 custom_build(
-    "docker.io/local/worm-worker:tilt",
-    "apps/worker/build-and-import.sh \"$EXPECTED_REF\"",
+    "worm-worker:tilt",
+    "apps/worker/build-and-import.sh \"$EXPECTED_REF\" /tmp/worm-worker-tilt-image-ref",
     deps=["apps/worker"],
     disable_push=True,
+    outputs_image_ref_to="/tmp/worm-worker-tilt-image-ref",
 )
 
 k8s_yaml(helm("apps/controller/chart", name="worm-controller", namespace=WORM_NAMESPACE))

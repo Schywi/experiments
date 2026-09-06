@@ -63,8 +63,8 @@ validate_metallb_path() {
   require_text "${repo_root}/config/k3d/bootstrap.sh" 'config/metallb/install.sh' 'bootstrap does not install MetalLB'
   require_text "${repo_root}/config/k3d/bootstrap.sh" 'config/metallb/configure.sh' 'bootstrap does not apply MetalLB configuration'
   require_text "${repo_root}/config/k3d/bootstrap.sh" 'enable-metallb-ingress.sh' 'bootstrap does not enable the MetalLB Cilium overlay'
-  require_text "${repo_root}/config/metallb/install.sh" 'docker.io/local/metallb-controller' 'MetalLB controller image is not local and Docker Hub-addressed'
-  require_text "${repo_root}/config/metallb/install.sh" 'docker.io/local/metallb-speaker' 'MetalLB speaker image is not local and Docker Hub-addressed'
+  require_text "${repo_root}/config/metallb/install.sh" 'controller.image.repository=metallb-controller' 'MetalLB controller image is not local-only'
+  require_text "${repo_root}/config/metallb/install.sh" 'speaker.image.repository=metallb-speaker' 'MetalLB speaker image is not local-only'
   require_text "${repo_root}/config/metallb/install.sh" 'speaker.frr.enabled=false' 'MetalLB install unexpectedly requires FRR'
   require_text "${repo_root}/config/metallb/install.sh" 'build-and-import.sh' 'MetalLB images are not imported into k3d'
   require_text "${repo_root}/config/metallb/Dockerfile.controller" 'docker.io/golang:1.22.7' 'MetalLB controller builder is not Docker Hub addressed'
@@ -74,6 +74,9 @@ validate_metallb_path() {
   require_text "${repo_root}/Tiltfile" 'METALLB_CONFIG_DIR = CONFIG_DIR + "/metallb"' 'Tiltfile does not include MetalLB configuration'
   require_text "${repo_root}/Tiltfile" 'deps=[CONFIG_DIR, METALLB_CONFIG_DIR, "Tiltfile"]' 'Tilt platform resource does not depend on MetalLB configuration'
   require_text "${repo_root}/config/k3d/validate.sh" 'rollout status "${deployment}"' 'platform validation does not wait for Argo deployments'
+  if rg -q --fixed-strings -- 'docker.io/local/' "${repo_root}/Tiltfile" "${repo_root}/apps" "${repo_root}/config/metallb"; then
+    fail 'local application or MetalLB images use a Docker Hub-looking name'
+  fi
 }
 
 validate_argocd_ordering() {
@@ -106,6 +109,18 @@ render_and_check() {
 
 validate_worm_bindings() {
   local tiltfile="${repo_root}/Tiltfile"
+  local controller_values="${repo_root}/apps/controller/chart/values.yaml"
+  local regression_values="${repo_root}/apps/regression/chart/values.yaml"
+  local worker_values="${repo_root}/apps/worker/chart/values.yaml"
+  require_text "${controller_values}" '  repository: worm-controller' 'Worm controller is not a local image'
+  require_text "${regression_values}" '  repository: worm-regression' 'Worm regression is not a local image'
+  require_text "${worker_values}" '  repository: worm-worker' 'Worm worker is not a local image'
+  require_text "${controller_values}" '  pullPolicy: Never' 'Worm controller can fall back to an image registry'
+  require_text "${regression_values}" '  pullPolicy: Never' 'Worm regression can fall back to an image registry'
+  require_text "${worker_values}" '  pullPolicy: Never' 'Worm worker can fall back to an image registry'
+  require_text "${tiltfile}" 'outputs_image_ref_to="/tmp/worm-controller-tilt-image-ref"' 'Worm controller exact image output is not configured'
+  require_text "${tiltfile}" 'outputs_image_ref_to="/tmp/worm-regression-tilt-image-ref"' 'Worm regression exact image output is not configured'
+  require_text "${tiltfile}" 'outputs_image_ref_to="/tmp/worm-worker-tilt-image-ref"' 'Worm worker exact image output is not configured'
   require_text "${tiltfile}" 'k8s_resource("worm-controller"' 'worm-controller binding is missing'
   require_text "${tiltfile}" 'k8s_resource("regression"' 'regression binding is missing'
   require_text "${tiltfile}" 'k8s_resource("vector"' 'vector binding is missing'
