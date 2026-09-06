@@ -55,4 +55,5 @@ ingressController:
   loadbalancerMode: shared
   service:
     type: NodePort
+    externalTrafficPolicy: Cluster
     insecureNodePort: 30080

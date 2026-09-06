@@ -3,6 +3,9 @@ kind: Ingress
 metadata:
   name: hubble-ui
   namespace: kube-system
+  annotations:
+    # Match ingressController.loadbalancerMode in the pinned Cilium values.
+    ingress.cilium.io/loadbalancer-mode: shared
 spec:
   ingressClassName: cilium
   rules:

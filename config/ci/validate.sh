@@ -14,6 +14,9 @@ kubernetes_schema_version="${KUBERNETES_SCHEMA_VERSION:-v1.31.0}"
 schema_location="https://raw.githubusercontent.com/yannh/kubernetes-json-schema/master/${kubernetes_schema_version}-standalone-strict/{{.ResourceKind}}{{.KindSuffix}}.json"
 charts_root="${repo_root}/config"
 
+echo "Validating local Cilium/Hubble path and Tilt resource bindings"
+"${repo_root}/scripts/validate-local-paths.sh"
+
 command -v "${helm_bin}" >/dev/null 2>&1 || {
   echo "helm is required" >&2
   exit 1
