@@ -8,6 +8,7 @@ platform entry points.
 
 ```text
 config/
+├── metallb/                 # local Docker-bridge LoadBalancer address pool
 ├── helm/
 │   └── cilium/values.yaml   # shared Cilium chart defaults
 └── k3d/

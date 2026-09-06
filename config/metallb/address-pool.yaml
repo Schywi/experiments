@@ -1,0 +1,27 @@
+apiVersion: metallb.io/v1beta1
+kind: IPAddressPool
+metadata:
+  name: docker-host-pool
+  namespace: metallb-system
+  labels:
+    app.kubernetes.io/part-of: cilium-lab
+spec:
+  addresses:
+    - 172.20.0.240-172.20.0.250
+  autoAssign: true
+---
+apiVersion: metallb.io/v1beta1
+kind: L2Advertisement
+metadata:
+  name: docker-host-l2
+  namespace: metallb-system
+  labels:
+    app.kubernetes.io/part-of: cilium-lab
+spec:
+  ipAddressPools:
+    - docker-host-pool
+  nodeSelectors:
+    - matchLabels:
+        kubernetes.io/hostname: k3d-cilium-lab-server-0
+  interfaces:
+    - eth0

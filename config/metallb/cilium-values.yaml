@@ -1,0 +1,12 @@
+# Optional Cilium Helm overlay for the MetalLB-enabled local profile.
+# Apply this only after MetalLB controller and speaker are healthy.
+
+ingressController:
+  enabled: true
+  loadbalancerMode: shared
+  service:
+    type: LoadBalancer
+    externalTrafficPolicy: Cluster
+    insecureNodePort: 30080
+    annotations:
+      metallb.io/address-pool: docker-host-pool
