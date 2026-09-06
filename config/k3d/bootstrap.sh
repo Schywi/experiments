@@ -79,6 +79,22 @@ else
   bootstrap_status=1
 fi
 
+metallb_status=1
+if ((cilium_status == 0)); then
+  if ! "${repo_root}/config/metallb/install.sh"; then
+    echo "WARNING: MetalLB bootstrap failed" >&2
+    bootstrap_status=1
+  elif ! "${repo_root}/config/metallb/configure.sh"; then
+    echo "WARNING: MetalLB address pool configuration failed" >&2
+    bootstrap_status=1
+  elif ! "${script_dir}/enable-metallb-ingress.sh"; then
+    echo "WARNING: Cilium LoadBalancer upgrade failed" >&2
+    bootstrap_status=1
+  else
+    metallb_status=0
+  fi
+fi
+
 if ((argocd_status == 0)); then
   if ! apply_argocd_ingress; then
     echo "WARNING: Argo CD Ingress was not applied" >&2
@@ -86,7 +102,7 @@ if ((argocd_status == 0)); then
   fi
 fi
 
-if ((cilium_status == 0)); then
+if ((cilium_status == 0 && metallb_status == 0)); then
   if ! "${script_dir}/validate.sh"; then
     echo "WARNING: platform ingress validation failed" >&2
     bootstrap_status=1
@@ -94,7 +110,7 @@ if ((cilium_status == 0)); then
 fi
 
 if ((bootstrap_status == 0)); then
-  echo "k3d, Cilium Ingress, and Argo CD are ready; Hubble UI is at http://localhost:8080/ and Argo CD is at http://argocd.localhost:8080/"
+  echo "k3d, MetalLB, Cilium Ingress, and Argo CD are ready; Hubble UI and Argo CD are available through the assigned LoadBalancer IP"
 else
   echo "Platform bootstrap attempted all independent branches; inspect the warnings above" >&2
 fi

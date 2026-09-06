@@ -6,12 +6,17 @@
 
 CONFIG_DIR = "config"
 CLUSTER_CONFIG_DIR = CONFIG_DIR + "/k3d"
+METALLB_CONFIG_DIR = CONFIG_DIR + "/metallb"
+PLATFORM_LIFECYCLE = CLUSTER_CONFIG_DIR + "/lifecycle.sh"
 watch_file(CONFIG_DIR)
 
+# lifecycle.sh owns the complete platform gate: k3d, Cilium, MetalLB,
+# LoadBalancer ingress, Argo CD, and HTTP validation. Workloads below depend on
+# this resource and cannot be applied until that gate succeeds.
 local_resource(
     "local-platform",
-    serve_cmd=CLUSTER_CONFIG_DIR + "/lifecycle.sh",
-    deps=[CONFIG_DIR, "Tiltfile"],
+    serve_cmd=PLATFORM_LIFECYCLE,
+    deps=[CONFIG_DIR, METALLB_CONFIG_DIR, "Tiltfile"],
     auto_init=True,
 )
 

@@ -20,6 +20,13 @@ require_text() {
   rg -q --fixed-strings -- "${pattern}" "${file}" || fail "${description} (${file})"
 }
 
+require_not_text() {
+  local file="$1" pattern="$2" description="$3"
+  if rg -q --fixed-strings -- "${pattern}" "${file}"; then
+    fail "${description} (${file})"
+  fi
+}
+
 validate_hubble_path() {
   local values_file="${repo_root}/config/helm/cilium/values.yaml"
   local ingress_file="${repo_root}/config/helm/cilium/hubble-ui-ingress.yaml"
@@ -53,6 +60,20 @@ validate_metallb_path() {
   require_text "${kustomization_file}" '  - address-pool.yaml' 'MetalLB Kustomization omits address-pool.yaml'
   require_text "${overlay_file}" '    type: LoadBalancer' 'MetalLB Cilium overlay does not use LoadBalancer'
   require_text "${overlay_file}" '      metallb.io/address-pool: docker-host-pool' 'MetalLB Cilium overlay does not select the pool'
+  require_text "${repo_root}/config/k3d/bootstrap.sh" 'config/metallb/install.sh' 'bootstrap does not install MetalLB'
+  require_text "${repo_root}/config/k3d/bootstrap.sh" 'config/metallb/configure.sh' 'bootstrap does not apply MetalLB configuration'
+  require_text "${repo_root}/config/k3d/bootstrap.sh" 'enable-metallb-ingress.sh' 'bootstrap does not enable the MetalLB Cilium overlay'
+  require_text "${repo_root}/config/metallb/install.sh" 'docker.io/local/metallb-controller' 'MetalLB controller image is not local and Docker Hub-addressed'
+  require_text "${repo_root}/config/metallb/install.sh" 'docker.io/local/metallb-speaker' 'MetalLB speaker image is not local and Docker Hub-addressed'
+  require_text "${repo_root}/config/metallb/install.sh" 'speaker.frr.enabled=false' 'MetalLB install unexpectedly requires FRR'
+  require_text "${repo_root}/config/metallb/install.sh" 'build-and-import.sh' 'MetalLB images are not imported into k3d'
+  require_text "${repo_root}/config/metallb/Dockerfile.controller" 'docker.io/golang:1.22.7' 'MetalLB controller builder is not Docker Hub addressed'
+  require_text "${repo_root}/config/metallb/Dockerfile.speaker" 'docker.io/golang:1.22.7' 'MetalLB speaker builder is not Docker Hub addressed'
+  require_not_text "${repo_root}/config/k3d/lifecycle.sh" '"${script_dir}/delete.sh"' 'Tilt lifecycle deletes the cluster on startup'
+  require_text "${repo_root}/config/k3d/create.sh" '--subnet "${DOCKER_SUBNET}"' 'k3d Docker subnet is not pinned for MetalLB'
+  require_text "${repo_root}/Tiltfile" 'METALLB_CONFIG_DIR = CONFIG_DIR + "/metallb"' 'Tiltfile does not include MetalLB configuration'
+  require_text "${repo_root}/Tiltfile" 'deps=[CONFIG_DIR, METALLB_CONFIG_DIR, "Tiltfile"]' 'Tilt platform resource does not depend on MetalLB configuration'
+  require_text "${repo_root}/config/k3d/validate.sh" 'rollout status "${deployment}"' 'platform validation does not wait for Argo deployments'
 }
 
 validate_argocd_ordering() {

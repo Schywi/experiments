@@ -1,0 +1,28 @@
+# syntax=docker/dockerfile:1
+
+FROM docker.io/golang:1.22.7 AS builder
+
+WORKDIR /src
+ADD --checksum=sha256:e5574c0e531084cac26a277ae674c21b481391aaf10a35f99c885021a326b92f \
+    https://github.com/metallb/metallb/archive/refs/tags/v0.14.9.tar.gz /tmp/metallb.tar.gz
+RUN tar -xzf /tmp/metallb.tar.gz --strip-components=1 -C /src
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+    go build -o /build/frr-metrics \
+    -ldflags "-X go.universe.tf/metallb/internal/version.gitCommit=v0.14.9 -X go.universe.tf/metallb/internal/version.gitBranch=release" \
+    frr-tools/metrics/exporter.go \
+ && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+    go build -o /build/cp-tool \
+    -ldflags "-X go.universe.tf/metallb/internal/version.gitCommit=v0.14.9 -X go.universe.tf/metallb/internal/version.gitBranch=release" \
+    frr-tools/cp-tool/cp-tool.go \
+ && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+    go build -o /build/speaker \
+    -ldflags "-X go.universe.tf/metallb/internal/version.gitCommit=v0.14.9 -X go.universe.tf/metallb/internal/version.gitBranch=release" \
+    ./speaker
+
+FROM scratch
+COPY --from=builder /build/cp-tool /cp-tool
+COPY --from=builder /build/speaker /speaker
+COPY --from=builder /build/frr-metrics /frr-metrics
+COPY --from=builder /src/frr-tools/reloader/frr-reloader.sh /frr-reloader.sh
+COPY --from=builder /src/LICENSE /LICENSE
+ENTRYPOINT ["/speaker"]

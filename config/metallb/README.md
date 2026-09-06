@@ -1,7 +1,7 @@
 # MetalLB for the local k3d Docker network
 
-This directory contains only the MetalLB Layer 2 configuration for the
-single-node local cluster. It reserves a private address range on the exact
+This directory contains the MetalLB installation and Layer 2 configuration for
+the single-node local cluster. It reserves a private address range on the exact
 Docker network used by this project:
 
 | Setting | Value |
@@ -18,36 +18,31 @@ MetalLB announces assigned service IPs on the Docker bridge using ARP. The
 pool is private and is intended to be reachable from the Docker host, not from
 the wider network.
 
-## Installation dependency and image-policy blocker
+## Installation
 
-MetalLB must be installed before this configuration can be applied. The
-official installation supports a native manifest, Kustomize, or Helm, and the
-official Layer 2 configuration requires both an `IPAddressPool` and an
+The platform bootstrap installs MetalLB automatically after Cilium is ready.
+The Helm chart is pinned to v0.14.9. The controller and speaker are built
+locally from the same pinned MetalLB source with Docker Hub Go builder images,
+then imported into k3d as local images before Helm installation.
+
+The official installation supports a native manifest, Kustomize, or Helm, and
+the official Layer 2 configuration requires both an `IPAddressPool` and an
 `L2Advertisement`:
 
 - Installation: <https://metallb.io/installation/>
 - Layer 2 configuration: <https://metallb.io/configuration/>
 - Advanced node/interface selection: <https://metallb.io/configuration/_advanced_l2_configuration/>
 
-This repository requires Docker Hub image references for platform workloads.
-The current official MetalLB Helm chart defaults its controller and speaker to
-non-Docker-Hub image repositories; see the upstream chart values at
-<https://github.com/metallb/metallb/blob/main/charts/metallb/values.yaml>.
-No verified, project-approved Docker Hub mirror for both components is
-declared here. Consequently, this scope intentionally does **not** embed the
-upstream installation manifest or an unverified image override. Installing an
-unmodified upstream release would violate the repository image policy and may
-leave the cluster unable to pull the required images.
+The bootstrap sequence is:
 
-Before installation, an operator must select and review a Docker Hub mirror
-for both the controller and speaker, pin the images by approved immutable
-references, and render/install MetalLB with those overrides. The selected
-mirror and exact references must be added in a separately reviewed change;
-third-party images are not assumed to be compatible replacements.
+```text
+k3d → Cilium base → local MetalLB image build/import → MetalLB Helm release
+→ IPAddressPool/L2Advertisement → Cilium LoadBalancer upgrade → validation
+```
 
-## Apply the repository configuration
+## Apply the repository configuration manually
 
-After the approved MetalLB installation is healthy, run:
+After MetalLB is healthy, run:
 
 ```bash
 bash config/metallb/configure.sh
@@ -62,8 +57,7 @@ continues to work while MetalLB assigns the Docker-bridge address.
 
 The script is guarded. It checks for the `metallb-system` namespace, both
 MetalLB CRDs, and the exact k3d node before applying only the files in this
-directory. It does not install MetalLB, change Cilium, change a Service type,
-or alter Docker networking.
+directory. The normal `tilt up` path invokes this script automatically.
 
 Equivalent declarative application:
 

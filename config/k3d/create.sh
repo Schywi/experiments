@@ -16,6 +16,7 @@ K3S_IMAGE="${K3D_K3S_IMAGE:-rancher/k3s:v1.30.6-k3s1}"
 MEMORY_LIMIT="${K3D_MEMORY_LIMIT:-2g}"
 API_PORT="${K3D_API_PORT:-6445}"
 CREATE_TIMEOUT="${K3D_CREATE_TIMEOUT:-5m}"
+DOCKER_SUBNET="${K3D_DOCKER_SUBNET:-172.20.0.0/16}"
 
 if [[ "${MEMORY_LIMIT}" != "2g" ]]; then
   echo "K3D_MEMORY_LIMIT must remain 2g; refusing a larger cluster" >&2
@@ -76,6 +77,13 @@ if k3d cluster list --no-headers 2>/dev/null | awk '{print $1}' | grep -Fxq "${C
     exit 1
   fi
 
+  docker_network="k3d-${CLUSTER_NAME}"
+  actual_subnet="$(docker network inspect --format '{{(index .IPAM.Config 0).Subnet}}' "${docker_network}" 2>/dev/null || true)"
+  if [[ "${actual_subnet}" != "${DOCKER_SUBNET}" ]]; then
+    echo "existing cluster '${CLUSTER_NAME}' uses Docker subnet ${actual_subnet}; expected ${DOCKER_SUBNET}" >&2
+    exit 1
+  fi
+
   echo "k3d cluster '${CLUSTER_NAME}' is running with the required 2 GiB single-server configuration"
   exit 0
 fi
@@ -88,6 +96,7 @@ k3d cluster create "${CLUSTER_NAME}" \
   --agents 0 \
   --servers-memory "${MEMORY_LIMIT}" \
   --api-port "127.0.0.1:${API_PORT}" \
+  --subnet "${DOCKER_SUBNET}" \
   --port "127.0.0.1:8080:30080@server:0" \
   --k3s-arg "--flannel-backend=none@server:0" \
   --k3s-arg "--disable-network-policy@server:0" \

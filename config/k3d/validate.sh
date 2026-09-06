@@ -23,6 +23,36 @@ kubectl --namespace kube-system rollout status deployment/cilium-operator --time
 # Rollout status checks above already wait for the daemonset and operator.
 kubectl --namespace kube-system exec daemonset/cilium -- cilium status
 
+kubectl --namespace metallb-system rollout status deployment/metallb-controller \
+  --timeout="${KUBECTL_TIMEOUT}"
+kubectl --namespace metallb-system rollout status daemonset/metallb-speaker \
+  --timeout="${KUBECTL_TIMEOUT}"
+
+loadbalancer_ip=""
+for ((attempt = 1; attempt <= HTTP_RETRIES; attempt++)); do
+  loadbalancer_ip="$(kubectl --namespace kube-system get service/cilium-ingress \
+    --output=jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)"
+  if [[ -n "${loadbalancer_ip}" ]]; then
+    break
+  fi
+  if ((attempt < HTTP_RETRIES)); then
+    sleep "${HTTP_RETRY_DELAY}"
+  fi
+done
+
+if [[ -z "${loadbalancer_ip}" ]]; then
+  echo "cilium-ingress has no MetalLB external IP" >&2
+  exit 1
+fi
+
+case "${loadbalancer_ip}" in
+  172.20.0.24[0-9]|172.20.0.250) ;;
+  *)
+    echo "cilium-ingress received unexpected external IP ${loadbalancer_ip}" >&2
+    exit 1
+    ;;
+esac
+
 if kubectl --namespace kube-system get deployment/cilium-hubble-relay >/dev/null 2>&1; then
   kubectl --namespace kube-system rollout status deployment/cilium-hubble-relay --timeout="${KUBECTL_TIMEOUT:-5m}"
 fi
@@ -33,6 +63,11 @@ else
   echo "Hubble UI deployment is absent" >&2
   exit 1
 fi
+
+while IFS= read -r deployment; do
+  [[ -n "${deployment}" ]] || continue
+  kubectl --namespace argocd rollout status "${deployment}" --timeout="${KUBECTL_TIMEOUT}"
+done < <(kubectl --namespace argocd get deployments --output=name)
 
 require_ingress_backend() {
   local namespace="$1"
@@ -107,7 +142,7 @@ check_http_route() {
 
   for ((attempt = 1; attempt <= HTTP_RETRIES; attempt++)); do
     if curl --fail --silent --show-error --location --max-time "${HTTP_TIMEOUT}" \
-      --header "Host: ${host}" http://127.0.0.1:8080/ >/dev/null; then
+      --header "Host: ${host}" "http://${loadbalancer_ip}/" >/dev/null; then
       return 0
     fi
     if ((attempt < HTTP_RETRIES)); then
@@ -115,7 +150,7 @@ check_http_route() {
     fi
   done
 
-  echo "${route_name} ingress is unreachable at http://127.0.0.1:8080/ (Host: ${host})" >&2
+  echo "${route_name} ingress is unreachable at http://${loadbalancer_ip}/ (Host: ${host})" >&2
   return 1
 }
 
@@ -126,3 +161,4 @@ check_http_route "Hubble UI"
 check_http_route "Argo CD"
 
 kubectl --namespace kube-system get pods -l k8s-app=cilium
+kubectl --namespace kube-system get service/cilium-ingress -o wide

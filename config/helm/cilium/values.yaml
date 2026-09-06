@@ -48,8 +48,9 @@ hubble:
         tag: v0.11.0@sha256:bcb369c47cada2d4257d63d3749f7f87c91dde32e010b223597306de95d1ecc8
         pullPolicy: IfNotPresent
 
-# Run Cilium's Kubernetes Ingress Controller. Its shared HTTP listener is
-# exposed by k3d only on localhost:8080 and routes to Hubble's ClusterIP.
+# Run Cilium's Kubernetes Ingress Controller. The MetalLB overlay changes its
+# Service to LoadBalancer after MetalLB is healthy; the NodePort is retained
+# for the k3d localhost fallback.
 ingressController:
   enabled: true
   loadbalancerMode: shared
