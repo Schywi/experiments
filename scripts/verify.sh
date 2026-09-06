@@ -42,21 +42,11 @@ run_elixir_checks() {
 }
 
 run_worker_checks() {
-  section 'Worker static and component checks'
+  section 'Native worker tests'
+  require_command cargo
   (
     cd "${repo_root}/apps/worker"
-    ./test/static-check.sh
-
-    # The component artifact is intentionally produced by the selected
-    # package-first runtime work. If it is present, reject an empty artifact;
-    # if it is absent, the static Containerfile contract remains the current
-    # deterministic check until that work package lands.
-    if [[ -e dist/worm.component.wasm ]]; then
-      [[ -s dist/worm.component.wasm ]] || fail 'worker component exists but is empty'
-      printf 'worker component artifact: present\n'
-    else
-      printf 'worker component artifact: not present (static contract checked)\n'
-    fi
+    cargo test --locked
   )
 }
 
@@ -132,13 +122,13 @@ run_rbac_and_policy_checks() {
     }
   ' "${render_dir}"/*.yaml)
 
-  # Vector is already part of the repository. Its policy must retain both
-  # required halves of the path: worker -> Vector and Vector -> regression.
+  # Vector collects worker stdout from the local node log directory and sends
+  # only validated samples to regression.
   rendered="${render_dir}/vector.yaml"
   [[ -f "${rendered}" ]] || fail 'Vector chart did not render'
   rg -Fq 'kind: CiliumNetworkPolicy' "${rendered}" || fail 'Vector lacks a CiliumNetworkPolicy'
-  rg -Fq 'port: "8080"' "${rendered}" || fail 'Vector policy lacks worker ingress on TCP 8080'
   rg -Fq 'port: "4000"' "${rendered}" || fail 'Vector policy lacks regression egress on TCP 4000'
+  rg -Fq 'type = "file"' "${rendered}" || fail 'Vector lacks the worker stdout log source'
 }
 
 run_scaling_model() {

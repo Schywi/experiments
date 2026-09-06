@@ -17,7 +17,6 @@ spec:
       labels:
         {{- include "worm-worker.selectorLabels" . | nindent 8 }}
     spec:
-      runtimeClassName: {{ .Values.runtimeClassName }}
       automountServiceAccountToken: false
       terminationGracePeriodSeconds: 10
       securityContext:
@@ -33,10 +32,10 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.uid
-            - name: VECTOR_EVENTS_URL
-              value: {{ .Values.vector.eventsURL | quote }}
-            - name: REPLICATOR_URL
+            - name: CONTROLLER_URL
               value: {{ .Values.controller.url | quote }}
+            - name: WORM_SAMPLE_INTERVAL_MS
+              value: {{ .Values.sampleIntervalMilliseconds | quote }}
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true

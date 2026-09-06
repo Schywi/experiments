@@ -1,6 +1,6 @@
 apiVersion: v2
 name: worm-worker
-description: Capability-bounded Lua/Wasm Worm worker
+description: Native bounded Worm worker
 type: application
 version: 0.1.0
 appVersion: "0.1.0"

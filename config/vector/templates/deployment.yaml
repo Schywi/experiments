@@ -37,9 +37,6 @@ spec:
             - --config
             - /etc/vector/vector.toml
           ports:
-            - name: events
-              containerPort: 8080
-              protocol: TCP
             - name: api
               containerPort: 8686
               protocol: TCP
@@ -79,9 +76,16 @@ spec:
               readOnly: true
             - name: tmp
               mountPath: /tmp
+            - name: pod-logs
+              mountPath: /var/log/pods
+              readOnly: true
       volumes:
         - name: config
           configMap:
             name: {{ include "vector.fullname" . }}
         - name: tmp
           emptyDir: {}
+        - name: pod-logs
+          hostPath:
+            path: /var/log/pods
+            type: Directory

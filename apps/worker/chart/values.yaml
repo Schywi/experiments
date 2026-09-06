@@ -5,13 +5,10 @@ image:
 
 replicaCount: 1
 
-runtimeClassName: wasmtime
-
-vector:
-  eventsURL: http://vector.worm-lab.svc.cluster.local:8080/events
-
 controller:
   url: http://worm-controller.worm-lab.svc.cluster.local:8081
+
+sampleIntervalMilliseconds: 1000
 
 resources:
   requests:

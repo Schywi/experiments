@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
-# Build a Tilt-addressed worker image locally and import it into k3d.
-# The component artifact is deliberately required: this script never pulls or
-# pushes an image as a substitute for the selected local runtime package.
+# Build a Tilt-addressed native worker image locally and import it into k3d.
 
 set -euo pipefail
 
@@ -19,13 +17,6 @@ command -v k3d >/dev/null 2>&1 || { echo "k3d is required" >&2; exit 1; }
 image_ref="$1"
 cluster_name="${K3D_CLUSTER_NAME:-cilium-lab}"
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-component_path="${script_dir}/dist/worm.component.wasm"
-
-[[ -s "${component_path}" ]] || {
-  echo "missing worker component: ${component_path}; build the pinned Lua/WASI adapter first" >&2
-  exit 1
-}
-
 if ! k3d cluster list "${cluster_name}" --no-headers | awk -v cluster="${cluster_name}" '$1 == cluster { found = 1 } END { exit !found }'; then
   echo "k3d cluster '${cluster_name}' does not exist; create it before importing ${image_ref}" >&2
   exit 1

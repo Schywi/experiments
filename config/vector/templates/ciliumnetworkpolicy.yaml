@@ -8,19 +8,10 @@ spec:
   endpointSelector:
     matchLabels:
       {{- include "vector.selectorLabels" . | nindent 6 }}
-  ingress:
-    - fromEndpoints:
-        - matchLabels:
-            k8s:io.kubernetes.pod.namespace: {{ .Release.Namespace }}
-            app.kubernetes.io/name: worm-worker
-      toPorts:
-        - ports:
-            - port: "8080"
-              protocol: TCP
   egress:
     - toEndpoints:
         - matchLabels:
-            k8s:io.kubernetes.pod.namespace: worm-lab
+            k8s:io.kubernetes.pod.namespace: {{ .Release.Namespace }}
             app.kubernetes.io/name: regression
       toPorts:
         - ports:

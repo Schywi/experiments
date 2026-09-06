@@ -10,27 +10,18 @@ data:
     enabled = true
     address = "0.0.0.0:8686"
 
-    [sources.worker_events]
-    type = "http_server"
-    address = "0.0.0.0:8080"
-    encoding.codec = "json"
+    [sources.worker_logs]
+    type = "file"
+    include = ["/var/log/pods/worm-lab_worm-worker-*/*/*.log"]
+    read_from = "beginning"
 
-    [transforms.expand_batch]
+    [transforms.parse_worker_sample]
     type = "remap"
-    inputs = ["worker_events"]
+    inputs = ["worker_logs"]
     source = '''
-    if !is_array(.events) {
-      abort
-    }
-    . = unnest(.events) ?? abort
-    '''
-
-    [transforms.unwrap_event]
-    type = "remap"
-    inputs = ["expand_batch"]
-    source = '''
-    . = .events ?? abort
-    if !is_string(.worm_id) || !is_integer(.sequence) ||
+    parsed = parse_regex!(.message, r'^\\S+\\s+stdout\\s+[FP]\\s+(?P<payload>.*)$')
+    . = parse_json!(parsed.payload)
+    if .kind != "sample" || !is_string(.worm_id) || !is_integer(.sequence) ||
        !is_number(.x) || !is_number(.y) || !is_integer(.occurred_at) {
       abort
     }
@@ -38,7 +29,7 @@ data:
 
     [sinks.regression]
     type = "http"
-    inputs = ["unwrap_event"]
+    inputs = ["parse_worker_sample"]
     uri = {{ .Values.regression.ingestURL | quote }}
     method = "post"
     encoding.codec = "json"
