@@ -1,0 +1,12 @@
+image:
+  repository: docker.io/local/worm-regression
+  tag: tilt
+  pullPolicy: IfNotPresent
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 250m
+    memory: 128Mi

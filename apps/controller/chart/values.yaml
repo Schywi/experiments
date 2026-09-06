@@ -1,0 +1,20 @@
+image:
+  repository: docker.io/local/worm-controller
+  tag: tilt
+  pullPolicy: IfNotPresent
+
+namespace:
+  create: true
+
+worm:
+  name: worm-lab
+  workerDeploymentName: worm-worker
+  maxReplicas: 20
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 250m
+    memory: 128Mi

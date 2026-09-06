@@ -1,0 +1,10 @@
+apiVersion: lab.experiments.io/v1alpha1
+kind: Worm
+metadata:
+  name: {{ .Values.worm.name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "worm-controller.labels" . | nindent 4 }}
+spec:
+  workerDeploymentName: {{ .Values.worm.workerDeploymentName }}
+  maxReplicas: {{ .Values.worm.maxReplicas }}

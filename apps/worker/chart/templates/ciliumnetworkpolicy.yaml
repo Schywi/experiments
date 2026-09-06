@@ -1,32 +1,33 @@
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
-  name: {{ include "vector.fullname" . }}
+  name: worm-worker
+  namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "vector.labels" . | nindent 4 }}
+    {{- include "worm-worker.labels" . | nindent 4 }}
 spec:
   endpointSelector:
     matchLabels:
-      {{- include "vector.selectorLabels" . | nindent 6 }}
-  ingress:
-    - fromEndpoints:
+      {{- include "worm-worker.selectorLabels" . | nindent 6 }}
+  egress:
+    - toEndpoints:
         - matchLabels:
             k8s:io.kubernetes.pod.namespace: {{ .Release.Namespace }}
-            app.kubernetes.io/name: worm-worker
+            app.kubernetes.io/name: vector
       toPorts:
         - ports:
             - port: "8080"
               protocol: TCP
-  egress:
     - toEndpoints:
         - matchLabels:
-            k8s:io.kubernetes.pod.namespace: worm-lab
-            app.kubernetes.io/name: regression
+            k8s:io.kubernetes.pod.namespace: {{ .Release.Namespace }}
+            app.kubernetes.io/name: worm-controller
       toPorts:
         - ports:
-            - port: "4000"
+            - port: "8081"
               protocol: TCP
-    # Vector resolves the in-cluster regression Service name.
+    # The configured endpoints are Service DNS names, so this narrow DNS rule
+    # is the only non-application egress required by the worker.
     - toEndpoints:
         - matchLabels:
             k8s:io.kubernetes.pod.namespace: kube-system

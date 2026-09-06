@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worm-worker
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "worm-worker.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "worm-worker.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "worm-worker.selectorLabels" . | nindent 8 }}
+    spec:
+      runtimeClassName: {{ .Values.runtimeClassName }}
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 10
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: worker
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - name: WORM_ID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.uid
+            - name: VECTOR_EVENTS_URL
+              value: {{ .Values.vector.eventsURL | quote }}
+            - name: REPLICATOR_URL
+              value: {{ .Values.controller.url | quote }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}

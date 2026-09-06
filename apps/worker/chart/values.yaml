@@ -1,0 +1,22 @@
+image:
+  repository: docker.io/local/worm-worker
+  tag: tilt
+  pullPolicy: IfNotPresent
+
+replicaCount: 1
+
+runtimeClassName: wasmtime
+
+vector:
+  eventsURL: http://vector.worm-lab.svc.cluster.local:8080/events
+
+controller:
+  url: http://worm-controller.worm-lab.svc.cluster.local:8081
+
+resources:
+  requests:
+    cpu: 25m
+    memory: 32Mi
+  limits:
+    cpu: 100m
+    memory: 32Mi
