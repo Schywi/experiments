@@ -33,11 +33,9 @@ then install Cilium:
 config/k3d/bootstrap.sh
 ```
 
-The root `Tiltfile` drives the local platform lifecycle. `tilt up` reuses an
-existing `cilium-lab` cluster when possible, then creates or bootstraps it.
-Stopping Tilt preserves the cluster. Set
-`TILT_DELETE_CLUSTER_ON_EXIT=true` only when an explicit teardown is intended;
-the standalone `delete.sh` remains available for deliberate deletion.
+The root `Tiltfile` drives the local platform lifecycle. Every `tilt up` starts
+from a clean `cilium-lab` cluster by running `delete.sh` before bootstrap. The
+standalone `delete.sh` is also available for deliberate manual deletion.
 
 The bootstrap configures and verifies Docker Hub DNS in every k3d node, then
 imports the pinned local runtime images before installation. It uses Cloudflare

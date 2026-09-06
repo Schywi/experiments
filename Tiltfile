@@ -1,8 +1,7 @@
 # Local development entrypoint for the public experiments repository.
 #
-# Tilt drives the k3d lifecycle without destroying an existing cluster. Stop
-# Tilt to preserve the cluster; set TILT_DELETE_CLUSTER_ON_EXIT=true only when
-# an explicit teardown is intended.
+# Tilt owns the local k3d lifecycle. Every `tilt up` starts from a clean
+# cluster by running config/k3d/delete.sh before bootstrap.
 
 CONFIG_DIR = "config"
 CLUSTER_CONFIG_DIR = CONFIG_DIR + "/k3d"
