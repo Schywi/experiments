@@ -1,6 +1,6 @@
 # Application code
 
-This directory is the approved home for the bounded Lua/Wasm replication
+This directory is the approved home for the bounded native-worker replication
 experiment's application code. It deliberately separates executable software
 from the deployable platform configuration in `config/`.
 
@@ -8,10 +8,10 @@ from the deployable platform configuration in `config/`.
 apps/
 ├── controller/   # Go: Worm CRD, reconciliation, and replication endpoint
 ├── regression/   # Elixir: sample ingestion and bounded linear regression
-└── worker/       # Lua compiled/package for the Wasmtime WAsm worker Pod
+└── worker/       # Native Rust worker Pod
 ```
 
-No application implementation is present yet. The current repository state
-only prepares the existing k3d node to support `runtimeClassName: wasmtime`.
-The controller, CRD, regression application, and worker artifact will be
-introduced as independent, reviewable changes under this directory.
+The worker is a small native Rust binary. It emits JSON samples to stdout for
+Vector's node-log source and sends one idempotent replication intent to the Go
+controller. Each worker remains a normal Kubernetes Pod for Cilium/Hubble
+visibility.

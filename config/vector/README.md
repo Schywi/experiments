@@ -1,7 +1,7 @@
 # Vector ETL chart
 
 This Helm chart deploys the Vector data-plane receiver for the bounded
-Lua/Wasm worm experiment. It does not install Docker, alter containerd, or
+native worker experiment. It does not install Docker, alter containerd, or
 execute `kubectl`.
 
 Workers write one JSON sample to stdout each sampling interval. On the local
