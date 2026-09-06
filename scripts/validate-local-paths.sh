@@ -74,11 +74,9 @@ validate_metallb_path() {
   require_text "${repo_root}/config/k3d/create.sh" '--subnet "${DOCKER_SUBNET}"' 'k3d Docker subnet is not pinned for MetalLB'
   require_text "${repo_root}/config/k3d/create.sh" '--registry-create "${REGISTRY_NAME}:0.0.0.0:${REGISTRY_PORT}"' 'k3d local registry is not created with the cluster'
   require_text "${repo_root}/config/k3d/create.sh" 'docker port "${loadbalancer}" 30080/tcp' 'k3d Hubble port check inspects the wrong container'
-  require_text "${repo_root}/Tiltfile" 'METALLB_CONFIG_DIR = CONFIG_DIR + "/metallb"' 'Tiltfile does not include MetalLB configuration'
   require_text "${repo_root}/Tiltfile" 'local(PLATFORM_LIFECYCLE + " --once")' 'Tilt reset does not run during Tiltfile evaluation'
-  require_text "${repo_root}/Tiltfile" '    cmd="true",' 'Tilt platform gate is not a completed preflight resource'
   require_not_text "${repo_root}/Tiltfile" 'serve_cmd=PLATFORM_LIFECYCLE' 'Tilt starts cluster reset as a long-running resource'
-  require_text "${repo_root}/Tiltfile" 'deps=[CONFIG_DIR, METALLB_CONFIG_DIR, "Tiltfile"]' 'Tilt platform resource does not depend on MetalLB configuration'
+  require_text "${repo_root}/Tiltfile.workloads" 'deps=[CONFIG_DIR, "Tiltfile", "Tiltfile.workloads"]' 'Tilt platform resource does not depend on its inputs'
   require_text "${repo_root}/config/k3d/validate.sh" 'rollout status "${deployment}"' 'platform validation does not wait for Argo deployments'
   if rg -q --fixed-strings -- 'docker.io/local/' "${repo_root}/Tiltfile" "${repo_root}/apps" "${repo_root}/config/metallb"; then
     fail 'local application or MetalLB images use a Docker Hub-looking name'
@@ -87,17 +85,25 @@ validate_metallb_path() {
 
 validate_argocd_ordering() {
   local bootstrap_file="${repo_root}/config/k3d/bootstrap.sh"
-  local argo_wait_line
-  local cilium_wait_line
-  local argo_apply_call_line
+  local cilium_line
+  local argo_line
+  local metallb_line
+  local ingress_line
+  local validate_line
 
-  argo_wait_line="$(rg -n 'if wait "\$\{argocd_pid\}"' "${bootstrap_file}" | cut -d: -f1)"
-  cilium_wait_line="$(rg -n 'if wait "\$\{cilium_pid\}"' "${bootstrap_file}" | cut -d: -f1)"
-  argo_apply_call_line="$(rg -n 'if ! apply_argocd_ingress' "${bootstrap_file}" | cut -d: -f1)"
-  [[ -n "${argo_wait_line}" && -n "${cilium_wait_line}" && -n "${argo_apply_call_line}" ]] ||
-    fail 'bootstrap ordering markers are incomplete'
-  ((argo_wait_line < argo_apply_call_line)) || fail 'Argo Ingress is applied before Argo Helm wait'
-  ((cilium_wait_line < argo_apply_call_line)) || fail 'Argo Ingress is applied before Cilium wait'
+  require_text "${bootstrap_file}" '"${script_dir}/install-cilium.sh"' 'bootstrap does not install Cilium'
+  require_text "${bootstrap_file}" '"${repo_root}/config/argocd/install.sh"' 'bootstrap does not install Argo CD'
+  require_text "${bootstrap_file}" '"${repo_root}/config/metallb/install.sh"' 'bootstrap does not install MetalLB'
+  require_text "${bootstrap_file}" 'apply_argocd_ingress' 'bootstrap does not apply Argo CD Ingress'
+  require_text "${bootstrap_file}" '"${script_dir}/validate.sh"' 'bootstrap does not validate the platform'
+
+  cilium_line="$(rg -n -F '"${script_dir}/install-cilium.sh"' "${bootstrap_file}" | cut -d: -f1)"
+  argo_line="$(rg -n -F '"${repo_root}/config/argocd/install.sh"' "${bootstrap_file}" | cut -d: -f1)"
+  metallb_line="$(rg -n -F '"${repo_root}/config/metallb/install.sh"' "${bootstrap_file}" | cut -d: -f1)"
+  ingress_line="$(rg -n '^apply_argocd_ingress$' "${bootstrap_file}" | cut -d: -f1)"
+  validate_line="$(rg -n -F '"${script_dir}/validate.sh"' "${bootstrap_file}" | cut -d: -f1)"
+  ((cilium_line < argo_line && argo_line < metallb_line && metallb_line < ingress_line && ingress_line < validate_line)) ||
+    fail 'bootstrap stages are not strictly ordered'
 
   if rg -q 'argocd_ingress_file|argocd-ingress.yaml' "${repo_root}/config/k3d/install-cilium.sh"; then
     fail 'Cilium installer still owns the Argo Ingress'
@@ -115,6 +121,8 @@ render_and_check() {
 
 validate_worm_bindings() {
   local tiltfile="${repo_root}/Tiltfile"
+  local workloads_tiltfile="${repo_root}/Tiltfile.workloads"
+  local image_build_script="${repo_root}/scripts/build-and-import-image.sh"
   local controller_values="${repo_root}/apps/controller/chart/values.yaml"
   local regression_values="${repo_root}/apps/regression/chart/values.yaml"
   local worker_values="${repo_root}/apps/worker/chart/values.yaml"
@@ -124,17 +132,23 @@ validate_worm_bindings() {
   require_text "${controller_values}" '  pullPolicy: IfNotPresent' 'Worm controller local registry pull policy is missing'
   require_text "${regression_values}" '  pullPolicy: IfNotPresent' 'Worm regression local registry pull policy is missing'
   require_text "${worker_values}" '  pullPolicy: IfNotPresent' 'Worm worker local registry pull policy is missing'
-  require_text "${tiltfile}" 'default_registry(LOCAL_REGISTRY)' 'Tilt local registry is not configured'
-  require_text "${tiltfile}" 'docker_build("worm-controller"' 'Worm controller does not use Tilt docker_build'
-  require_text "${tiltfile}" 'docker_build("worm-regression"' 'Worm regression does not use Tilt docker_build'
-  require_text "${tiltfile}" 'docker_build("worm-worker"' 'Worm worker does not use Tilt docker_build'
-  require_not_text "${tiltfile}" 'disable_push=True' 'Tilt local image delivery is disabled'
-  require_text "${tiltfile}" 'k8s_resource("worm-controller"' 'worm-controller binding is missing'
-  require_text "${tiltfile}" 'k8s_resource("regression"' 'regression binding is missing'
-  require_text "${tiltfile}" 'k8s_resource("vector"' 'vector binding is missing'
-  require_text "${tiltfile}" '    "worm-worker",' 'worm-worker binding is missing'
-  require_text "${tiltfile}" '    resource_deps=["worm-controller", "regression", "vector", "worm-worker"],' 'aggregate binding is incomplete'
-  if rg -n -- 'k8s_resource\("worm-(regression|vector)"' "${tiltfile}"; then
+  require_text "${tiltfile}" 'local(PLATFORM_LIFECYCLE + " --once")' 'Tilt does not synchronously bootstrap the fresh cluster'
+  require_text "${tiltfile}" 'include("Tiltfile.workloads")' 'Tilt workload file is not included'
+  require_text "${workloads_tiltfile}" 'custom_build(' 'Worm images do not use custom builds'
+  require_text "${workloads_tiltfile}" 'disable_push=True' 'Worm images are configured to push instead of import'
+  require_text "${workloads_tiltfile}" 'outputs_image_ref_to=' 'Tilt image references are not returned from the importer'
+  require_text "${image_build_script}" '--pull' 'Worm image builds do not refresh base images'
+  require_text "${image_build_script}" '--no-cache' 'Worm image builds use the Docker layer cache'
+  require_text "${repo_root}/config/k3d/import-images.sh" 'docker pull' 'platform images are not refreshed before import'
+  require_text "${repo_root}/config/k3d/import-images.sh" 'k3d runtime does not contain imported image' 'platform imports are not verified in k3d'
+  require_text "${repo_root}/config/metallb/build-and-import.sh" '--no-cache' 'MetalLB image builds use the Docker layer cache'
+  require_text "${repo_root}/config/metallb/build-and-import.sh" 'k3d runtime does not contain imported image' 'MetalLB imports are not verified in k3d'
+  require_text "${workloads_tiltfile}" 'k8s_resource("worm-controller"' 'worm-controller binding is missing'
+  require_text "${workloads_tiltfile}" 'k8s_resource("regression"' 'regression binding is missing'
+  require_text "${workloads_tiltfile}" 'k8s_resource("vector"' 'vector binding is missing'
+  require_text "${workloads_tiltfile}" 'k8s_resource("worm-worker"' 'worm-worker binding is missing'
+  require_text "${workloads_tiltfile}" 'resource_deps=["worm-controller", "regression", "vector", "worm-worker"]' 'aggregate binding is incomplete'
+  if rg -n -- 'k8s_resource\("worm-(regression|vector)"' "${workloads_tiltfile}"; then
     fail 'Tilt binds Helm release names instead of rendered regression/vector names'
   fi
   render_and_check "${repo_root}/apps/controller/chart" Deployment worm-controller

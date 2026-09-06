@@ -18,4 +18,5 @@ Deployment's `deployments/scale` subresource when deployed.
 
 ## Local k3d image
 
-Tilt builds this image and delivers it through the k3d local registry.
+Tilt builds this image with no Docker layer cache and imports the exact image
+reference into the fresh k3d node before deployment.

@@ -1,0 +1,55 @@
+# Workloads are loaded only after the root Tiltfile has created and validated
+# the fresh cluster.
+
+CONFIG_DIR = "config"
+WORM_NAMESPACE = "worm-lab"
+IMAGE_BUILD = "scripts/build-and-import-image.sh"
+
+local_resource(
+    "local-platform",
+    cmd="true",
+    deps=[CONFIG_DIR, "Tiltfile", "Tiltfile.workloads"],
+    auto_init=True,
+)
+
+custom_build(
+    "worm-controller:tilt",
+    IMAGE_BUILD + " \"$EXPECTED_REF\" apps/controller",
+    deps=["apps/controller", IMAGE_BUILD],
+    disable_push=True,
+    outputs_image_ref_to="/tmp/worm-controller-tilt-image-ref",
+)
+
+custom_build(
+    "worm-regression:tilt",
+    IMAGE_BUILD + " \"$EXPECTED_REF\" apps/regression",
+    deps=["apps/regression", IMAGE_BUILD],
+    disable_push=True,
+    outputs_image_ref_to="/tmp/worm-regression-tilt-image-ref",
+)
+
+custom_build(
+    "worm-worker:tilt",
+    IMAGE_BUILD + " \"$EXPECTED_REF\" apps/worker",
+    deps=["apps/worker", IMAGE_BUILD],
+    disable_push=True,
+    outputs_image_ref_to="/tmp/worm-worker-tilt-image-ref",
+)
+
+k8s_yaml(helm("apps/controller/chart", name="worm-controller", namespace=WORM_NAMESPACE))
+k8s_resource("worm-controller", resource_deps=["local-platform"])
+
+k8s_yaml(helm("apps/regression/chart", name="worm-regression", namespace=WORM_NAMESPACE))
+k8s_resource("regression", resource_deps=["worm-controller"])
+
+k8s_yaml(helm("config/vector", name="worm-vector", namespace=WORM_NAMESPACE))
+k8s_resource("vector", resource_deps=["regression"])
+
+k8s_yaml(helm("apps/worker/chart", name="worm-worker", namespace=WORM_NAMESPACE))
+k8s_resource("worm-worker", resource_deps=["worm-controller", "vector"])
+
+local_resource(
+    "worm-lab",
+    cmd="true",
+    resource_deps=["worm-controller", "regression", "vector", "worm-worker"],
+)

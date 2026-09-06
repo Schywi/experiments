@@ -12,7 +12,7 @@ command -v k3d >/dev/null 2>&1 || {
 }
 
 CLUSTER_NAME="${K3D_CLUSTER_NAME:-cilium-lab}"
-K3S_IMAGE="${K3D_K3S_IMAGE:-rancher/k3s:v1.30.6-k3s1}"
+K3S_IMAGE="${K3D_K3S_IMAGE:-docker.io/rancher/k3s:v1.30.6-k3s1}"
 MEMORY_LIMIT="${K3D_MEMORY_LIMIT:-2g}"
 API_PORT="${K3D_API_PORT:-6445}"
 CREATE_TIMEOUT="${K3D_CREATE_TIMEOUT:-5m}"
@@ -24,6 +24,8 @@ if [[ "${MEMORY_LIMIT}" != "2g" ]]; then
   echo "K3D_MEMORY_LIMIT must remain 2g; refusing a larger cluster" >&2
   exit 1
 fi
+
+docker pull "${K3S_IMAGE}" >/dev/null
 
 if k3d cluster list --no-headers 2>/dev/null | awk '{print $1}' | grep -Fxq "${CLUSTER_NAME}"; then
   server_container="k3d-${CLUSTER_NAME}-server-0"
