@@ -4,25 +4,13 @@ set -euo pipefail
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 cluster_name="${K3D_CLUSTER_NAME:-cilium-lab}"
-delete_on_exit="${TILT_DELETE_CLUSTER_ON_EXIT:-false}"
 
-cleanup() {
-  local status=$?
-  trap - EXIT INT TERM
-  if [[ "${delete_on_exit}" == "true" ]]; then
-    K3D_CLUSTER_NAME="${cluster_name}" "${script_dir}/delete.sh" || true
-  else
-    echo "Preserving k3d cluster '${cluster_name}'; set TILT_DELETE_CLUSTER_ON_EXIT=true for explicit deletion." >&2
-  fi
-  exit "${status}"
-}
-
-trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
-# Reuse an existing cluster when present. Destruction is an explicit operator
-# choice via TILT_DELETE_CLUSTER_ON_EXIT=true, never an implicit failure path.
+# Start from a clean cluster when Tilt boots. The cluster remains available
+# after bootstrap failure or when Tilt exits; delete it explicitly if desired.
+K3D_CLUSTER_NAME="${cluster_name}" "${script_dir}/delete.sh"
 K3D_CLUSTER_NAME="${cluster_name}" "${script_dir}/bootstrap.sh"
 
 echo "Tilt is using k3d cluster '${cluster_name}'. Stop Tilt to preserve it."
