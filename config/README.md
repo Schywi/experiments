@@ -33,10 +33,9 @@ run the repository entrypoint:
 bash start.sh
 ```
 
-`start.sh` deletes and recreates the named k3d cluster, then starts Tilt. Tilt
-shows the cluster, image, Cilium, MetalLB, ingress, Argo CD, validation, and
-Worm stages as separate resources. The standalone `delete.sh` is available for
-deliberate manual deletion; do not delete the cluster while Tilt is running.
+`start.sh` deletes and recreates the named k3d cluster, then runs every platform
+and Worm deployment stage directly. It does not require Tilt. The standalone
+`delete.sh` is available for deliberate manual deletion.
 
 `config/k3d/bootstrap.sh` remains available for a manual, non-Tilt sequential
 bootstrap and uses the same stage scripts.

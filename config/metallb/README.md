@@ -57,7 +57,7 @@ continues to work while MetalLB assigns the Docker-bridge address.
 
 The script is guarded. It checks for the `metallb-system` namespace, both
 MetalLB CRDs, and the exact k3d node before applying only the files in this
-directory. The normal `tilt up` path invokes this script automatically.
+directory. The normal `bash start.sh` path invokes this script automatically.
 
 Equivalent declarative application:
 
