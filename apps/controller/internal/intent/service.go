@@ -41,6 +41,9 @@ func (s Service) Accept(ctx context.Context, wormID, intentID string) (int32, bo
 				return nil
 			}
 		}
+		if worm.Status.DesiredReplicas < 1 {
+			worm.Status.DesiredReplicas = 1
+		}
 		if worm.Status.DesiredReplicas >= worm.Spec.MaxReplicas {
 			return ErrCapReached
 		}

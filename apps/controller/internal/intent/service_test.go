@@ -31,13 +31,13 @@ func newService(t *testing.T, max, desired int32) (Service, func() *api.Worm) {
 	}
 }
 
-func TestAcceptCapsAndIsIdempotent(t *testing.T) {
-	service, get := newService(t, 2, 0)
-	if desired, duplicate, err := service.Accept(context.Background(), "pod-a", "intent-a"); err != nil || duplicate || desired != 1 {
-		t.Fatalf("first accept = (%d, %t, %v), want (1, false, nil)", desired, duplicate, err)
+func TestAcceptKeepsInitialWorkerAndCaps(t *testing.T) {
+	service, get := newService(t, 3, 0)
+	if desired, duplicate, err := service.Accept(context.Background(), "pod-a", "intent-a"); err != nil || duplicate || desired != 2 {
+		t.Fatalf("first accept = (%d, %t, %v), want (2, false, nil)", desired, duplicate, err)
 	}
-	if desired, duplicate, err := service.Accept(context.Background(), "pod-a", "intent-a"); err != nil || !duplicate || desired != 1 {
-		t.Fatalf("duplicate = (%d, %t, %v), want (1, true, nil)", desired, duplicate, err)
+	if desired, duplicate, err := service.Accept(context.Background(), "pod-a", "intent-a"); err != nil || !duplicate || desired != 2 {
+		t.Fatalf("duplicate = (%d, %t, %v), want (2, true, nil)", desired, duplicate, err)
 	}
 	if _, _, err := service.Accept(context.Background(), "pod-b", "intent-b"); err != nil {
 		t.Fatal(err)
@@ -45,7 +45,7 @@ func TestAcceptCapsAndIsIdempotent(t *testing.T) {
 	if _, _, err := service.Accept(context.Background(), "pod-c", "intent-c"); !errors.Is(err, ErrCapReached) {
 		t.Fatalf("err = %v, want cap reached", err)
 	}
-	if got := get().Status; got.DesiredReplicas != 2 || len(got.AcceptedIntentIDs) != 2 {
+	if got := get().Status; got.DesiredReplicas != 3 || len(got.AcceptedIntentIDs) != 2 {
 		t.Fatalf("unexpected status: %#v", got)
 	}
 }
@@ -66,7 +66,7 @@ func TestAcceptConcurrentDuplicateRetries(t *testing.T) {
 		}
 	}
 	status := get().Status
-	if status.DesiredReplicas != 1 || len(status.AcceptedIntentIDs) != 1 {
+	if status.DesiredReplicas != 2 || len(status.AcceptedIntentIDs) != 1 {
 		t.Fatalf("retry race incremented more than once: %#v", status)
 	}
 }
