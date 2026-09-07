@@ -14,10 +14,11 @@ socketLB:
 # Official Cilium images use quay.io. This is the user-approved exception to
 # the repository's Docker Hub-only image policy.
 
-# Use eBPF masquerading for the Docker bridge and L7 NodePort hairpin path.
+# The k3d host kernel rejects Cilium 1.20's BPF SNAT program. Use the supported
+# iptables masquerading path while retaining eBPF kube-proxy replacement.
 # BPF TProxy remains disabled; Cilium Ingress uses the iptables proxy path.
 bpf:
-  masquerade: true
+  masquerade: false
   hostLegacyRouting: true
   tproxy: false
 
