@@ -14,6 +14,9 @@ helm_timeout="${HELM_TIMEOUT:-10m}"
 helm repo add metallb https://metallb.github.io/metallb --force-update
 helm repo update metallb
 
+# This profile has one k3d server and no agents. A hostNetwork speaker cannot
+# reach the Kubernetes ClusterIP in this kube-proxy-free k3d network, so give
+# it the node-local API endpoint before waiting for the speaker rollout.
 helm upgrade --install metallb metallb/metallb \
   --namespace metallb-system \
   --create-namespace \
@@ -25,8 +28,11 @@ helm upgrade --install metallb metallb/metallb \
   --set speaker.image.tag="${version}" \
   --set speaker.image.pullPolicy=Never \
   --set speaker.frr.enabled=false \
-  --wait \
   --timeout "${helm_timeout}"
+
+kubectl --namespace metallb-system set env daemonset/metallb-speaker \
+  KUBERNETES_SERVICE_HOST=127.0.0.1 \
+  KUBERNETES_SERVICE_PORT=6443
 
 kubectl --namespace metallb-system rollout status deployment/metallb-controller \
   --timeout="${helm_timeout}"

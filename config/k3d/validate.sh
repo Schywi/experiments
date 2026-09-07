@@ -157,8 +157,8 @@ check_http_route() {
 assert_argocd_contract
 require_ingress_backend kube-system hubble-ui hubble-ui localhost
 require_ingress_backend argocd argocd-server argocd-server argocd.localhost
-check_http_route "Hubble UI"
-check_http_route "Argo CD"
+check_http_route "Hubble UI" localhost
+check_http_route "Argo CD" argocd.localhost
 
 kubectl --namespace kube-system get pods -l k8s-app=cilium
 kubectl --namespace kube-system get service/cilium-ingress -o wide

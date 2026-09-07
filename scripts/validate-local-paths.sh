@@ -70,6 +70,8 @@ validate_metallb_path() {
   require_text "${repo_root}/config/metallb/install.sh" 'speaker.image.repository=metallb-speaker' 'MetalLB speaker image is not local-only'
   require_text "${repo_root}/config/metallb/install.sh" 'speaker.frr.enabled=false' 'MetalLB install unexpectedly requires FRR'
   require_text "${repo_root}/config/metallb/install.sh" 'build-and-import.sh' 'MetalLB images are not imported into k3d'
+  require_text "${repo_root}/config/metallb/install.sh" 'KUBERNETES_SERVICE_HOST=127.0.0.1' 'MetalLB speaker host-network API endpoint is not pinned'
+  require_not_text "${repo_root}/config/metallb/install.sh" '  --wait \' 'MetalLB install waits before fixing speaker API routing'
   require_text "${repo_root}/config/metallb/Dockerfile.controller" 'docker.io/golang:1.22.7' 'MetalLB controller builder is not Docker Hub addressed'
   require_text "${repo_root}/config/metallb/Dockerfile.speaker" 'docker.io/golang:1.22.7' 'MetalLB speaker builder is not Docker Hub addressed'
   require_text "${repo_root}/config/k3d/lifecycle.sh" 'K3D_CLUSTER_NAME="${cluster_name}" "${script_dir}/delete.sh"' 'Tilt lifecycle does not delete the cluster on startup'
