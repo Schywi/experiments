@@ -12,7 +12,7 @@ config/
 ├── helm/
 │   └── cilium/values.yaml   # shared Cilium chart defaults
 └── k3d/
-    ├── bootstrap.sh          # one-click full platform bootstrap
+    ├── bootstrap.sh          # manual sequential platform bootstrap
     ├── create.sh             # one Docker-backed k3s server, capped at 2 GiB
     ├── configure-node-dns.sh # configure and verify node DNS before pulls
     ├── delete.sh             # remove the local Docker-backed cluster
@@ -26,16 +26,20 @@ preparation package for adding the runwasi Wasmtime shim to the existing k3d
 server. It deliberately does not run as part of bootstrap because it mutates
 and restarts the server node; see its README before use.
 
-The scripts expect Docker, k3d, Helm, and kubectl. Create the local cluster,
-then install Cilium:
+The scripts expect Docker, k3d, Helm, and kubectl. For the normal workflow,
+run the repository entrypoint:
 
-```bash
-config/k3d/bootstrap.sh
+```text
+bash start.sh
 ```
 
-The root `Tiltfile` drives the local platform lifecycle. Every `tilt up` starts
-from a clean `cilium-lab` cluster by running `delete.sh` before bootstrap. The
-standalone `delete.sh` is also available for deliberate manual deletion.
+`start.sh` deletes and recreates the named k3d cluster, then starts Tilt. Tilt
+shows the cluster, image, Cilium, MetalLB, ingress, Argo CD, validation, and
+Worm stages as separate resources. The standalone `delete.sh` is available for
+deliberate manual deletion; do not delete the cluster while Tilt is running.
+
+`config/k3d/bootstrap.sh` remains available for a manual, non-Tilt sequential
+bootstrap and uses the same stage scripts.
 
 The bootstrap configures and verifies Docker Hub DNS in every k3d node, then
 imports the pinned local runtime images before installation. It uses Cloudflare

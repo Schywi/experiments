@@ -69,19 +69,25 @@ validate_metallb_path() {
   require_text "${repo_root}/config/metallb/install.sh" 'controller.image.repository=metallb-controller' 'MetalLB controller image is not local-only'
   require_text "${repo_root}/config/metallb/install.sh" 'speaker.image.repository=metallb-speaker' 'MetalLB speaker image is not local-only'
   require_text "${repo_root}/config/metallb/install.sh" 'speaker.frr.enabled=false' 'MetalLB install unexpectedly requires FRR'
-  require_text "${repo_root}/config/metallb/install.sh" 'build-and-import.sh' 'MetalLB images are not imported into k3d'
+  require_not_text "${repo_root}/config/metallb/install.sh" 'build-and-import.sh' 'MetalLB install still owns image delivery'
   require_text "${repo_root}/config/metallb/install.sh" 'KUBERNETES_SERVICE_HOST=127.0.0.1' 'MetalLB speaker host-network API endpoint is not pinned'
   require_not_text "${repo_root}/config/metallb/install.sh" '  --wait \' 'MetalLB install waits before fixing speaker API routing'
   require_text "${repo_root}/config/metallb/Dockerfile.controller" 'docker.io/golang:1.22.7' 'MetalLB controller builder is not Docker Hub addressed'
   require_text "${repo_root}/config/metallb/Dockerfile.speaker" 'docker.io/golang:1.22.7' 'MetalLB speaker builder is not Docker Hub addressed'
-  require_text "${repo_root}/config/k3d/lifecycle.sh" 'K3D_CLUSTER_NAME="${cluster_name}" "${script_dir}/delete.sh"' 'Tilt lifecycle does not delete the cluster on startup'
-  require_not_text "${repo_root}/config/k3d/lifecycle.sh" 'TILT_DELETE_CLUSTER_ON_EXIT' 'Tilt lifecycle contains exit-controlled deletion'
+  require_text "${repo_root}/start.sh" '"${repo_root}/config/k3d/delete.sh"' 'start.sh does not reset the named cluster'
+  require_text "${repo_root}/start.sh" '"${repo_root}/config/k3d/create.sh"' 'start.sh does not create the cluster before Tilt'
+  require_text "${repo_root}/start.sh" 'exec tilt up "$@"' 'start.sh does not hand off to Tilt'
+  require_text "${repo_root}/Tiltfile" 'include("Tiltfile.platform")' 'Tilt platform resource file is not included'
+  require_not_text "${repo_root}/Tiltfile" 'local(' 'Tiltfile performs work before resource registration'
+  require_text "${repo_root}/Tiltfile.platform" '"cluster",' 'Tilt cluster resource is missing'
+  require_text "${repo_root}/Tiltfile.platform" '"platform-images",' 'Tilt platform image resource is missing'
+  require_text "${repo_root}/Tiltfile.platform" '"metallb-install",' 'Tilt MetalLB install resource is missing'
+  require_text "${repo_root}/Tiltfile.platform" '"platform-validate",' 'Tilt platform validation resource is missing'
   require_text "${repo_root}/config/k3d/create.sh" '--subnet "${DOCKER_SUBNET}"' 'k3d Docker subnet is not pinned for MetalLB'
   require_text "${repo_root}/config/k3d/create.sh" '--registry-create "${REGISTRY_NAME}:0.0.0.0:${REGISTRY_PORT}"' 'k3d local registry is not created with the cluster'
   require_text "${repo_root}/config/k3d/create.sh" 'docker port "${loadbalancer}" 30080/tcp' 'k3d Hubble port check inspects the wrong container'
-  require_text "${repo_root}/Tiltfile" 'local(PLATFORM_LIFECYCLE + " --once")' 'Tilt reset does not run during Tiltfile evaluation'
-  require_not_text "${repo_root}/Tiltfile" 'serve_cmd=PLATFORM_LIFECYCLE' 'Tilt starts cluster reset as a long-running resource'
-  require_text "${repo_root}/config/k3d/lifecycle.sh" 'flock -n 9' 'Tilt lifecycle has no concurrency lock'
+  require_not_text "${repo_root}/Tiltfile" 'PLATFORM_LIFECYCLE' 'Tiltfile still references the destructive lifecycle wrapper'
+  require_text "${repo_root}/Tiltfile.platform" 'resource_deps=["cilium", "metallb-images"]' 'MetalLB install dependencies are incomplete'
   require_text "${repo_root}/config/k3d/validate.sh" 'rollout status "${deployment}"' 'platform validation does not wait for Argo deployments'
   if rg -q --fixed-strings -- 'docker.io/local/' "${repo_root}/Tiltfile" "${repo_root}/apps" "${repo_root}/config/metallb"; then
     fail 'local application or MetalLB images use a Docker Hub-looking name'
@@ -99,13 +105,13 @@ validate_argocd_ordering() {
   require_text "${bootstrap_file}" '"${script_dir}/install-cilium.sh"' 'bootstrap does not install Cilium'
   require_text "${bootstrap_file}" '"${repo_root}/config/argocd/install.sh"' 'bootstrap does not install Argo CD'
   require_text "${bootstrap_file}" '"${repo_root}/config/metallb/install.sh"' 'bootstrap does not install MetalLB'
-  require_text "${bootstrap_file}" 'apply_argocd_ingress' 'bootstrap does not apply Argo CD Ingress'
+  require_text "${bootstrap_file}" 'config/argocd/install-ingress.sh' 'bootstrap does not apply Argo CD Ingress'
   require_text "${bootstrap_file}" '"${script_dir}/validate.sh"' 'bootstrap does not validate the platform'
 
   cilium_line="$(rg -n -F '"${script_dir}/install-cilium.sh"' "${bootstrap_file}" | cut -d: -f1)"
   argo_line="$(rg -n -F '"${repo_root}/config/argocd/install.sh"' "${bootstrap_file}" | cut -d: -f1)"
   metallb_line="$(rg -n -F '"${repo_root}/config/metallb/install.sh"' "${bootstrap_file}" | cut -d: -f1)"
-  ingress_line="$(rg -n '^apply_argocd_ingress$' "${bootstrap_file}" | cut -d: -f1)"
+  ingress_line="$(rg -n -F 'config/argocd/install-ingress.sh' "${bootstrap_file}" | cut -d: -f1)"
   validate_line="$(rg -n -F '"${script_dir}/validate.sh"' "${bootstrap_file}" | cut -d: -f1)"
   ((cilium_line < argo_line && argo_line < metallb_line && metallb_line < ingress_line && ingress_line < validate_line)) ||
     fail 'bootstrap stages are not strictly ordered'
@@ -137,7 +143,8 @@ validate_worm_bindings() {
   require_text "${controller_values}" '  pullPolicy: IfNotPresent' 'Worm controller local registry pull policy is missing'
   require_text "${regression_values}" '  pullPolicy: IfNotPresent' 'Worm regression local registry pull policy is missing'
   require_text "${worker_values}" '  pullPolicy: IfNotPresent' 'Worm worker local registry pull policy is missing'
-  require_text "${tiltfile}" 'local(PLATFORM_LIFECYCLE + " --once")' 'Tilt does not synchronously bootstrap the fresh cluster'
+  require_text "${tiltfile}" 'include("Tiltfile.platform")' 'Tilt platform stages are not included'
+  require_not_text "${tiltfile}" 'local(' 'Tiltfile executes a blocking command before resource registration'
   require_text "${tiltfile}" 'include("Tiltfile.workloads")' 'Tilt workload file is not included'
   require_text "${workloads_tiltfile}" 'custom_build(' 'Worm images do not use custom builds'
   require_text "${workloads_tiltfile}" 'disable_push=True' 'Worm images are configured to push instead of import'
@@ -152,6 +159,7 @@ validate_worm_bindings() {
   require_text "${repo_root}/config/metallb/build-and-import.sh" '--no-cache' 'MetalLB image builds use the Docker layer cache'
   require_text "${repo_root}/config/metallb/build-and-import.sh" 'k3d runtime does not contain imported image' 'MetalLB imports are not verified in k3d'
   require_text "${workloads_tiltfile}" 'k8s_resource("worm-controller"' 'worm-controller binding is missing'
+  require_text "${workloads_tiltfile}" 'resource_deps=["platform-validate"]' 'Worm workloads do not wait for platform validation'
   require_text "${workloads_tiltfile}" 'k8s_resource("regression"' 'regression binding is missing'
   require_text "${workloads_tiltfile}" 'k8s_resource("vector"' 'vector binding is missing'
   require_text "${workloads_tiltfile}" 'k8s_resource("worm-worker"' 'worm-worker binding is missing'

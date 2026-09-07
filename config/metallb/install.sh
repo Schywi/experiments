@@ -9,8 +9,6 @@ script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 version="v0.14.9"
 helm_timeout="${HELM_TIMEOUT:-10m}"
 
-"${script_dir}/build-and-import.sh"
-
 helm repo add metallb https://metallb.github.io/metallb --force-update
 helm repo update metallb
 

@@ -1,5 +1,5 @@
-# Workloads are loaded only after the root Tiltfile has created and validated
-# the fresh cluster.
+# Workloads are registered immediately and wait for the explicit platform
+# validation resource before their first deployment.
 
 WORM_NAMESPACE = "worm-lab"
 IMAGE_BUILD = "scripts/build-and-import-image.sh"
@@ -26,16 +26,16 @@ custom_build(
 )
 
 k8s_yaml(helm("apps/controller/chart", name="worm-controller", namespace=WORM_NAMESPACE))
-k8s_resource("worm-controller")
+k8s_resource("worm-controller", resource_deps=["platform-validate"])
 
 k8s_yaml(helm("apps/regression/chart", name="worm-regression", namespace=WORM_NAMESPACE))
-k8s_resource("regression")
+k8s_resource("regression", resource_deps=["platform-validate"])
 
 k8s_yaml(helm("config/vector", name="worm-vector", namespace=WORM_NAMESPACE))
-k8s_resource("vector", resource_deps=["regression"])
+k8s_resource("vector", resource_deps=["platform-validate", "regression"])
 
 k8s_yaml(helm("apps/worker/chart", name="worm-worker", namespace=WORM_NAMESPACE))
-k8s_resource("worm-worker", resource_deps=["worm-controller", "vector"])
+k8s_resource("worm-worker", resource_deps=["platform-validate", "worm-controller", "vector"])
 
 local_resource(
     "worm-lab",

@@ -1,0 +1,95 @@
+# Platform stages are deliberately separate resources so each failure remains
+# visible in the Tilt sidebar. start.sh performs the destructive reset before
+# Tilt starts; these resources only converge and verify the resulting cluster.
+
+PLATFORM = "config"
+K3D = PLATFORM + "/k3d"
+METALLB = PLATFORM + "/metallb"
+ARGOCD = PLATFORM + "/argocd"
+
+local_resource(
+    "cluster",
+    cmd=K3D + "/create.sh",
+    deps=[K3D + "/create.sh"],
+    labels=["platform"],
+)
+
+local_resource(
+    "node-dns",
+    cmd=K3D + "/configure-node-dns.sh",
+    deps=[K3D + "/configure-node-dns.sh"],
+    resource_deps=["cluster"],
+    labels=["platform"],
+)
+
+local_resource(
+    "platform-images",
+    cmd=K3D + "/import-images.sh",
+    deps=[K3D + "/import-images.sh"],
+    resource_deps=["cluster"],
+    labels=["platform"],
+)
+
+local_resource(
+    "cilium",
+    cmd=K3D + "/install-cilium.sh",
+    deps=[K3D + "/install-cilium.sh", PLATFORM + "/helm/cilium/values.yaml", PLATFORM + "/helm/cilium/hubble-ui-ingress.yaml"],
+    resource_deps=["node-dns", "platform-images"],
+    labels=["platform"],
+)
+
+local_resource(
+    "argocd-install",
+    cmd=ARGOCD + "/install.sh",
+    deps=[ARGOCD + "/install.sh", ARGOCD + "/values.yaml"],
+    resource_deps=["node-dns"],
+    labels=["platform"],
+)
+
+local_resource(
+    "metallb-images",
+    cmd=METALLB + "/build-and-import.sh",
+    deps=[METALLB + "/build-and-import.sh", METALLB + "/Dockerfile.controller", METALLB + "/Dockerfile.speaker"],
+    resource_deps=["cluster"],
+    labels=["platform"],
+)
+
+local_resource(
+    "metallb-install",
+    cmd=METALLB + "/install.sh",
+    deps=[METALLB + "/install.sh"],
+    resource_deps=["cilium", "metallb-images"],
+    labels=["platform"],
+)
+
+local_resource(
+    "metallb-config",
+    cmd=METALLB + "/configure.sh",
+    deps=[METALLB + "/configure.sh", METALLB + "/kustomization.yaml", METALLB + "/address-pool.yaml"],
+    resource_deps=["metallb-install"],
+    labels=["platform"],
+)
+
+local_resource(
+    "cilium-ingress",
+    cmd=K3D + "/enable-metallb-ingress.sh",
+    deps=[K3D + "/enable-metallb-ingress.sh", METALLB + "/cilium-values.yaml"],
+    resource_deps=["cilium", "metallb-config"],
+    labels=["platform"],
+)
+
+local_resource(
+    "argocd-ingress",
+    cmd=ARGOCD + "/install-ingress.sh",
+    deps=[ARGOCD + "/install-ingress.sh", ARGOCD + "/argocd-ingress.yaml"],
+    resource_deps=["argocd-install", "cilium-ingress"],
+    labels=["platform"],
+)
+
+local_resource(
+    "platform-validate",
+    cmd=K3D + "/validate.sh",
+    deps=[K3D + "/validate.sh"],
+    resource_deps=["cilium-ingress", "argocd-ingress"],
+    labels=["platform"],
+)
