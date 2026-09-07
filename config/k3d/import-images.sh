@@ -48,8 +48,9 @@ done
 k3d image import "${images[@]}" --cluster "${CLUSTER_NAME}"
 
 for image in "${images[@]}"; do
+  short_image="${image#docker.io/}"
   docker exec "${CONTAINER_NAME}" sh -c \
-    "ctr -n k8s.io images ls -q | grep -Fx -- '${image}'" >/dev/null || {
+    "ctr -n k8s.io images ls -q | grep -Fx -e '${image}' -e '${short_image}'" >/dev/null || {
     echo "k3d runtime does not contain imported image ${image}" >&2
     exit 1
   }
