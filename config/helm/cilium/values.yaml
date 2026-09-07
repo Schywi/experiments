@@ -2,7 +2,7 @@
 #
 # The API endpoint is supplied by config/k3d/install-cilium.sh at install time;
 # do not put a machine-specific address or credential in this file.
-# Cilium 1.13.4 expects a string mode; Boolean true fails chart rendering.
+# Keep kube-proxy replacement enabled for the Cilium ingress NodePort path.
 kubeProxyReplacement: "strict"
 
 # MetalLB speakers use hostNetwork and reach the Kubernetes API through its
@@ -18,6 +18,12 @@ image:
   digest: sha256:bde8800d61aaad8b8451b10e247ac7bdeb7af187bb698f83d40ad75a38c1ee6b
   useDigest: true
   pullPolicy: IfNotPresent
+
+# Use eBPF masquerading for the Docker bridge and L7 NodePort hairpin path.
+# BPF TProxy remains disabled; Cilium Ingress uses the iptables proxy path.
+bpf:
+  masquerade: true
+  tproxy: false
 
 ipam:
   mode: kubernetes
