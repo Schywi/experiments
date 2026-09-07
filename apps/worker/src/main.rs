@@ -6,7 +6,6 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-const MAX_RETRIES: u8 = 5;
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(2);
 const IO_TIMEOUT: Duration = Duration::from_secs(2);
 const DEFAULT_SAMPLE_INTERVAL: Duration = Duration::from_secs(1);
@@ -61,17 +60,12 @@ fn send_intent_with_retry(controller: &Endpoint, worm_id: &str) {
         json_string(&format!("{worm_id}:1")),
     );
 
-    for attempt in 1..=MAX_RETRIES {
+    for attempt in 1_u64.. {
         match post_json(controller, &path, &body) {
-            Ok(()) => return,
-            Err(error) if attempt == MAX_RETRIES => {
-                eprintln!(
-                    "replication intent was not accepted after {MAX_RETRIES} attempts: {error}"
-                );
-            }
+            Ok(_) => return,
             Err(error) => {
-                eprintln!("replication intent attempt {attempt}/{MAX_RETRIES} failed: {error}");
-                thread::sleep(Duration::from_millis(100 * u64::from(attempt)));
+                eprintln!("replication intent attempt {attempt} failed: {error}");
+                thread::sleep(Duration::from_millis((100 * attempt).min(5_000)));
             }
         }
     }
@@ -132,7 +126,7 @@ fn parse_http_endpoint(value: &str) -> Result<Endpoint, String> {
     })
 }
 
-fn post_json(endpoint: &Endpoint, path: &str, body: &str) -> Result<(), String> {
+fn post_json(endpoint: &Endpoint, path: &str, body: &str) -> Result<u16, String> {
     let address = resolve_address(&endpoint.host, endpoint.port)?;
     let mut stream =
         TcpStream::connect_timeout(&address, CONNECT_TIMEOUT).map_err(|error| error.to_string())?;
@@ -167,8 +161,8 @@ fn post_json(endpoint: &Endpoint, path: &str, body: &str) -> Result<(), String> 
         .ok_or_else(|| "controller response lacks a status".to_string())?
         .parse()
         .map_err(|_| "controller response status was invalid".to_string())?;
-    if (200..300).contains(&status) {
-        Ok(())
+    if (200..300).contains(&status) || status == 409 {
+        Ok(status)
     } else {
         Err(format!("controller returned HTTP {status}"))
     }

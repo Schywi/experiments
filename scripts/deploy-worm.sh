@@ -6,7 +6,9 @@ script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd -- "${script_dir}/.." && pwd)"
 cluster_name="${K3D_CLUSTER_NAME:-cilium-lab}"
 namespace="${WORM_NAMESPACE:-worm-lab}"
+worm_name="${WORM_NAME:-worm-lab}"
 helm_timeout="${HELM_TIMEOUT:-10m}"
+reconcile_timeout_seconds="${WORM_RECONCILE_TIMEOUT_SECONDS:-120}"
 image_build="${repo_root}/scripts/build-and-import-image.sh"
 
 command -v helm >/dev/null 2>&1 || { echo "helm is required" >&2; exit 1; }
@@ -51,6 +53,23 @@ kubectl --namespace "${namespace}" rollout status deployment/vector \
   --timeout="${helm_timeout}"
 
 deploy_chart worm-worker apps/worker/chart worm-worker
+
+printf '\n==> verify Worm reconciliation\n'
+deadline=$((SECONDS + reconcile_timeout_seconds))
+while (( SECONDS < deadline )); do
+  desired="$(kubectl --namespace "${namespace}" get worm/"${worm_name}" --output=jsonpath='{.status.desiredReplicas}')"
+  observed="$(kubectl --namespace "${namespace}" get worm/"${worm_name}" --output=jsonpath='{.status.observedGeneration}')"
+  generation="$(kubectl --namespace "${namespace}" get worm/"${worm_name}" --output=jsonpath='{.metadata.generation}')"
+  if [[ "${desired}" -ge 2 && "${observed}" == "${generation}" ]]; then
+    kubectl --namespace "${namespace}" rollout status deployment/worm-worker --timeout="${helm_timeout}"
+    break
+  fi
+  sleep 2
+done
+[[ "${desired:-0}" -ge 2 && "${observed:-}" == "${generation:-}" ]] || {
+  echo "Worm did not reconcile within ${reconcile_timeout_seconds}s (desired=${desired:-empty}, observed=${observed:-empty}, generation=${generation:-empty})" >&2
+  exit 1
+}
 
 kubectl --namespace "${namespace}" get deployments,services,pods
 printf '<== Worm deployment complete in cluster %s\n' "${cluster_name}"

@@ -1,9 +1,13 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"flag"
+	"fmt"
 	"net/http"
 	"os"
+	"sync/atomic"
 
 	api "github.com/lucasmirandoliveira/experiments/apps/controller/api/v1alpha1"
 	"github.com/lucasmirandoliveira/experiments/apps/controller/internal/controller"
@@ -14,7 +18,9 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
+	"sigs.k8s.io/controller-runtime/pkg/manager"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 )
 
@@ -32,7 +38,7 @@ func main() {
 	_ = clientgoscheme.AddToScheme(scheme)
 	_ = appsv1.AddToScheme(scheme)
 	_ = api.AddToScheme(scheme)
-	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{Scheme: scheme, Metrics: metricsserver.Options{BindAddress: metricsAddr}, HealthProbeBindAddress: probeAddr})
+	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), managerOptions(scheme, namespace, metricsAddr, probeAddr))
 	if err != nil {
 		panic(err)
 	}
@@ -42,15 +48,48 @@ func main() {
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
 		panic(err)
 	}
-	if err := mgr.AddReadyzCheck("readyz", healthz.Ping); err != nil {
+	var cacheReady atomic.Bool
+	if err := mgr.AddReadyzCheck("cache", readyCheck(&cacheReady)); err != nil {
 		panic(err)
 	}
-	go func() {
-		if err := http.ListenAndServe(listen, httpapi.Handler(intent.Service{Client: mgr.GetClient(), Worm: types.NamespacedName{Namespace: namespace, Name: name}})); err != nil {
-			panic(err)
-		}
-	}()
+	if err := mgr.Add(manager.RunnableFunc(func(ctx context.Context) error {
+		cacheReady.Store(true)
+		defer cacheReady.Store(false)
+		return serveIntents(ctx, listen, intent.Service{Client: mgr.GetClient(), Worm: types.NamespacedName{Namespace: namespace, Name: name}})
+	})); err != nil {
+		panic(err)
+	}
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
 		panic(err)
 	}
+}
+
+func managerOptions(scheme *runtime.Scheme, namespace, metricsAddr, probeAddr string) ctrl.Options {
+	return ctrl.Options{
+		Scheme:                 scheme,
+		Cache:                  cache.Options{DefaultNamespaces: map[string]cache.Config{namespace: {}}},
+		Metrics:                metricsserver.Options{BindAddress: metricsAddr},
+		HealthProbeBindAddress: probeAddr,
+	}
+}
+
+func readyCheck(ready *atomic.Bool) healthz.Checker {
+	return func(*http.Request) error {
+		if ready.Load() {
+			return nil
+		}
+		return errors.New("cache has not synced")
+	}
+}
+
+func serveIntents(ctx context.Context, listen string, service intent.Service) error {
+	server := &http.Server{Addr: listen, Handler: httpapi.Handler(service)}
+	go func() {
+		<-ctx.Done()
+		_ = server.Shutdown(context.Background())
+	}()
+	if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		return fmt.Errorf("serve replication intents: %w", err)
+	}
+	return nil
 }
