@@ -20,6 +20,9 @@ socketLB:
 bpf:
   masquerade: false
   hostLegacyRouting: true
+  # This is a single-node observability lab: retain every packet trace so
+  # Hubble can render short-lived local service traffic.
+  monitorAggregation: none
   tproxy: false
 
 ipam:
