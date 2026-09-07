@@ -5,6 +5,12 @@
 # Cilium 1.13.4 expects a string mode; Boolean true fails chart rendering.
 kubeProxyReplacement: "strict"
 
+# MetalLB speakers use hostNetwork and reach the Kubernetes API through its
+# ClusterIP. With kube-proxy disabled, host-namespace socket LB is required.
+socketLB:
+  enabled: true
+  hostNamespaceOnly: true
+
 # Keep every Cilium workload on a reviewed, immutable image reference.
 image:
   repository: docker.io/cilium/cilium
