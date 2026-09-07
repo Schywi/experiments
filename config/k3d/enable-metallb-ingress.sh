@@ -9,6 +9,7 @@ script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd -- "${script_dir}/../.." && pwd)"
 base_values="${repo_root}/config/helm/cilium/values.yaml"
 metallb_values="${repo_root}/config/metallb/cilium-values.yaml"
+hubble_service_file="${repo_root}/config/helm/cilium/hubble-ui-service.yaml"
 cluster_name="${K3D_CLUSTER_NAME:-cilium-lab}"
 server_container="k3d-${cluster_name}-server-0"
 cilium_version="${CILIUM_VERSION:-1.13.4}"
@@ -30,6 +31,8 @@ helm upgrade --install cilium cilium/cilium \
   --wait \
   --timeout "${helm_timeout}"
 
+kubectl --namespace kube-system apply --filename "${hubble_service_file}"
+kubectl --namespace kube-system rollout restart daemonset/cilium
 kubectl --namespace kube-system rollout status daemonset/cilium --timeout="${helm_timeout}"
 kubectl --namespace kube-system rollout status deployment/cilium-operator --timeout="${helm_timeout}"
 

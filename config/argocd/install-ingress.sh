@@ -6,19 +6,25 @@ command -v kubectl >/dev/null 2>&1 || { echo "kubectl is required" >&2; exit 1; 
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 ingress_file="${script_dir}/argocd-ingress.yaml"
+service_file="${script_dir}/argocd-service.yaml"
 kubectl_timeout="${KUBECTL_TIMEOUT:-5m}"
 
 [[ -f "${ingress_file}" ]] || {
   echo "Argo CD Ingress manifest not found: ${ingress_file}" >&2
   exit 1
 }
+[[ -f "${service_file}" ]] || {
+  echo "Argo CD Service manifest not found: ${service_file}" >&2
+  exit 1
+}
 
 kubectl wait --for=create namespace/argocd --timeout="${kubectl_timeout}"
+kubectl apply --filename "${service_file}"
 kubectl --namespace argocd get service/argocd-server >/dev/null
 
 service_type="$(kubectl --namespace argocd get service/argocd-server --output=jsonpath='{.spec.type}')"
-if [[ "${service_type}" != "ClusterIP" ]]; then
-  echo "refusing Argo CD Ingress: argocd-server Service is ${service_type}, expected ClusterIP" >&2
+if [[ "${service_type}" != "LoadBalancer" ]]; then
+  echo "refusing Argo CD Ingress: argocd-server Service is ${service_type}, expected LoadBalancer" >&2
   exit 1
 fi
 

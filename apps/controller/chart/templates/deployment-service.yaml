@@ -17,6 +17,8 @@ spec:
       labels:
         {{- include "worm-controller.selectorLabels" . | nindent 8 }}
     spec:
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
       serviceAccountName: worm-controller
       automountServiceAccountToken: true
       terminationGracePeriodSeconds: 15
@@ -36,6 +38,11 @@ spec:
             - name: health
               containerPort: 8083
           env:
+            # Bypass the single-node Cilium ClusterIP path to the k3d API.
+            - name: KUBERNETES_SERVICE_HOST
+              value: "127.0.0.1"
+            - name: KUBERNETES_SERVICE_PORT
+              value: "6443"
             - name: WORM_NAMESPACE
               valueFrom:
                 fieldRef:
@@ -74,6 +81,7 @@ metadata:
     {{- include "worm-controller.labels" . | nindent 4 }}
 spec:
   type: ClusterIP
+  clusterIP: None
   selector:
     {{- include "worm-controller.selectorLabels" . | nindent 4 }}
   ports:

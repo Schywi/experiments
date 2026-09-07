@@ -23,6 +23,7 @@ image:
 # BPF TProxy remains disabled; Cilium Ingress uses the iptables proxy path.
 bpf:
   masquerade: true
+  hostLegacyRouting: true
   tproxy: false
 
 ipam:

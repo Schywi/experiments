@@ -117,8 +117,8 @@ assert_argocd_contract() {
   admin_enabled="$(kubectl --namespace argocd get configmap/argocd-cm \
     --output=jsonpath='{.data.admin\.enabled}')"
 
-  [[ "${service_type}" == "ClusterIP" ]] || {
-    echo "argocd-server Service is ${service_type}, expected ClusterIP" >&2
+  [[ "${service_type}" == "LoadBalancer" ]] || {
+    echo "argocd-server Service is ${service_type}, expected LoadBalancer" >&2
     return 1
   }
   [[ "${insecure}" == "true" ]] || {
@@ -154,11 +154,48 @@ check_http_route() {
   return 1
 }
 
+check_http_service() {
+  local route_name="$1"
+  local service_ip="$2"
+  local attempt
+
+  for ((attempt = 1; attempt <= HTTP_RETRIES; attempt++)); do
+    if curl --fail --silent --show-error --location --max-time "${HTTP_TIMEOUT}" \
+      "http://${service_ip}/" >/dev/null; then
+      return 0
+    fi
+    if ((attempt < HTTP_RETRIES)); then
+      sleep "${HTTP_RETRY_DELAY}"
+    fi
+  done
+
+  echo "${route_name} is unreachable at http://${service_ip}/" >&2
+  return 1
+}
+
 assert_argocd_contract
 require_ingress_backend kube-system hubble-ui hubble-ui localhost
 require_ingress_backend argocd argocd-server argocd-server argocd.localhost
-check_http_route "Hubble UI" localhost
-check_http_route "Argo CD" argocd.localhost
+
+hubble_ip=""
+argocd_ip=""
+for ((attempt = 1; attempt <= HTTP_RETRIES; attempt++)); do
+  hubble_ip="$(kubectl --namespace kube-system get service/hubble-ui \
+    --output=jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)"
+  argocd_ip="$(kubectl --namespace argocd get service/argocd-server \
+    --output=jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)"
+  if [[ -n "${hubble_ip}" && -n "${argocd_ip}" ]]; then
+    break
+  fi
+  if ((attempt < HTTP_RETRIES)); then
+    sleep "${HTTP_RETRY_DELAY}"
+  fi
+done
+
+[[ -n "${hubble_ip}" ]] || { echo "hubble-ui has no MetalLB external IP" >&2; exit 1; }
+[[ -n "${argocd_ip}" ]] || { echo "argocd-server has no MetalLB external IP" >&2; exit 1; }
+check_http_service "Hubble UI" "${hubble_ip}"
+check_http_service "Argo CD" "${argocd_ip}"
 
 kubectl --namespace kube-system get pods -l k8s-app=cilium
 kubectl --namespace kube-system get service/cilium-ingress -o wide

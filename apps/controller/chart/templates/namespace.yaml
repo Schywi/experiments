@@ -1,8 +1,0 @@
-{{- if .Values.namespace.create }}
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: {{ .Release.Namespace }}
-  labels:
-    app.kubernetes.io/part-of: bounded-worm-lab
-{{- end }}
