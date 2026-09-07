@@ -12,7 +12,7 @@ metallb_values="${repo_root}/config/metallb/cilium-values.yaml"
 hubble_service_file="${repo_root}/config/helm/cilium/hubble-ui-service.yaml"
 cluster_name="${K3D_CLUSTER_NAME:-cilium-lab}"
 server_container="k3d-${cluster_name}-server-0"
-cilium_version="${CILIUM_VERSION:-1.13.4}"
+cilium_version="${CILIUM_VERSION:-1.20.1}"
 helm_timeout="${HELM_TIMEOUT:-10m}"
 
 server_ip="$(docker inspect --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "${server_container}" 2>/dev/null || true)"

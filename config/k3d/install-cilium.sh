@@ -28,8 +28,8 @@ ingress_file="${repo_root}/config/helm/cilium/hubble-ui-ingress.yaml"
   echo "Hubble Ingress manifest not found: ${ingress_file}" >&2
   exit 1
 }
-# Keep bootstrap and values.yaml on the same Docker-Hub-only Cilium release.
-CILIUM_VERSION="${CILIUM_VERSION:-1.13.4}"
+# Keep bootstrap and values.yaml on the same Cilium release.
+CILIUM_VERSION="${CILIUM_VERSION:-1.20.1}"
 HELM_TIMEOUT="${HELM_TIMEOUT:-10m}"
 CLUSTER_NAME="${K3D_CLUSTER_NAME:-cilium-lab}"
 SERVER_CONTAINER="k3d-${CLUSTER_NAME}-server-0"
