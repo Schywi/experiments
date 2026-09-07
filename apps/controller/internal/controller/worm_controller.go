@@ -9,7 +9,9 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 )
 
 type WormReconciler struct{ client.Client }
@@ -59,5 +61,7 @@ func (r *WormReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 	return ctrl.Result{}, nil
 }
 func (r *WormReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewControllerManagedBy(mgr).For(&api.Worm{}).Named("worm").Complete(r)
+	return ctrl.NewControllerManagedBy(mgr).
+		For(&api.Worm{}, builder.WithPredicates(predicate.ResourceVersionChangedPredicate{})).
+		Named("worm").Complete(r)
 }
