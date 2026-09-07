@@ -12,7 +12,7 @@ spec:
     - toEndpoints:
         - matchLabels:
             k8s:io.kubernetes.pod.namespace: {{ .Release.Namespace }}
-            app.kubernetes.io/name: regression
+            app.kubernetes.io/name: worm-regression
       toPorts:
         - ports:
             - port: "4000"

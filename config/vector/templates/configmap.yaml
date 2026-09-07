@@ -13,16 +13,21 @@ data:
     [sources.worker_logs]
     type = "file"
     include = ["/var/log/pods/worm-lab_worm-worker-*/*/*.log"]
-    read_from = "beginning"
+    read_from = "end"
 
     [transforms.parse_worker_sample]
     type = "remap"
     inputs = ["worker_logs"]
     source = '''
-    parsed = parse_regex!(.message, r'^\\S+\\s+stdout\\s+[FP]\\s+(?P<payload>.*)$')
+    .message = string!(.message)
+    if !contains(.message, " stdout F ") {
+      abort
+    }
+    parsed = parse_regex!(.message, r'stdout F (?P<payload>.*)')
     . = parse_json!(parsed.payload)
     if .kind != "sample" || !is_string(.worm_id) || !is_integer(.sequence) ||
-       !is_number(.x) || !is_number(.y) || !is_integer(.occurred_at) {
+       (!is_integer(.x) && !is_float(.x)) || (!is_integer(.y) && !is_float(.y)) ||
+       !is_integer(.occurred_at) {
       abort
     }
     '''

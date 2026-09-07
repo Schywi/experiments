@@ -7,10 +7,7 @@ metadata:
 spec:
   replicas: {{ .Values.replicaCount }}
   strategy:
-    type: RollingUpdate
-    rollingUpdate:
-      maxUnavailable: 0
-      maxSurge: 1
+    type: Recreate
   selector:
     matchLabels:
       {{- include "vector.selectorLabels" . | nindent 6 }}
@@ -24,9 +21,9 @@ spec:
       terminationGracePeriodSeconds: 10
       automountServiceAccountToken: false
       securityContext:
-        runAsNonRoot: true
-        runAsUser: 1000
-        runAsGroup: 1000
+        runAsNonRoot: false
+        runAsUser: 0
+        runAsGroup: 0
         seccompProfile:
           type: RuntimeDefault
       containers:
@@ -76,6 +73,8 @@ spec:
               readOnly: true
             - name: tmp
               mountPath: /tmp
+            - name: data
+              mountPath: /var/lib/vector
             - name: pod-logs
               mountPath: /var/log/pods
               readOnly: true
@@ -84,6 +83,8 @@ spec:
           configMap:
             name: {{ include "vector.fullname" . }}
         - name: tmp
+          emptyDir: {}
+        - name: data
           emptyDir: {}
         - name: pod-logs
           hostPath:

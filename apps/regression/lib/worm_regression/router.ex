@@ -8,7 +8,13 @@ defmodule WormRegression.Router do
   plug(:dispatch)
 
   post "/ingest" do
-    case WormRegression.Store.ingest(conn.body_params) do
+    event =
+      case conn.body_params do
+        %{"_json" => [event]} -> event
+        body -> body
+      end
+
+    case WormRegression.Store.ingest(event) do
       {:accepted, result} -> json(conn, 202, %{status: "accepted", result: result})
       {:duplicate, result} -> json(conn, 200, %{status: "duplicate", result: result})
       {:error, reason} -> json(conn, 422, %{error: reason})
