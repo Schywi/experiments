@@ -42,7 +42,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	if err := (&controller.WormReconciler{Client: mgr.GetClient()}).SetupWithManager(mgr); err != nil {
+	if err := (&controller.WormReconciler{Client: mgr.GetClient(), Reader: mgr.GetAPIReader()}).SetupWithManager(mgr); err != nil {
 		panic(err)
 	}
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {

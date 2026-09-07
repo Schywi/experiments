@@ -14,7 +14,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 )
 
-type WormReconciler struct{ client.Client }
+type WormReconciler struct {
+	client.Client
+	Reader client.Reader
+}
 
 func (r *WormReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	worm := &api.Worm{}
@@ -33,7 +36,7 @@ func (r *WormReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 	}
 	deployment := &appsv1.Deployment{}
 	key := types.NamespacedName{Namespace: worm.Namespace, Name: worm.Spec.WorkerDeploymentName}
-	if err := r.Get(ctx, key, deployment); err != nil {
+	if err := r.Reader.Get(ctx, key, deployment); err != nil {
 		if errors.IsNotFound(err) {
 			return ctrl.Result{}, nil
 		}
