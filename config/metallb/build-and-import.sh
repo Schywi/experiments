@@ -20,8 +20,10 @@ docker build --pull --no-cache --file "${script_dir}/Dockerfile.speaker" \
 k3d image import "${controller_image}" "${speaker_image}" --cluster "${cluster_name}"
 
 for image in "${controller_image}" "${speaker_image}"; do
+  short_image="${image#docker.io/}"
+  library_image="docker.io/library/${short_image}"
   docker exec "${container_name}" sh -c \
-    "ctr -n k8s.io images ls -q | grep -Fx -- 'docker.io/library/${image}'" >/dev/null || {
+    "ctr -n k8s.io images ls -q | grep -Fx -e '${image}' -e '${short_image}' -e '${library_image}'" >/dev/null || {
     echo "k3d runtime does not contain imported image ${image}" >&2
     exit 1
   }

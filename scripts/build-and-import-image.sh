@@ -28,13 +28,14 @@ docker build \
 docker image inspect "${image_ref}" >/dev/null
 k3d image import "${image_ref}" --cluster "${cluster_name}"
 
-container_image_ref="${image_ref}"
-if [[ "${container_image_ref}" != */* ]]; then
-  container_image_ref="docker.io/library/${container_image_ref}"
+short_image_ref="${image_ref#docker.io/}"
+library_image_ref="${short_image_ref}"
+if [[ "${short_image_ref}" != */* ]]; then
+  library_image_ref="docker.io/library/${short_image_ref}"
 fi
 
 docker exec "${container_name}" sh -c \
-  "ctr -n k8s.io images ls -q | grep -Fx -- '${container_image_ref}'" >/dev/null || {
+  "ctr -n k8s.io images ls -q | grep -Fx -e '${image_ref}' -e '${short_image_ref}' -e '${library_image_ref}'" >/dev/null || {
   echo "k3d runtime does not contain imported image ${image_ref}" >&2
   exit 1
 }

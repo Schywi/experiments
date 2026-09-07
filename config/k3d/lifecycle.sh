@@ -4,6 +4,14 @@ set -euo pipefail
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 cluster_name="${K3D_CLUSTER_NAME:-cilium-lab}"
+lock_file="/tmp/experiments-${cluster_name}.tilt.lock"
+
+command -v flock >/dev/null 2>&1 || { echo "flock is required" >&2; exit 1; }
+exec 9>"${lock_file}"
+flock -n 9 || {
+  echo "another lifecycle operation is already running for cluster '${cluster_name}'" >&2
+  exit 1
+}
 
 trap 'exit 130' INT
 trap 'exit 143' TERM

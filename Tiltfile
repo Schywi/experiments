@@ -7,6 +7,5 @@ CONFIG_DIR = "config"
 CLUSTER_CONFIG_DIR = CONFIG_DIR + "/k3d"
 PLATFORM_LIFECYCLE = CLUSTER_CONFIG_DIR + "/lifecycle.sh"
 
-watch_file(CONFIG_DIR)
 local(PLATFORM_LIFECYCLE + " --once")
 include("Tiltfile.workloads")
