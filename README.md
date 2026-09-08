@@ -1,9 +1,11 @@
 # Bounded Worm replication experiment
 
-This repository is a local, Docker-backed Kubernetes experiment for observing
-a bounded self-replicating workload with Cilium and Hubble. It runs one k3s
-node in k3d, installs the platform, builds the three Worm application images
-without using a build cache, and deploys the workload.
+This repository is a reproducible, local Kubernetes research lab for bounded,
+observable self-replicating workers. A Go controller turns idempotent
+replication intents into capped Deployment scaling; Rust workers emit
+telemetry to Vector; and an Elixir regression service analyzes the resulting
+stream. Cilium and Hubble expose the network behavior while k3d, Helm, and
+local image delivery keep the experiment repeatable.
 
 The experiment is intentionally local. It is not a production Kubernetes
 distribution, an Internet-facing service, or a generic application template.
