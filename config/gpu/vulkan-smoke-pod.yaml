@@ -1,0 +1,34 @@
+# Track C step 3: run an actual Vulkan workload on the render node.
+#
+# This is the definitive "does the GPU work" test -- not just device visibility.
+# Build the tool image on the host, import it, then apply:
+#
+#   buildah bud -t vulkan-tools:local -f config/gpu/Containerfile.vulkan-tools config/gpu
+#   buildah push vulkan-tools:local oci-archive:/tmp/vulkan-tools.tar
+#   sudo k3s ctr images import /tmp/vulkan-tools.tar
+#   kubectl apply -f config/gpu/vulkan-smoke-pod.yaml
+#   kubectl logs vulkan-smoke       # must list the Radeon RX 570 / RADV device
+#   kubectl delete -f config/gpu/vulkan-smoke-pod.yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: vulkan-smoke
+  labels:
+    app.kubernetes.io/part-of: gpu-lab
+spec:
+  restartPolicy: Never
+  securityContext:
+    supplementalGroups: [105] # render group on the reference host
+  containers:
+    - name: vulkan
+      image: vulkan-tools:local
+      imagePullPolicy: IfNotPresent
+      command: ["vulkaninfo", "--summary"]
+      volumeMounts:
+        - name: dri
+          mountPath: /dev/dri
+  volumes:
+    - name: dri
+      hostPath:
+        path: /dev/dri
+        type: Directory

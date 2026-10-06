@@ -1,0 +1,5 @@
+# Tiny Vulkan tool image for the Track C smoke test (vulkaninfo).
+# Built on the host with buildah and imported into k3s; see README.
+FROM docker.io/library/fedora:44
+RUN dnf -y install mesa-vulkan-drivers vulkan-tools && dnf clean all
+ENTRYPOINT ["vulkaninfo", "--summary"]
