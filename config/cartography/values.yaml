@@ -11,6 +11,9 @@ neo4j:
   # Keys: `password` (raw password used by the Cartography sync) and `auth`
   # (`neo4j/<password>`, used by the Neo4j container's NEO4J_AUTH variable).
   authSecretName: cartography-neo4j-auth
+  # Pin the external bolt endpoint (from the Cilium lan-pool) so Neo4j Browser
+  # can reach the database over bolt (7687) as well as the HTTP Ingress (7474).
+  loadBalancerIP: "192.168.0.242"
   storage:
     size: 2Gi
     # Empty string uses the cluster default StorageClass.
@@ -55,3 +58,12 @@ rbac:
 ciliumNetworkPolicy:
   # Enforce an allow-list for the Neo4j and Cartography pods. Requires Cilium.
   enabled: true
+
+ingress:
+  # Neo4j Browser via the Cilium Ingress Controller (like argocd.localhost).
+  # Cartography itself has no web UI; both hosts point at Neo4j Browser.
+  enabled: true
+  className: cilium
+  hosts:
+    - neo4j.localhost
+    - cartography.localhost

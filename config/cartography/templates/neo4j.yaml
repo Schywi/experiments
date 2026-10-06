@@ -20,8 +20,14 @@ metadata:
   name: {{ include "cartography.fullname" . }}-neo4j
   labels:
     {{- include "cartography.labels" . | nindent 4 }}
+  {{- with .Values.neo4j.loadBalancerIP }}
+  annotations:
+    # Pin the external IP (Cilium LB IPAM) so bolt is reachable out of cluster.
+    io.cilium/lb-ipam-ips: {{ . | quote }}
+  {{- end }}
 spec:
-  type: ClusterIP
+  type: LoadBalancer
+  externalTrafficPolicy: Cluster
   selector:
     {{- include "cartography.neo4jSelectorLabels" . | nindent 4 }}
   ports:

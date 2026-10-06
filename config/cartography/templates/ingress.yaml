@@ -1,0 +1,26 @@
+{{- if .Values.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "cartography.fullname" . }}
+  labels:
+    {{- include "cartography.labels" . | nindent 4 }}
+  annotations:
+    # Match ingressController.loadbalancerMode in config/helm/cilium/values.yaml.
+    ingress.cilium.io/loadbalancer-mode: shared
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  rules:
+    {{- range .Values.ingress.hosts }}
+    - host: {{ . | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "cartography.fullname" $ }}-neo4j
+                port:
+                  number: 7474
+    {{- end }}
+{{- end }}
