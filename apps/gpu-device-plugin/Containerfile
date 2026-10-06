@@ -1,0 +1,12 @@
+# Go device plugin that advertises the host's DRM render node(s) to kubelet.
+# Built locally (buildah) and imported into the k3s node.
+FROM docker.io/library/golang:1.23 AS build
+
+WORKDIR /src
+COPY go.mod main.go ./
+RUN go mod tidy && CGO_ENABLED=0 GOOS=linux go build -trimpath -o /gpu-device-plugin .
+
+FROM docker.io/library/alpine:3.20
+
+COPY --from=build /gpu-device-plugin /usr/local/bin/gpu-device-plugin
+ENTRYPOINT ["/usr/local/bin/gpu-device-plugin"]

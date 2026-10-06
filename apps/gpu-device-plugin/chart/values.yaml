@@ -1,0 +1,19 @@
+# Built locally (buildah) and imported into the k3s node; see the Containerfile.
+image:
+  repository: gpu-device-plugin
+  tag: local
+  pullPolicy: IfNotPresent
+
+resourceName: amd.com/render
+# Host paths. The render node lives under renderPath; the plugin writes its
+# kubelet socket into devicePluginDir.
+renderPath: /dev/dri
+devicePluginDir: /var/lib/kubelet/device-plugins
+
+resources:
+  requests:
+    cpu: 10m
+    memory: 32Mi
+  limits:
+    cpu: 100m
+    memory: 64Mi

@@ -1,0 +1,6 @@
+apiVersion: v2
+name: gpu-device-plugin
+description: Go device plugin advertising DRM render nodes as an amd.com/render resource
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
