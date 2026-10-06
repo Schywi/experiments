@@ -14,14 +14,20 @@ command -v kubectl >/dev/null 2>&1 || {
 }
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+repo_root="$(cd -- "${script_dir}/../.." && pwd)"
 values_file="${script_dir}/cilium-values.yaml"
-# k3s writes its admin kubeconfig here; the API is loopback-only.
+lb_ipam_file="${script_dir}/cilium-lb-ipam.yaml"
+hubble_service_file="${repo_root}/config/helm/cilium/hubble-ui-service.yaml"
+hubble_ingress_file="${repo_root}/config/helm/cilium/hubble-ui-ingress.yaml"
+# k3s writes its admin kubeconfig here.
 export KUBECONFIG="${KUBECONFIG:-/etc/rancher/k3s/k3s.yaml}"
 
-[[ -f "${values_file}" ]] || {
-  echo "Cilium values file not found: ${values_file}" >&2
-  exit 1
-}
+for required_file in "${values_file}" "${lb_ipam_file}" "${hubble_service_file}" "${hubble_ingress_file}"; do
+  [[ -f "${required_file}" ]] || {
+    echo "required file not found: ${required_file}" >&2
+    exit 1
+  }
+done
 
 # Keep the installer and values.yaml on the same Cilium release.
 CILIUM_VERSION="${CILIUM_VERSION:-1.20.1}"
@@ -38,4 +44,12 @@ helm upgrade --install cilium cilium/cilium \
   --wait \
   --timeout "${HELM_TIMEOUT}"
 
-echo "Cilium ${CILIUM_VERSION} installed with Hubble Relay and UI on the native k3s host"
+# Cilium provides LoadBalancer IPs (LB IPAM + L2 announcements); no MetalLB.
+kubectl apply --filename "${lb_ipam_file}"
+
+# Expose Hubble UI as a LoadBalancer and route it through the shared ingress
+# (same as the k3d profile).
+kubectl apply --filename "${hubble_service_file}"
+kubectl apply --filename "${hubble_ingress_file}"
+
+echo "Cilium ${CILIUM_VERSION} installed with Hubble Relay/UI, ingress, and Cilium LB IPAM"

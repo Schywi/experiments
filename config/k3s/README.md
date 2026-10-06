@@ -70,15 +70,20 @@ ROCm/PyTorch. See `research/native-k3s-gpu-models-plan.md` for the full plan.
   `bind-address`** — it makes every Pod unable to reach the API (and DNS) while
   the node still reports Ready. Port 6443 therefore listens on the host's
   interfaces; restrict it with firewalld if LAN exposure is a concern.
-- **Argo CD is headless/no-auth and ClusterIP only** — no ingress, no
-  LoadBalancer, no host port binding (per `AGENTS.md`). Reach it with
-  `kubectl -n argocd port-forward svc/argocd-server 8080:80`.
-- **Hubble UI is ClusterIP** in this slice: `kubectl -n kube-system
-  port-forward svc/hubble-ui 8081:80`.
-- **LoadBalancer exposure is deliberately deferred.** The k3d profile used
-  MetalLB on a Docker bridge (`172.20.0.0/16`); a native host needs a different
-  address source (Cilium LB IPAM, or MetalLB on a LAN/dummy interface), which is
-  a separate, reviewed decision.
+- **LoadBalancer exposure via Cilium LB IPAM (no MetalLB).** Cilium assigns
+  LoadBalancer IPs from `cilium-lb-ipam.yaml` (`192.168.0.240-192.168.0.250` —
+  adjust to a free range outside your DHCP pool) and announces them on the LAN
+  via L2. This is the native replacement for the k3d profile's MetalLB.
+- **Cilium shared Ingress is enabled** (LoadBalancer + NodePort 30080), routing
+  host `localhost` to Hubble UI and `argocd.localhost` to Argo CD.
+- **Argo CD is headless/no-auth**, exposed exactly like the k3d profile: a
+  LoadBalancer Service plus the `argocd.localhost` ingress.
+  ⚠️ `AGENTS.md` currently says to keep Argo CD on an internal ClusterIP only.
+  This profile deliberately follows the stack instead, so **that rule is out of
+  date for native k3s** and should be reconciled before relying on it.
+- **URLs:** Hubble UI `http://localhost:30080/`, Argo CD
+  `http://argocd.localhost:30080/` (or the Cilium LoadBalancer IP with the
+  matching Host header).
 
 ## Pod swap
 

@@ -15,6 +15,7 @@ export KUBECONFIG="${KUBECONFIG:-/etc/rancher/k3s/k3s.yaml}"
 "${script_dir}/install-k3s.sh"
 "${script_dir}/install-cilium.sh"
 "${repo_root}/config/argocd/install.sh"
+"${repo_root}/config/argocd/install-ingress.sh"
 "${script_dir}/validate.sh"
 
 echo "Native k3s, Cilium, Hubble, and Argo CD are ready"

@@ -55,8 +55,20 @@ hubble:
         useDigest: true
         pullPolicy: IfNotPresent
 
-# No ingress or LoadBalancer in this slice: Argo CD and Hubble UI stay
-# ClusterIP and are reached through port-forward. LoadBalancer exposure (MetalLB
-# or Cilium LB IPAM) is a deliberate follow-up; see README.
+# Cilium is the LoadBalancer implementation for this profile: it assigns
+# LoadBalancer IPs itself (LB IPAM) and announces them on the LAN (L2). There is
+# no MetalLB here. The pool and the L2 policy live in cilium-lb-ipam.yaml.
+l2announcements:
+  enabled: true
+externalIPs:
+  enabled: true
+
+# Run Cilium's shared Ingress Controller, exposed as a LoadBalancer backed by
+# Cilium LB IPAM (mirrors the k3d profile, minus MetalLB).
 ingressController:
-  enabled: false
+  enabled: true
+  loadbalancerMode: shared
+  service:
+    type: LoadBalancer
+    externalTrafficPolicy: Cluster
+    insecureNodePort: 30080

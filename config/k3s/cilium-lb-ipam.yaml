@@ -1,0 +1,31 @@
+# Cilium LoadBalancer IPAM + L2 announcements for the native-k3s profile.
+#
+# This replaces the k3d profile's MetalLB. Cilium itself hands out LoadBalancer
+# IPs from the pool below and announces them on the LAN via ARP/NDP (L2).
+#
+# The pool mirrors the k3d profile's last octet (.240-.250), but on the REAL
+# LAN (the node is 192.168.0.28), not a Docker bridge. Verify these addresses
+# are free and outside your router's DHCP range before applying; adjust
+# `blocks` (and nothing else) if they are not.
+apiVersion: cilium.io/v2
+kind: CiliumLoadBalancerIPPool
+metadata:
+  name: lan-pool
+  labels:
+    app.kubernetes.io/part-of: cilium-lab
+spec:
+  blocks:
+    - start: 192.168.0.240
+      end: 192.168.0.250
+---
+# Announce the pool's IPs on suitable interfaces (no `interfaces` selector:
+# Cilium picks the interface whose subnet matches the pool, i.e. the LAN NIC).
+apiVersion: cilium.io/v2alpha1
+kind: CiliumL2AnnouncementPolicy
+metadata:
+  name: lan-l2
+  labels:
+    app.kubernetes.io/part-of: cilium-lab
+spec:
+  externalIPs: true
+  loadBalancerIPs: true
