@@ -54,3 +54,33 @@ apps/assistant/chat.sh "explain what a Kubernetes pod is in one sentence"
   Kubernetes API. The read-only ServiceAccount/RBAC boundary is added at
   Milestone 2 with the first infrastructure tool.
 - Latency is CPU-bound by the 1.5B LLM (~10–20 tok/s).
+
+## Milestone 2 — one read-only infrastructure tool
+
+The assistant now answers infrastructure questions by calling the Kubernetes API
+**as its own ServiceAccount**, bounded by a read-only ClusterRole.
+
+- `tools.py` — narrow, typed tools with a risk level. `get_pods()` is the first
+  (level 1, read-only). `route()` maps a message to a tool (keyword rules for
+  now; the Laya decision engine replaces it later, same interface).
+- `chart/templates/rbac.yaml` — `ClusterRole assistant-readonly`: `get/list/watch`
+  on pods, services, nodes, namespaces, events, and the apps resources; `get` on
+  `pods/log`. No write verbs. Bound to the `assistant` ServiceAccount.
+- Every tool call is audited to `/var/log/assistant/audit.jsonl` (JSONL on an
+  `emptyDir`): `tool_call`, `tool_result`, `tool_error`.
+
+Flow:
+
+```
+message -> route() -> get_pods() [SA token, RBAC-limited] -> data
+        -> local LLM phrases the answer -> reply
+```
+
+```bash
+curl -s localhost:8080/chat -H 'content-type: application/json' \
+  -d '{"message":"what pods are running?"}'
+# -> {"reply":"...","tool":"get_pods"}
+```
+
+Later milestones add more level-1 tools, then level-2 actions behind explicit
+human confirmation, then Laya-based intent routing and voice.

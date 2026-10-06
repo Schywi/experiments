@@ -13,6 +13,11 @@ llm:
 service:
   port: 8080
 
+# Read-only ClusterRole + binding for the assistant ServiceAccount. When false,
+# no RBAC is created and no API token is mounted (text-only, Milestone 1 mode).
+rbac:
+  create: true
+
 resources:
   requests:
     cpu: 50m

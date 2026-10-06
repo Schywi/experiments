@@ -18,9 +18,10 @@ spec:
         {{- include "assistant.selectorLabels" . | nindent 8 }}
     spec:
       serviceAccountName: assistant
-      # Milestone 1 makes no Kubernetes API calls; do not mount a token. The
-      # read-only RBAC boundary is added at Milestone 2.
-      automountServiceAccountToken: false
+      # Milestone 2: read the Kubernetes API as this ServiceAccount, bounded by
+      # the read-only ClusterRole in rbac.yaml. No token is mounted when RBAC is
+      # disabled (Milestone 1, text-only).
+      automountServiceAccountToken: {{ .Values.rbac.create }}
       securityContext:
         runAsNonRoot: true
         runAsUser: 10001
@@ -40,6 +41,8 @@ spec:
               value: {{ .Values.llm.model | quote }}
             - name: REQUEST_TIMEOUT
               value: {{ .Values.llm.timeoutSeconds | quote }}
+            - name: AUDIT_LOG
+              value: /var/log/assistant/audit.jsonl
           startupProbe:
             httpGet: {path: /healthz, port: http}
             periodSeconds: 2
@@ -59,3 +62,13 @@ spec:
               drop: ["ALL"]
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: audit
+              mountPath: /var/log/assistant
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: audit
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
