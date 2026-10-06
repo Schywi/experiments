@@ -31,6 +31,14 @@ directory rather than recreating platform-specific top-level trees.
 - Agents must not trigger, stop, kill, restart, or otherwise control any Tilt
   process or runtime. Only the user operates Tilt.
 
+## Git Worktrees — DO NOT TOUCH
+
+- NEVER create, move, remove, prune, or re-point a git worktree. No exceptions.
+- NEVER change a worktree's location. Ever.
+- NEVER use a worktree as a workaround for anything (locks, permissions, write
+  scope, sandbox limits, "it's blocked").
+- Work directly in this repository checkout, on a branch, like a normal human.
+
 This project uses **bd** (beads) for issue tracking. Run `bd onboard` to get started.
 
 ## Quick Reference
