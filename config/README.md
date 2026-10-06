@@ -61,5 +61,5 @@ material belongs in this directory. `config/sealed-secrets/` installs the Sealed
 Secrets controller, and secrets are carried as committed `SealedSecret`
 resources that only the in-cluster controller can decrypt; keep the controller's
 private key backed up out of band. `config/cartography/` deploys the Cartography
-infrastructure graph (a bundled Neo4j plus a scheduled Kubernetes sync) and
-consumes such a `SealedSecret` for the Neo4j password.
+infrastructure graph (a bundled Neo4j plus a scheduled Kubernetes sync); its
+Neo4j runs without authentication.
