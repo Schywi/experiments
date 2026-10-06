@@ -37,10 +37,15 @@ helm repo add cilium https://helm.cilium.io --force-update
 helm repo update cilium
 
 # k8sServiceHost/k8sServicePort come from cilium-values.yaml for this profile.
+# --force-conflicts: this script also applies hubble-ui-service.yaml below, so on
+# a re-run the chart's hubble-ui Service conflicts with the kubectl-applied one
+# (field manager "kubectl-client-side-apply"). Forcing the chart's server-side
+# apply keeps re-runs of this script idempotent.
 helm upgrade --install cilium cilium/cilium \
   --namespace kube-system \
   --version "${CILIUM_VERSION}" \
   --values "${values_file}" \
+  --force-conflicts \
   --wait \
   --timeout "${HELM_TIMEOUT}"
 
