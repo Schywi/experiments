@@ -80,11 +80,10 @@ spec:
               containerPort: 7474
               protocol: TCP
           env:
+            # Authentication disabled: Neo4j accepts any/no credentials. Lab
+            # convenience; anyone who can reach bolt/HTTP has full access.
             - name: NEO4J_AUTH
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.neo4j.authSecretName }}
-                  key: auth
+              value: "none"
           readinessProbe:
             tcpSocket:
               port: bolt

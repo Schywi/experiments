@@ -14,7 +14,6 @@ cartography/
 │   ├── serviceaccount.yaml
 │   ├── rbac.yaml             # cartography-viewer ClusterRole + binding
 │   ├── neo4j.yaml            # Neo4j Deployment + Service + PVC
-│   ├── neo4j-secret.yaml     # SealedSecret (Neo4j credentials)
 │   ├── cronjob.yaml          # scheduled Cartography sync
 │   └── ciliumnetworkpolicy.yaml
 └── README.md
@@ -22,11 +21,9 @@ cartography/
 
 ## Prerequisites
 
-The Sealed Secrets controller must already be installed
-(`config/sealed-secrets/install.sh`) so `neo4j-secret.yaml` can be decrypted.
-This component is **bound to namespace `cartography`**: the `SealedSecret` in
-`neo4j-secret.yaml` was sealed with strict scope for that namespace and name, so
-it only decrypts when applied there.
+Requires the Cilium Ingress Controller (for the hostnames) and a default
+StorageClass for the Neo4j PVC. No secret is needed: Neo4j runs with
+authentication disabled (see [Authentication](#authentication)).
 
 ## Deploy
 
@@ -56,7 +53,8 @@ Then open:
 - `http://neo4j.localhost` (or `http://cartography.localhost`) — Neo4j Browser
 - `neo4j://neo4j.localhost:7687` — the bolt endpoint the Browser connects to
 
-The Neo4j password is in the `cartography-neo4j-auth` Secret, key `password`.
+Authentication is disabled, so connect with any user or no credentials (just
+click Connect).
 
 ## How the sync authenticates
 
@@ -72,9 +70,13 @@ only. Cilium CRDs (`CiliumNetworkPolicy`, `CiliumEndpoint`, `CiliumIdentity`,
 …) and Hubble flows are **not** ingested — Cartography has no Cilium intel
 module.
 
-## Rotating the Neo4j password
+## Authentication
 
-Re-run the sealing step in `config/sealed-secrets/README.md` for namespace
-`cartography` with secret name `cartography-neo4j-auth` (keys `password` and
-`auth`, where `auth` is `neo4j/<password>`), then replace
-`templates/neo4j-secret.yaml` and let Argo sync.
+Neo4j runs with `NEO4J_AUTH=none` (authentication disabled), so no password is
+required. The Cartography sync connects with `auth=None` accordingly (no
+`--neo4j-user` or `--neo4j-password-env-var`).
+
+This is a lab convenience: anyone who can reach bolt (7687) or the Browser has
+full read/write access to the graph. To re-enable auth later, provide `NEO4J_AUTH`
+from a Secret and pass `--neo4j-user` plus `--neo4j-password-env-var` to the sync
+(the Sealed Secrets controller in `config/sealed-secrets/` is available for that).

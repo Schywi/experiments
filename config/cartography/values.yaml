@@ -7,10 +7,6 @@ neo4j:
     tag: "5.26-community"
     digest: "sha256:c7d25c0eeebfe125718d58b72ed5d663c85d0479047733845eb2237c67ce8069"
     pullPolicy: IfNotPresent
-  # Secret holding the Neo4j credentials, delivered as a SealedSecret.
-  # Keys: `password` (raw password used by the Cartography sync) and `auth`
-  # (`neo4j/<password>`, used by the Neo4j container's NEO4J_AUTH variable).
-  authSecretName: cartography-neo4j-auth
   # Pin the external bolt endpoint (from the Cilium lan-pool) so Neo4j Browser
   # can reach the database over bolt (7687) as well as the HTTP Ingress (7474).
   loadBalancerIP: "192.168.0.242"

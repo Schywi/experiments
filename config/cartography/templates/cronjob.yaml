@@ -75,17 +75,12 @@ spec:
               args:
                 - --selected-modules={{ .Values.cartography.selectedModules }}
                 - --k8s-kubeconfig=/kubeconfig/config
+                # No --neo4j-user/password: Neo4j auth is disabled, so
+                # Cartography connects with auth=None.
                 - --neo4j-uri=bolt://{{ include "cartography.fullname" . }}-neo4j:7687
-                - --neo4j-user=neo4j
-                - --neo4j-password-env-var=NEO4J_PASSWORD
               env:
                 - name: HOME
                   value: /tmp
-                - name: NEO4J_PASSWORD
-                  valueFrom:
-                    secretKeyRef:
-                      name: {{ .Values.neo4j.authSecretName }}
-                      key: password
               securityContext:
                 allowPrivilegeEscalation: false
                 readOnlyRootFilesystem: true
