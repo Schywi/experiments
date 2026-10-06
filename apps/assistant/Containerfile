@@ -1,0 +1,13 @@
+# Milestone 1 assistant: a text-first HTTP loop over the local LLM.
+# No tools, no Kubernetes API, no voice yet -- the smallest useful system.
+FROM python:3.12-slim
+
+RUN pip install --no-cache-dir fastapi "uvicorn[standard]" httpx \
+ && useradd --uid 10001 --user-group --shell /usr/sbin/nologin app
+
+WORKDIR /app
+COPY --chown=10001:10001 server.py /app/server.py
+
+USER 10001
+EXPOSE 8080
+ENTRYPOINT ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "8080"]

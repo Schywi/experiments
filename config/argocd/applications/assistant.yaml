@@ -1,0 +1,27 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: assistant
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: assistant-lab
+    app.kubernetes.io/managed-by: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/Schywi/experiments.git
+    targetRevision: main
+    path: apps/assistant/chart
+    helm:
+      releaseName: assistant
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: assistant
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
