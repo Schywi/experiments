@@ -18,7 +18,7 @@ kubectl --namespace kube-system rollout status daemonset/cilium --timeout="${KUB
 kubectl --namespace kube-system rollout status deployment/cilium-operator --timeout="${KUBECTL_TIMEOUT}"
 kubectl --namespace kube-system exec daemonset/cilium -- cilium status
 
-kubectl --namespace kube-system rollout status deployment/cilium-hubble-relay --timeout="${KUBECTL_TIMEOUT}"
+kubectl --namespace kube-system rollout status deployment/hubble-relay --timeout="${KUBECTL_TIMEOUT}"
 kubectl --namespace kube-system rollout status deployment/hubble-ui --timeout="${KUBECTL_TIMEOUT}"
 
 # Hubble UI is exposed as a LoadBalancer (Cilium LB IPAM), as in the k3d stack.
