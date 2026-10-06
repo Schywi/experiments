@@ -1,0 +1,27 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: gpu-device-plugin
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: gpu-lab
+    app.kubernetes.io/managed-by: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/Schywi/experiments.git
+    targetRevision: main
+    path: apps/gpu-device-plugin/chart
+    helm:
+      releaseName: gpu-device-plugin
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: gpu
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
