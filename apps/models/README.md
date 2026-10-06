@@ -91,3 +91,25 @@ and generate a request — you should see the port-forward/service flows.
 - **Not yet built or deployed** — the images require `buildah` on the host, and
   the DNS fix requires a host `k3s` restart. Neither is available to the agent
   sandbox.
+
+## Importing built images into k3s (important)
+
+`buildah`/`podman` and k3s use **different image stores**. Building an image
+does not put it in the cluster. `buildah` also tags local images as
+`localhost/<name>`, while k3s resolves a bare `<name>:<tag>` to
+`docker.io/library/<name>:<tag>` — so an import under the wrong name looks like
+`ErrImageNeverPull`.
+
+Use the helper, which retags, exports, imports, and verifies:
+
+```bash
+config/k3s/import-image.sh localhost/laya-serve:local   laya-serve:local
+config/k3s/import-image.sh localhost/kokoro-tts:local   kokoro-tts:local
+config/k3s/import-image.sh localhost/llama-server:local llama-server:local
+```
+
+Then confirm the names k3s actually has:
+
+```bash
+sudo k3s ctr images ls | grep -E 'laya|kokoro|llama'
+```

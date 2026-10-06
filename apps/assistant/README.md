@@ -99,3 +99,15 @@ Level-1 tools now include:
 and a pod name from "pod X". If a logs question names no pod, routing returns
 None and the model asks for it — deterministic failure rather than a guess.
 RBAC already covers these (`get pods/log`, `get/list/watch events`); no change.
+
+## Importing the built image into k3s (important)
+
+`buildah` writes to its own store (`~/.local/share/containers/storage`) and
+tags local images `localhost/<name>`; k3s reads its own containerd store and
+resolves a bare `assistant:local` to `docker.io/library/assistant:local`. Build
+without bridging and you get `ErrImageNeverPull`.
+
+```bash
+config/k3s/import-image.sh localhost/assistant:local assistant:local
+sudo k3s ctr images ls | grep assistant     # expect docker.io/library/assistant:local
+```
