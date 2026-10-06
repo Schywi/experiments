@@ -20,7 +20,7 @@ spec:
         - ports:
             - port: "3000"
               protocol: TCP
-    # In-cluster HTTP checks (for example config/k3d/validate.sh).
+    # In-cluster HTTP checks (for example config/k3s/validate.sh).
     - fromEndpoints:
         - matchLabels:
             k8s:io.kubernetes.pod.namespace: {{ .Release.Namespace }}

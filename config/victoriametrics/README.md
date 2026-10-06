@@ -24,7 +24,7 @@ host paths.
 > `config/helm/cilium/values.yaml` (or `config/k3s/cilium-values.yaml`). Cilium
 > only starts exposing `:9962` (agent), `:9965` (Hubble agent), and `:9966`
 > (relay) after that release is applied, so re-run
-> `config/k3d/install-cilium.sh` after changing those values. You can confirm
+> `config/k3s/install-cilium.sh` after changing those values. You can confirm
 > from VictoriaMetrics with
 > `curl http://victoriametrics:8428/api/v1/query?query=up` — the `cilium-agent`,
 > `cilium-hubble`, and `hubble-relay` series must be `1`.
