@@ -1,0 +1,60 @@
+{{- if .Values.ciliumNetworkPolicy.enabled }}
+# Allow-list for the Cartography sync pod and the Neo4j pod.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: {{ include "cartography.fullname" . }}-sync
+  labels:
+    {{- include "cartography.labels" . | nindent 4 }}
+spec:
+  endpointSelector:
+    matchLabels:
+      {{- include "cartography.selectorLabels" . | nindent 6 }}
+  egress:
+    # Neo4j (same namespace).
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: {{ .Release.Namespace }}
+            app.kubernetes.io/name: {{ include "cartography.name" . }}-neo4j
+            app.kubernetes.io/instance: {{ .Release.Name }}
+      toPorts:
+        - ports:
+            - port: "7687"
+              protocol: TCP
+    # Kubernetes API server (kube-apiserver entity).
+    - toEntities:
+        - kube-apiserver
+    # DNS resolution.
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: {{ include "cartography.fullname" . }}-neo4j
+  labels:
+    {{- include "cartography.labels" . | nindent 4 }}
+spec:
+  endpointSelector:
+    matchLabels:
+      {{- include "cartography.neo4jSelectorLabels" . | nindent 6 }}
+  ingress:
+    # Only the Cartography sync pod may reach Neo4j.
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: {{ .Release.Namespace }}
+            app.kubernetes.io/name: {{ include "cartography.name" . }}
+            app.kubernetes.io/instance: {{ .Release.Name }}
+      toPorts:
+        - ports:
+            - port: "7687"
+              protocol: TCP
+{{- end }}

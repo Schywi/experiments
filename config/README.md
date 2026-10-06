@@ -9,6 +9,8 @@ platform entry points.
 ```text
 config/
 ├── metallb/                 # local Docker-bridge LoadBalancer installation and pool
+├── sealed-secrets/          # Sealed Secrets controller for commit-safe secrets
+├── cartography/             # Cartography infrastructure graph (Neo4j + Kubernetes sync)
 ├── helm/
 │   └── cilium/values.yaml   # shared Cilium chart defaults
 └── k3d/
@@ -55,6 +57,9 @@ internal Argo CD server Service. `CILIUM_VERSION` is pinned in the script and
 should only be changed in a reviewed update.
 
 No credentials, kubeconfigs, certificates, tokens, or other secret-bearing
-material belongs in this directory. Keep local overrides outside Git and use
-an approved encryption mechanism such as Sealed Secrets if a future
-declarative secret is required.
+material belongs in this directory. `config/sealed-secrets/` installs the Sealed
+Secrets controller, and secrets are carried as committed `SealedSecret`
+resources that only the in-cluster controller can decrypt; keep the controller's
+private key backed up out of band. `config/cartography/` deploys the Cartography
+infrastructure graph (a bundled Neo4j plus a scheduled Kubernetes sync) and
+consumes such a `SealedSecret` for the Neo4j password.

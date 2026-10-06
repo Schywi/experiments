@@ -1,0 +1,57 @@
+fullnameOverride: cartography
+
+# Bundled Neo4j graph database. Cartography writes the infrastructure graph here.
+neo4j:
+  image:
+    repository: docker.io/library/neo4j
+    tag: "5.26-community"
+    digest: "sha256:c7d25c0eeebfe125718d58b72ed5d663c85d0479047733845eb2237c67ce8069"
+    pullPolicy: IfNotPresent
+  # Secret holding the Neo4j credentials, delivered as a SealedSecret.
+  # Keys: `password` (raw password used by the Cartography sync) and `auth`
+  # (`neo4j/<password>`, used by the Neo4j container's NEO4J_AUTH variable).
+  authSecretName: cartography-neo4j-auth
+  storage:
+    size: 2Gi
+    # Empty string uses the cluster default StorageClass.
+    storageClassName: ""
+  resources:
+    requests:
+      cpu: 100m
+      memory: 512Mi
+    limits:
+      cpu: "1"
+      memory: 1536Mi
+
+cartography:
+  image:
+    repository: ghcr.io/cartography-cncf/cartography
+    tag: "0.141.0"
+    digest: "sha256:9267f440e86cb79973f8f509573f658d51db4a36842a27042c741c0a46446c91"
+    pullPolicy: IfNotPresent
+  # Sync schedule (CronJob). Default: every 6 hours.
+  schedule: "0 */6 * * *"
+  # Comma-separated Cartography intel modules. Only the Kubernetes module is
+  # configured here; it syncs the cluster the pod runs in.
+  selectedModules: kubernetes
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+serviceAccount:
+  create: true
+  name: cartography
+
+rbac:
+  create: true
+  # Grant cluster-wide `list secrets` (metadata only; Kubernetes RBAC has no
+  # metadata-only verb, so this also exposes secret content to the sync).
+  allowListSecrets: false
+
+ciliumNetworkPolicy:
+  # Enforce an allow-list for the Neo4j and Cartography pods. Requires Cilium.
+  enabled: true

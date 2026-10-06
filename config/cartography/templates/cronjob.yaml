@@ -1,0 +1,107 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "cartography.fullname" . }}
+  labels:
+    {{- include "cartography.labels" . | nindent 4 }}
+spec:
+  schedule: {{ .Values.cartography.schedule | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        metadata:
+          labels:
+            {{- include "cartography.selectorLabels" . | nindent 12 }}
+            app.kubernetes.io/part-of: experiments-platform
+        spec:
+          serviceAccountName: {{ .Values.serviceAccount.name }}
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+            seccompProfile:
+              type: RuntimeDefault
+          # Cartography requires a kubeconfig *file* and does not read the
+          # pod's in-cluster config directly. Build one from the mounted,
+          # auto-rotating ServiceAccount token before the sync runs.
+          initContainers:
+            - name: kubeconfig
+              image: "{{ .Values.cartography.image.repository }}@{{ .Values.cartography.image.digest }}"
+              imagePullPolicy: {{ .Values.cartography.image.pullPolicy }}
+              command:
+                - /bin/sh
+                - -c
+              args:
+                - |
+                  set -eu
+                  sa=/var/run/secrets/kubernetes.io/serviceaccount
+                  cat > /kubeconfig/config <<EOF
+                  apiVersion: v1
+                  kind: Config
+                  clusters:
+                    - name: in-cluster
+                      cluster:
+                        server: https://kubernetes.default.svc
+                        certificate-authority: ${sa}/ca.crt
+                  users:
+                    - name: cartography
+                      user:
+                        token: $(cat ${sa}/token)
+                  contexts:
+                    - name: in-cluster
+                      context:
+                        cluster: in-cluster
+                        user: cartography
+                  current-context: in-cluster
+                  EOF
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop:
+                    - ALL
+              volumeMounts:
+                - name: kubeconfig
+                  mountPath: /kubeconfig
+          containers:
+            - name: cartography
+              image: "{{ .Values.cartography.image.repository }}@{{ .Values.cartography.image.digest }}"
+              imagePullPolicy: {{ .Values.cartography.image.pullPolicy }}
+              args:
+                - --selected-modules={{ .Values.cartography.selectedModules }}
+                - --k8s-kubeconfig=/kubeconfig/config
+                - --neo4j-uri=bolt://{{ include "cartography.fullname" . }}-neo4j:7687
+                - --neo4j-user=neo4j
+                - --neo4j-password-env-var=NEO4J_PASSWORD
+              env:
+                - name: HOME
+                  value: /tmp
+                - name: NEO4J_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Values.neo4j.authSecretName }}
+                      key: password
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop:
+                    - ALL
+              resources:
+                {{- toYaml .Values.cartography.resources | nindent 16 }}
+              volumeMounts:
+                - name: kubeconfig
+                  mountPath: /kubeconfig
+                  readOnly: true
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: kubeconfig
+              emptyDir: {}
+            - name: tmp
+              emptyDir: {}

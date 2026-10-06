@@ -1,0 +1,12 @@
+# Public baseline values for the Bitnami Sealed Secrets controller chart.
+#
+# The controller is installed into kube-system with a fixed release name so the
+# `kubeseal` CLI finds it at its default location (the
+# `sealed-secrets-controller` Service in kube-system) without extra flags.
+fullnameOverride: sealed-secrets-controller
+
+# The controller must be able to watch SealedSecret resources cluster-wide and,
+# for `kubeseal --fetch-cert`, serve its public certificate. The default chart
+# RBAC already grants this; keep it enabled.
+rbac:
+  create: true
