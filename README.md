@@ -289,6 +289,7 @@ scripts/                 Image build/import and direct Worm deployment scripts
 Tiltfile*                Optional, resource-oriented Tilt entrypoints
 start.sh                 Destructive one-command local bootstrap
 blog/ and research/      Design notes and local research material
+research/ai-workflow.md  How the local AI assistant is built, shipped, and run
 ```
 
 Read [`AGENTS.md`](AGENTS.md) before automating changes. It contains the
