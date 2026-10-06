@@ -12,6 +12,8 @@ config/
 ├── metallb/                 # local Docker-bridge LoadBalancer installation and pool
 ├── sealed-secrets/          # Sealed Secrets controller for commit-safe secrets
 ├── cartography/             # Cartography infrastructure graph (Neo4j + Kubernetes sync)
+├── victoriametrics/         # Cilium/Hubble metrics store (single-node scrape + storage)
+├── grafana/                 # Grafana with the official Cilium/Hubble dashboards
 ├── helm/
 │   └── cilium/values.yaml   # shared Cilium chart defaults
 └── k3d/
@@ -69,3 +71,12 @@ resources that only the in-cluster controller can decrypt; keep the controller's
 private key backed up out of band. `config/cartography/` deploys the Cartography
 infrastructure graph (a bundled Neo4j plus a scheduled Kubernetes sync); its
 Neo4j runs without authentication.
+
+`config/victoriametrics/` and `config/grafana/` are the observability stack for
+the Cilium/Hubble metrics enabled in the Cilium values files. VictoriaMetrics
+single-node scrapes the Cilium agent (9962), operator (9963), Hubble agent
+(9965), and Hubble relay (9966) endpoints and stores the series; Grafana serves
+the official Cilium/Hubble dashboards from a provisioned Prometheus datasource
+pointing at that store. Both run in the `observability` namespace and are owned
+by Argo CD. Grafana runs with anonymous Admin access and no basic-auth login,
+mirroring the headless Argo CD and unauthenticated Neo4j already here.

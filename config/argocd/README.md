@@ -30,6 +30,16 @@ The Vector data-plane application is defined separately in
 namespace and uses the same public repository source, automated pruning, and
 self-healing policy.
 
+The observability stack is defined in `applications/victoriametrics.yaml` and
+`applications/grafana.yaml`. They render `config/victoriametrics` and
+`config/grafana` into the `observability` namespace from the public repository
+`main`, with automated pruning and self-healing. Apply them after bootstrap:
+
+```bash
+kubectl apply -f config/argocd/applications/victoriametrics.yaml
+kubectl apply -f config/argocd/applications/grafana.yaml
+```
+
 The bounded Worm stable handoff is defined separately under
 `applications/stable/`. Those four Applications pin a full Git revision and
 require an explicit manual sync. Register that directory only after choosing

@@ -1,0 +1,11 @@
+apiVersion: v2
+name: victoriametrics
+description: VictoriaMetrics single-node store that scrapes the Cilium/Hubble metrics endpoints
+type: application
+version: 0.1.0
+appVersion: "v1.153.0"
+keywords:
+  - victoriametrics
+  - metrics
+  - observability
+  - cilium

@@ -1,0 +1,71 @@
+{{- if .Values.ciliumNetworkPolicy.enabled }}
+# Allow-list for the VictoriaMetrics store: Grafana queries it, the Cilium Ingress
+# serves vmui, and it reaches the Cilium/Hubble metrics endpoints and the
+# Kubernetes API for pod discovery.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: {{ include "victoriametrics.fullname" . }}
+  labels:
+    {{- include "victoriametrics.labels" . | nindent 4 }}
+spec:
+  endpointSelector:
+    matchLabels:
+      {{- include "victoriametrics.selectorLabels" . | nindent 6 }}
+  ingress:
+    # Grafana (same namespace) queries the Prometheus-compatible API.
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: {{ .Release.Namespace }}
+            app.kubernetes.io/name: grafana
+      toPorts:
+        - ports:
+            - port: "8428"
+              protocol: TCP
+    # vmui through the Cilium Ingress Controller.
+    - fromEntities:
+        - ingress
+      toPorts:
+        - ports:
+            - port: "8428"
+              protocol: TCP
+  egress:
+    # Cilium operator and Hubble relay are ordinary pods in kube-system.
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+      toPorts:
+        - ports:
+            - port: "9962"
+              protocol: TCP
+            - port: "9963"
+              protocol: TCP
+            - port: "9965"
+              protocol: TCP
+            - port: "9966"
+              protocol: TCP
+    # The cilium-agent runs with hostNetwork, so its metrics are reached through
+    # the host entity rather than a pod IP.
+    - toEntities:
+        - host
+      toPorts:
+        - ports:
+            - port: "9962"
+              protocol: TCP
+            - port: "9965"
+              protocol: TCP
+    # Kubernetes API for kubernetes_sd_configs pod discovery.
+    - toEntities:
+        - kube-apiserver
+    # DNS resolution.
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+{{- end }}

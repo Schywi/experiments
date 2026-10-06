@@ -33,11 +33,37 @@ ipam:
 
 operator:
   replicas: 1
+  prometheus:
+    enabled: true
+    port: 9963
+
+# Datapath metrics for the Cilium agent panels; config/victoriametrics scrapes
+# the agent on port 9962. No Prometheus Operator, so no ServiceMonitor.
+prometheus:
+  enabled: true
+  port: 9962
 
 hubble:
   enabled: true
+  # Export Hubble flows as Prometheus metrics for the observability stack
+  # (config/victoriametrics + config/grafana). The cilium-agent serves them on
+  # port 9965; no Prometheus Operator is installed, so no ServiceMonitor.
+  metrics:
+    enabled:
+      - dns
+      - drop
+      - tcp
+      - flow
+      - port-distribution
+      - icmp
+      - "httpV2:exemplars=true;labelsContext=source_ip,source_namespace,source_workload,destination_ip,destination_namespace,destination_workload,traffic_direction"
+    port: 9965
   relay:
     enabled: true
+    # Hubble relay metrics on port 9966, scraped by config/victoriametrics.
+    prometheus:
+      enabled: true
+      port: 9966
   ui:
     enabled: true
     backend:

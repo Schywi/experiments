@@ -1,0 +1,56 @@
+fullnameOverride: grafana
+
+image:
+  repository: docker.io/grafana/grafana
+  tag: "13.2.3"
+  digest: "sha256:b28bae15e219c998fb0e0424ed724930cc61b1f61fb404d47c862f9a23f9e572"
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 3000
+
+# Prometheus-compatible datasource served by config/victoriametrics. Both charts
+# deploy into the same namespace, so the short Service name resolves.
+datasource:
+  name: VictoriaMetrics
+  uid: victoriametrics
+  url: http://victoriametrics:8428
+  timeInterval: 30s
+
+# Ship the official Cilium/Hubble dashboards (see README for provenance).
+dashboards:
+  enabled: true
+
+storage:
+  size: 2Gi
+  # Empty string uses the cluster default StorageClass.
+  storageClassName: ""
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 192Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+# No-auth lab, mirroring Argo CD (server.disable.auth) and Neo4j (NEO4J_AUTH=none).
+# Anonymous viewers receive the Admin role and the basic-auth login form is
+# disabled, so no Grafana credential is committed to this public repository.
+auth:
+  anonymous:
+    enabled: true
+    orgRole: Admin
+  basic:
+    enabled: false
+
+ciliumNetworkPolicy:
+  # Enforce an allow-list for the Grafana pod. Requires Cilium.
+  enabled: true
+
+ingress:
+  # Expose Grafana through the Cilium Ingress Controller as grafana.localhost.
+  enabled: true
+  className: cilium
+  host: grafana.localhost

@@ -201,6 +201,18 @@ Do not register the stable Worm applications while Tilt or the local deployment
 scripts own the same resources. Two reconcilers managing one Deployment creates
 unreliable results.
 
+### Observability (Cilium/Hubble metrics)
+
+Cilium and Hubble export Prometheus metrics (enabled in the Cilium values
+files). `config/victoriametrics/` runs a single-node VictoriaMetrics store that
+scrapes the Cilium agent, operator, Hubble agent, and Hubble relay endpoints,
+and `config/grafana/` serves the official Cilium/Hubble dashboards from a
+provisioned datasource pointing at that store. Argo CD owns both through
+`config/argocd/applications/{victoriametrics,grafana}.yaml` in the
+`observability` namespace. Open `http://grafana.localhost/`. See
+[`config/grafana/README.md`](config/grafana/README.md) and
+[`config/victoriametrics/README.md`](config/victoriametrics/README.md).
+
 ## Worm data and control paths
 
 1. Each Worker starts with its Pod UID as `WORM_ID`.

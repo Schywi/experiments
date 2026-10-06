@@ -174,6 +174,56 @@ validate_worm_bindings() {
   render_and_check "${repo_root}/apps/worker/chart" Deployment worm-worker
 }
 
+validate_observability_path() {
+  local cilium_values="${repo_root}/config/helm/cilium/values.yaml"
+  local k3s_cilium_values="${repo_root}/config/k3s/cilium-values.yaml"
+  local vm_app="${repo_root}/config/argocd/applications/victoriametrics.yaml"
+  local grafana_app="${repo_root}/config/argocd/applications/grafana.yaml"
+  local vm_scrape="${repo_root}/config/victoriametrics/templates/configmap-scrape.yaml"
+  local vm_deployment="${repo_root}/config/victoriametrics/templates/deployment.yaml"
+  local vm_values="${repo_root}/config/victoriametrics/values.yaml"
+  local grafana_values="${repo_root}/config/grafana/values.yaml"
+  local grafana_dashboards="${repo_root}/config/grafana/templates/configmap-dashboards.yaml"
+
+  # Both Cilium profiles must export the Hubble flow metrics and the agent,
+  # operator, and relay datapath metrics that the dashboards consume.
+  local cilium_values_file
+  for cilium_values_file in "${cilium_values}" "${k3s_cilium_values}"; do
+    require_text "${cilium_values_file}" 'httpV2:exemplars=true;labelsContext=' \
+      'Cilium Hubble HTTP v2 metric is not enabled'
+    require_text "${cilium_values_file}" '    port: 9965' \
+      'Cilium Hubble metrics port is not pinned to 9965'
+    require_text "${cilium_values_file}" '    port: 9966' \
+      'Cilium Hubble relay metrics port is not pinned to 9966'
+    require_text "${cilium_values_file}" '  port: 9962' \
+      'Cilium agent metrics port is not pinned to 9962'
+    require_text "${cilium_values_file}" '    port: 9963' \
+      'Cilium operator metrics port is not pinned to 9963'
+  done
+
+  # VictoriaMetrics scrapes the Cilium/Hubble endpoints itself.
+  require_text "${vm_scrape}" 'replacement: ${1}:9962' 'VictoriaMetrics does not scrape the Cilium agent'
+  require_text "${vm_scrape}" 'replacement: ${1}:9965' 'VictoriaMetrics does not scrape Hubble metrics'
+  require_text "${vm_scrape}" 'replacement: ${1}:9963' 'VictoriaMetrics does not scrape the Cilium operator'
+  require_text "${vm_scrape}" 'replacement: ${1}:9966' 'VictoriaMetrics does not scrape the Hubble relay'
+  require_text "${vm_values}" 'scrapeInterval' 'VictoriaMetrics values do not pin the scrape interval'
+  require_text "${vm_values}" 'retentionPeriod' 'VictoriaMetrics values do not pin retention'
+  require_text "${vm_deployment}" 'storageDataPath' 'VictoriaMetrics deployment does not pin the data path'
+
+  # Grafana provisions the VictoriaMetrics datasource and the Cilium dashboards.
+  require_text "${grafana_values}" 'uid: victoriametrics' 'Grafana datasource UID is not victoriametrics'
+  require_text "${grafana_dashboards}" '.Files.Get "dashboards/cilium-dashboard.json"' \
+    'Grafana does not provision the official Cilium dashboard'
+  require_text "${grafana_dashboards}" '.Files.Get "dashboards/hubble-dashboard.json"' \
+    'Grafana does not provision the official Hubble dashboard'
+
+  # Argo CD owns both observability charts in a single namespace.
+  require_text "${vm_app}" 'path: config/victoriametrics' 'VictoriaMetrics Argo Application path is wrong'
+  require_text "${grafana_app}" 'path: config/grafana' 'Grafana Argo Application path is wrong'
+  require_text "${vm_app}" 'namespace: observability' 'VictoriaMetrics Argo Application namespace is wrong'
+  require_text "${grafana_app}" 'namespace: observability' 'Grafana Argo Application namespace is wrong'
+}
+
 main() {
   require_command helm
   require_command rg
@@ -181,6 +231,7 @@ main() {
   validate_metallb_path
   validate_argocd_ordering
   validate_worm_bindings
+  validate_observability_path
   printf 'validate-local-paths: all checks passed\n'
 }
 

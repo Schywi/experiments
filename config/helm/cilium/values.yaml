@@ -28,13 +28,42 @@ bpf:
 ipam:
   mode: kubernetes
 
+# Datapath metrics for the Cilium agent and operator panels of the Grafana
+# dashboards in config/grafana. config/victoriametrics scrapes the agent on
+# port 9962 and the operator on port 9963. No Prometheus Operator is installed,
+# so ServiceMonitors stay disabled.
+prometheus:
+  enabled: true
+  port: 9962
+
 operator:
   replicas: 1
+  prometheus:
+    enabled: true
+    port: 9963
 
 hubble:
   enabled: true
+  # Export Hubble flows as Prometheus metrics for the observability stack
+  # (config/victoriametrics + config/grafana). The cilium-agent serves them on
+  # port 9965 and config/victoriametrics scrapes them; no Prometheus Operator is
+  # installed, so no ServiceMonitor is requested.
+  metrics:
+    enabled:
+      - dns
+      - drop
+      - tcp
+      - flow
+      - port-distribution
+      - icmp
+      - "httpV2:exemplars=true;labelsContext=source_ip,source_namespace,source_workload,destination_ip,destination_namespace,destination_workload,traffic_direction"
+    port: 9965
   relay:
     enabled: true
+    # Hubble relay metrics on port 9966, scraped by config/victoriametrics.
+    prometheus:
+      enabled: true
+      port: 9966
   ui:
     enabled: true
     backend:

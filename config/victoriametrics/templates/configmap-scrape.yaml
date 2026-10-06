@@ -1,0 +1,71 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "victoriametrics.fullname" . }}-scrape
+  labels:
+    {{- include "victoriametrics.labels" . | nindent 4 }}
+data:
+  scrape.yml: |
+    # VictoriaMetrics single-node scrapes the Cilium, Hubble, and operator
+    # metrics endpoints directly; there is no Prometheus Operator and therefore
+    # no ServiceMonitor. Each Cilium component is discovered by its pod label in
+    # kube-system and the pod IP is rewritten to the component's metrics port.
+    global:
+      scrape_interval: {{ .Values.scrapeInterval }}
+    scrape_configs:
+      - job_name: cilium-agent
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names:
+                - kube-system
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_label_k8s_app]
+            action: keep
+            regex: cilium
+          - source_labels: [__meta_kubernetes_pod_ip]
+            target_label: __address__
+            replacement: ${1}:9962
+          - source_labels: [__meta_kubernetes_pod_node_name]
+            target_label: node
+      - job_name: cilium-hubble
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names:
+                - kube-system
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_label_k8s_app]
+            action: keep
+            regex: cilium
+          - source_labels: [__meta_kubernetes_pod_ip]
+            target_label: __address__
+            replacement: ${1}:9965
+          - source_labels: [__meta_kubernetes_pod_node_name]
+            target_label: node
+      - job_name: cilium-operator
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names:
+                - kube-system
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_label_io_cilium_app]
+            action: keep
+            regex: operator
+          - source_labels: [__meta_kubernetes_pod_ip]
+            target_label: __address__
+            replacement: ${1}:9963
+      - job_name: hubble-relay
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names:
+                - kube-system
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_label_k8s_app]
+            action: keep
+            regex: hubble-relay
+          - source_labels: [__meta_kubernetes_pod_ip]
+            target_label: __address__
+            replacement: ${1}:9966

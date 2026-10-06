@@ -1,0 +1,51 @@
+fullnameOverride: victoriametrics
+
+image:
+  repository: docker.io/victoriametrics/victoria-metrics
+  tag: "v1.153.0"
+  digest: "sha256:5eff7af5341e401471002f58d106d399e614a62f3d240f2dbc21901e49eed5dd"
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 8428
+
+# Prometheus-compatible scrape settings. VictoriaMetrics single-node scrapes the
+# Cilium agent/operator/Hubble-relay pods itself (via kubernetes_sd_configs) and
+# serves the results to Grafana over its Prometheus query API.
+scrapeInterval: 30s
+# How often VictoriaMetrics reloads the scrape config file.
+scrapeConfigCheckInterval: 30s
+# Metric retention; 30d keeps a month of Cilium/Hubble history.
+retentionPeriod: 30d
+
+storage:
+  size: 5Gi
+  # Empty string uses the cluster default StorageClass.
+  storageClassName: ""
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: "1"
+    memory: 1Gi
+
+serviceAccount:
+  create: true
+  name: victoriametrics
+
+rbac:
+  create: true
+
+ciliumNetworkPolicy:
+  # Enforce an allow-list for the VictoriaMetrics pod. Requires Cilium.
+  enabled: true
+
+ingress:
+  # Expose the VictoriaMetrics vmui query UI through the Cilium Ingress
+  # Controller, like argocd.localhost and grafana.localhost.
+  enabled: true
+  className: cilium
+  host: victoriametrics.localhost

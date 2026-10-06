@@ -1,0 +1,51 @@
+{{- if .Values.ciliumNetworkPolicy.enabled }}
+# Allow-list for the Grafana pod: the Cilium Ingress serves it and it queries the
+# VictoriaMetrics store over the Prometheus-compatible API.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: {{ include "grafana.fullname" . }}
+  labels:
+    {{- include "grafana.labels" . | nindent 4 }}
+spec:
+  endpointSelector:
+    matchLabels:
+      {{- include "grafana.selectorLabels" . | nindent 6 }}
+  ingress:
+    # Cilium Ingress Controller -> Grafana.
+    - fromEntities:
+        - ingress
+      toPorts:
+        - ports:
+            - port: "3000"
+              protocol: TCP
+    # In-cluster HTTP checks (for example config/k3d/validate.sh).
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: {{ .Release.Namespace }}
+      toPorts:
+        - ports:
+            - port: "3000"
+              protocol: TCP
+  egress:
+    # VictoriaMetrics store (same namespace).
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: {{ .Release.Namespace }}
+            app.kubernetes.io/name: victoriametrics
+      toPorts:
+        - ports:
+            - port: "8428"
+              protocol: TCP
+    # DNS resolution.
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+{{- end }}
