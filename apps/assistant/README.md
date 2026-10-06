@@ -84,3 +84,18 @@ curl -s localhost:8080/chat -H 'content-type: application/json' \
 
 Later milestones add more level-1 tools, then level-2 actions behind explicit
 human confirmation, then Laya-based intent routing and voice.
+
+## Milestone 3 — more read-only tools
+
+Level-1 tools now include:
+
+| Tool | Argument(s) | Use |
+|---|---|---|
+| `get_pods` | `namespace?` | pod status, restarts |
+| `get_pod_logs` | `namespace`, `pod`, `tail_lines=100` | recent logs |
+| `get_events` | `namespace?` | recent cluster events |
+
+`route()` gained light argument extraction: a namespace from "in X"/"namespace X",
+and a pod name from "pod X". If a logs question names no pod, routing returns
+None and the model asks for it — deterministic failure rather than a guess.
+RBAC already covers these (`get pods/log`, `get/list/watch events`); no change.
