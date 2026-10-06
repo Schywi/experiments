@@ -1,0 +1,99 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kokoro
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kokoro.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "kokoro.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "kokoro.selectorLabels" . | nindent 8 }}
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 15
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        - name: fetch-weights
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["python", "-c"]
+          args:
+            - |
+              import os, urllib.request
+              d = "{{ .Values.models.dir }}"
+              for url in ("{{ .Values.models.modelUrl }}", "{{ .Values.models.voicesUrl }}"):
+                  dest = os.path.join(d, url.rsplit("/", 1)[-1])
+                  if not os.path.exists(dest):
+                      urllib.request.urlretrieve(url, dest)
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: models
+              mountPath: {{ .Values.models.dir }}
+      containers:
+        - name: kokoro
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.service.port }}
+          env:
+            - name: KOKORO_MODEL
+              value: {{ printf "%s/%s" .Values.models.dir (base .Values.models.modelUrl) | quote }}
+            - name: KOKORO_VOICES
+              value: {{ printf "%s/%s" .Values.models.dir (base .Values.models.voicesUrl) | quote }}
+            - name: KOKORO_VOICE
+              value: {{ .Values.models.voice | quote }}
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 3
+            failureThreshold: 40
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 10
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 20
+            failureThreshold: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: models
+              mountPath: {{ .Values.models.dir }}
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: models
+          {{- if .Values.models.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: kokoro-models
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        - name: tmp
+          emptyDir: {}

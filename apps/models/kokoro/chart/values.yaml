@@ -1,0 +1,27 @@
+# Built locally (buildah) and imported into the k3s node; see the Containerfile.
+image:
+  repository: kokoro-tts
+  tag: local
+  pullPolicy: IfNotPresent
+
+# Weights (onnx model + voice bank) fetched onto a PVC by the init container.
+models:
+  modelUrl: https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/kokoro-v1.0.onnx
+  voicesUrl: https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/voices-v1.0.bin
+  dir: /models
+  voice: af_sarah
+  persistence:
+    enabled: true
+    size: 2Gi
+    storageClass: ""
+
+service:
+  port: 8000
+
+resources:
+  requests:
+    cpu: 500m
+    memory: 512Mi
+  limits:
+    cpu: "2"
+    memory: 1Gi

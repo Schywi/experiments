@@ -1,0 +1,6 @@
+apiVersion: v2
+name: kokoro
+description: Kokoro-82M text-to-speech (CPU, onnxruntime) behind an OpenAI-style API
+type: application
+version: 0.1.0
+appVersion: "1.0"

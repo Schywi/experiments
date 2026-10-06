@@ -1,0 +1,18 @@
+# Kokoro-82M text-to-speech (CPU) with a small OpenAI-compatible wrapper.
+#
+# kokoro-onnx runs on onnxruntime CPU here; the GPU wrappers are CUDA-only and
+# have no route on this host's AMD card. Weights are fetched onto a PVC by an
+# init container (see chart/templates/deployment.yaml).
+FROM python:3.12-slim
+
+RUN pip install --no-cache-dir kokoro-onnx fastapi "uvicorn[standard]"
+
+WORKDIR /app
+COPY server.py /app/server.py
+
+ENV KOKORO_MODEL=/models/kokoro-v1.0.onnx \
+    KOKORO_VOICES=/models/voices-v1.0.bin \
+    KOKORO_VOICE=af_sarah
+
+EXPOSE 8000
+ENTRYPOINT ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "8000"]
