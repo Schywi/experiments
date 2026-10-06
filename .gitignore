@@ -18,3 +18,12 @@ kubeconfig*
 secrets*.yaml
 secrets*.yml
 **/secrets/
+
+# Beads / Dolt files (added by bd init)
+.beads-credential-key
+.beads/proxieddb/
+*.gate.lock*
+
+# Python bytecode caches (apps/models/* are Python)
+__pycache__/
+*.pyc
