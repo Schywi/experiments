@@ -13,9 +13,15 @@ command -v curl >/dev/null 2>&1 || {
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 config_src="${script_dir}/config.yaml"
 config_dst="/etc/rancher/k3s/config.yaml"
+resolv_src="${script_dir}/resolv.conf"
+resolv_dst="/etc/rancher/k3s/resolv.conf"
 
 [[ -f "${config_src}" ]] || {
   echo "k3s config not found: ${config_src}" >&2
+  exit 1
+}
+[[ -f "${resolv_src}" ]] || {
+  echo "resolver file not found: ${resolv_src}" >&2
   exit 1
 }
 
@@ -37,6 +43,7 @@ fi
 # Flannel/kube-proxy/Traefik/ServiceLB disabled.
 install -d -m 0755 /etc/rancher/k3s
 install -m 0644 "${config_src}" "${config_dst}"
+install -m 0644 "${resolv_src}" "${resolv_dst}"
 
 if [[ -x /usr/local/bin/k3s ]]; then
   echo "k3s already installed; restarting to apply ${config_dst}"

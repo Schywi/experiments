@@ -27,6 +27,12 @@ disable-kube-proxy: true
 cluster-cidr: 10.42.0.0/16
 service-cidr: 10.43.0.0/16
 
+# Use a cluster-owned resolver file instead of the host's /etc/resolv.conf.
+# The host carries `search mygateway`, which leaks into Pods and makes external
+# name resolution stall (see config/k3s/resolv.conf). This file is installed by
+# install-k3s.sh.
+resolv-conf: /etc/rancher/k3s/resolv.conf
+
 # Traefik and ServiceLB are unused: Cilium provides ingress, and LoadBalancer
 # exposure is deliberately deferred (see README).
 disable:
