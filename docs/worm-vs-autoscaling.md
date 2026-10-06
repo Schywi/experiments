@@ -123,23 +123,48 @@ Each worker declares:
 ```yaml
 resources:
   requests:
-    memory: 32Mi
+    memory: 600Ki
   limits:
     memory: 32Mi
 ```
 
 Source: `apps/worker/chart/values.yaml`.
 
-- **Per worker: 32 MiB**, as both request and limit. Because the limit equals
-  the request, the worker is *Guaranteed* on memory and is OOM-killed if it
-  exceeds 32 MiB.
+- **Request: 600 KiB (~0.59 MiB) per worker.** Kubernetes requires integer
+  bytes, so `0.6Mi` is rejected — the accepted equivalent is `600Ki`.
+- **Limit: 32 MiB per worker.** Because request < limit the worker is
+  *Burstable* on memory (it reserves 600 KiB, may burst to 32 MiB, and is
+  OOM-killed above it).
+- **Measured real usage: ~0.35 MiB RSS** (356 KiB VmRSS / VmHWM) for the
+  release static-musl binary — about 1% of the limit. See the measurement
+  method below.
 - **Namespace ceiling: 640 MiB** via the `worm-worker-cap` ResourceQuota
-  (`apps/worker/chart/templates/resourcequota.yaml`).
-- **Worker cap: 20** — `640 MiB ÷ 32 MiB = 20`, matching the controller's
-  `spec.maxReplicas: 20` (`apps/controller/chart/values.yaml`).
+  (`apps/worker/chart/templates/resourcequota.yaml`), enforced on **both**
+  `requests.memory` and `limits.memory`.
+- **Worker cap: still 20.** The `limits.memory` quota (`640 MiB ÷ 32 MiB = 20`)
+  and the controller's `spec.maxReplicas: 20` (`apps/controller/chart/values.yaml`)
+  continue to bind. Lowering the request alone does **not** raise the cap — the
+  32 MiB limit still caps at 20. Raise `maxReplicas`, the quota, the limit, and
+  node memory together to go higher.
 
 Two independent walls enforce 20: the controller refuses the 21st intent, and
-the quota makes a 21st Pod unschedulable. To run more workers you must raise
-`maxReplicas`, the quota, **and** node memory together; changing only one has
-no effect. A desired count above the quota is expected to remain **pending**,
-not to bypass the cap (`README.md`).
+the quota makes a 21st Pod unschedulable. A desired count above the quota is
+expected to remain **pending**, not to bypass the cap (`README.md`).
+
+### How the 0.35 MiB figure was measured
+
+Build the worker exactly as its `Containerfile` does (Rust 1.86.0,
+`x86_64-unknown-linux-musl`, `opt-level=z`, LTO, `strip`, `panic=abort`),
+then run it and read `/proc/<pid>/status`:
+
+```
+VmRSS : 356 kB   (resident)
+VmHWM : 356 kB   (peak)
+VmSize: 652 kB   (virtual)
+Threads: 1
+binary: 467 KB on disk
+```
+
+The worker is a single-threaded static binary that does one TCP POST and then
+sleeps and prints one small JSON line per second, so its resident set stays
+under 1 MiB.
