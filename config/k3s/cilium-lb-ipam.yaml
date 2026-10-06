@@ -16,7 +16,7 @@ metadata:
 spec:
   blocks:
     - start: 192.168.0.240
-      end: 192.168.0.250
+      stop: 192.168.0.250
 ---
 # Announce the pool's IPs on suitable interfaces (no `interfaces` selector:
 # Cilium picks the interface whose subnet matches the pool, i.e. the LAN NIC).

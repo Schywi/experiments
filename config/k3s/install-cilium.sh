@@ -44,6 +44,16 @@ helm upgrade --install cilium cilium/cilium \
   --wait \
   --timeout "${HELM_TIMEOUT}"
 
+# Enabling the ingress controller and L2 announcements changes the Cilium
+# ConfigMap but does NOT roll the DaemonSet, so agents keep the stale config.
+# Restart both agent and operator so the new config (and the Envoy-config CRDs
+# the operator registers) actually take effect. This mirrors the k3d profile's
+# enable-metallb-ingress.sh.
+kubectl --namespace kube-system rollout restart daemonset/cilium
+kubectl --namespace kube-system rollout restart deployment/cilium-operator
+kubectl --namespace kube-system rollout status daemonset/cilium --timeout="${HELM_TIMEOUT}"
+kubectl --namespace kube-system rollout status deployment/cilium-operator --timeout="${HELM_TIMEOUT}"
+
 # Cilium provides LoadBalancer IPs (LB IPAM + L2 announcements); no MetalLB.
 kubectl apply --filename "${lb_ipam_file}"
 
