@@ -33,7 +33,7 @@ self-healing policy.
 The observability stack is defined in `applications/victoriametrics.yaml` and
 `applications/grafana.yaml`. They render `config/victoriametrics` and
 `config/grafana` into the `observability` namespace from the public repository
-`main`, with automated pruning and self-healing. Apply them after bootstrap:
+`native-k3s-gpu-models`, with automated pruning and self-healing. Apply them after bootstrap:
 
 ```bash
 kubectl apply -f config/argocd/applications/victoriametrics.yaml

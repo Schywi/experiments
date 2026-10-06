@@ -12,7 +12,7 @@ spec:
   project: default
   source:
     repoURL: https://github.com/Schywi/experiments.git
-    targetRevision: main
+    targetRevision: trackc
     path: apps/models/llm/chart
     helm:
       releaseName: llm

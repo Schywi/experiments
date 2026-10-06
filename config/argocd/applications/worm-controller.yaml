@@ -1,10 +1,10 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: models-kokoro
+  name: worm-controller
   namespace: argocd
   labels:
-    app.kubernetes.io/part-of: models-lab
+    app.kubernetes.io/part-of: bounded-worm-lab
     app.kubernetes.io/managed-by: argocd
   finalizers:
     - resources-finalizer.argocd.argoproj.io
@@ -13,12 +13,12 @@ spec:
   source:
     repoURL: https://github.com/Schywi/experiments.git
     targetRevision: trackc
-    path: apps/models/kokoro/chart
+    path: apps/controller/chart
     helm:
-      releaseName: kokoro
+      releaseName: worm-controller
   destination:
     server: https://kubernetes.default.svc
-    namespace: models
+    namespace: worm-lab
   syncPolicy:
     automated:
       prune: true

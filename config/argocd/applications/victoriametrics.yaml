@@ -12,7 +12,7 @@ spec:
   project: default
   source:
     repoURL: https://github.com/Schywi/experiments.git
-    targetRevision: main
+    targetRevision: native-k3s-gpu-models
     path: config/victoriametrics
     helm:
       releaseName: victoriametrics
