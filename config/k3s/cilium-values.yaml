@@ -1,0 +1,62 @@
+# Cilium Helm values for the native-k3s profile.
+#
+# This intentionally differs from config/helm/cilium/values.yaml, which targets
+# the Docker-backed k3d host whose kernel rejects Cilium 1.20's BPF SNAT
+# program. On a real Fedora kernel the full eBPF datapath is available:
+#   - bpf.masquerade: true         (BPF SNAT works; no iptables fallback)
+#   - bpf.hostLegacyRouting: false (k3d-only workaround, not needed here)
+#   - bpf.tproxy: true             (full BPF datapath)
+#   - ingressController disabled   (exposure is ClusterIP only in this slice)
+#
+# Official Cilium images use quay.io — the user-approved exception to the
+# repository's Docker Hub-only image policy.
+
+kubeProxyReplacement: true
+
+# Single-node k3s: the API is bound to 127.0.0.1 by config/k3s/config.yaml.
+k8sServiceHost: 127.0.0.1
+k8sServicePort: 6443
+
+bpf:
+  masquerade: true
+  hostLegacyRouting: false
+  tproxy: true
+  # Single-node observability lab: retain every packet trace so Hubble can
+  # render short-lived local service traffic.
+  monitorAggregation: none
+
+socketLB:
+  enabled: true
+
+ipam:
+  mode: kubernetes
+
+operator:
+  replicas: 1
+
+hubble:
+  enabled: true
+  relay:
+    enabled: true
+  ui:
+    enabled: true
+    backend:
+      image:
+        repository: quay.io/cilium/hubble-ui-backend
+        tag: v0.13.5
+        digest: sha256:fac0c300ae119274edca11fd89b1ad23c788792d8bc4ea2ba631c709e8d3c688
+        useDigest: true
+        pullPolicy: IfNotPresent
+    frontend:
+      image:
+        repository: quay.io/cilium/hubble-ui
+        tag: v0.13.5
+        digest: sha256:f7d514fc54d784ed6df9d58cf0e97648b143f92b766dd1780ed3fc845bd4c516
+        useDigest: true
+        pullPolicy: IfNotPresent
+
+# No ingress or LoadBalancer in this slice: Argo CD and Hubble UI stay
+# ClusterIP and are reached through port-forward. LoadBalancer exposure (MetalLB
+# or Cilium LB IPAM) is a deliberate follow-up; see README.
+ingressController:
+  enabled: false

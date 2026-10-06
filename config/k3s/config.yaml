@@ -1,0 +1,36 @@
+# Native k3s server configuration for the Fedora host.
+#
+# This is the bare-metal counterpart to config/k3d/create.sh. Cilium owns
+# cluster networking in both profiles, so the same k3s components are disabled
+# here; on a real host kernel we simply get working eBPF back (the k3d path had
+# to fall back to iptables masquerading).
+#
+# Install target: /etc/rancher/k3s/config.yaml (see install-k3s.sh).
+
+# Keep the Kubernetes API on loopback: this is a single-machine development
+# cluster and port 6443 must not be exposed on the LAN.
+write-kubeconfig-mode: "0644"
+bind-address: 127.0.0.1
+
+# Cilium is the only CNI. Without these, k3s ships Flannel and its own
+# kube-proxy, which conflict with Cilium's eBPF datapath.
+flannel-backend: none
+disable-network-policy: true
+disable-kube-proxy: true
+
+# Match the defaults the k3d profile used, so pod/service addressing is
+# identical across profiles.
+cluster-cidr: 10.42.0.0/16
+service-cidr: 10.43.0.0/16
+
+# Traefik and ServiceLB are unused: Cilium provides ingress, and LoadBalancer
+# exposure is deliberately deferred (see README).
+disable:
+  - traefik
+  - servicelb
+
+# The host runs Fedora's zram swap. kubelet must start with swap present so
+# host services keep using it. Pod swap is a further, separate kubelet choice
+# (memorySwap.swapBehavior); see README.
+kubelet-arg:
+  - fail-swap-on=false
