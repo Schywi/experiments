@@ -57,5 +57,18 @@ done
 
 k3s kubectl get nodes -o wide
 
+# k3s does not create ~/.kube/config. Link the admin kubeconfig for the
+# invoking user so a plain `kubectl` works (write-kubeconfig-mode 0644 makes
+# it readable).
+if [[ -n "${SUDO_USER:-}" && "${SUDO_USER}" != "root" ]]; then
+  user_home="$(getent passwd "${SUDO_USER}" | cut -d: -f6)"
+  if [[ -n "${user_home}" ]]; then
+    install -d -m 0700 "${user_home}/.kube"
+    ln -sfn /etc/rancher/k3s/k3s.yaml "${user_home}/.kube/config"
+    chown -R "${SUDO_USER}" "${user_home}/.kube"
+    echo "linked ${user_home}/.kube/config -> /etc/rancher/k3s/k3s.yaml"
+  fi
+fi
+
 echo "Native k3s installed. The node is NotReady until Cilium is installed;"
 echo "run config/k3s/install-cilium.sh next."

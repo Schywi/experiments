@@ -64,8 +64,12 @@ ROCm/PyTorch. See `research/native-k3s-gpu-models-plan.md` for the full plan.
 - **Cilium owns networking.** `config.yaml` disables Flannel, kube-proxy,
   Traefik, and ServiceLB; `cilium-values.yaml` runs the full eBPF datapath
   (`kubeProxyReplacement: true`, `bpf.masquerade: true`).
-- **The Kubernetes API stays on loopback** (`bind-address: 127.0.0.1`). Port
-  6443 is not exposed on the LAN.
+- **The API must be reachable at the node IP.** k3s advertises the
+  `kubernetes` Service endpoint as the node IP, so Pods reach the API through
+  Cilium's kube-proxy replacement at that address. **Do not set a loopback
+  `bind-address`** — it makes every Pod unable to reach the API (and DNS) while
+  the node still reports Ready. Port 6443 therefore listens on the host's
+  interfaces; restrict it with firewalld if LAN exposure is a concern.
 - **Argo CD is headless/no-auth and ClusterIP only** — no ingress, no
   LoadBalancer, no host port binding (per `AGENTS.md`). Reach it with
   `kubectl -n argocd port-forward svc/argocd-server 8080:80`.

@@ -7,10 +7,14 @@
 #
 # Install target: /etc/rancher/k3s/config.yaml (see install-k3s.sh).
 
-# Keep the Kubernetes API on loopback: this is a single-machine development
-# cluster and port 6443 must not be exposed on the LAN.
 write-kubeconfig-mode: "0644"
-bind-address: 127.0.0.1
+
+# Do NOT set bind-address to loopback. k3s advertises the "kubernetes" Service
+# endpoint as the node IP, so Pods reach the API through Cilium's kube-proxy
+# replacement at that address. A loopback-only API (bind-address: 127.0.0.1)
+# leaves every Pod unable to reach the API -- and therefore DNS -- even though
+# the node reports Ready. Leave bind-address unset so the API listens on the
+# node's interfaces; restrict port 6443 with firewalld if LAN exposure matters.
 
 # Cilium is the only CNI. Without these, k3s ships Flannel and its own
 # kube-proxy, which conflict with Cilium's eBPF datapath.
