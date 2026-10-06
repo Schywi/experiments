@@ -39,6 +39,25 @@ kubectl apply -f config/argocd/applications/cartography.yaml
 The chart renders Neo4j plus a Cartography `CronJob` (default every 6 hours). The
 sync writes to `bolt://cartography-neo4j:7687`.
 
+## Access
+
+Neo4j Browser is exposed through the Cilium Ingress (`neo4j.localhost`,
+`cartography.localhost`) and the Neo4j LoadBalancer (`neo4j.loadBalancerIP`,
+which also carries bolt on 7687). Because browsers resolve `*.localhost` to
+loopback, map the hostnames first:
+
+```bash
+scripts/hosts-entries.sh          # print the /etc/hosts lines
+scripts/hosts-entries.sh --apply  # append the missing lines (needs sudo)
+```
+
+Then open:
+
+- `http://neo4j.localhost` (or `http://cartography.localhost`) — Neo4j Browser
+- `neo4j://neo4j.localhost:7687` — the bolt endpoint the Browser connects to
+
+The Neo4j password is in the `cartography-neo4j-auth` Secret, key `password`.
+
 ## How the sync authenticates
 
 Cartography needs a kubeconfig **file** and does not read the pod's in-cluster
