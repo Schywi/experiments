@@ -47,7 +47,7 @@ spec:
     matchLabels:
       {{- include "cartography.neo4jSelectorLabels" . | nindent 6 }}
   ingress:
-    # Only the Cartography sync pod may reach Neo4j.
+    # Cartography sync pod -> bolt.
     - fromEndpoints:
         - matchLabels:
             k8s:io.kubernetes.pod.namespace: {{ .Release.Namespace }}
@@ -55,6 +55,18 @@ spec:
             app.kubernetes.io/instance: {{ .Release.Name }}
       toPorts:
         - ports:
+            - port: "7687"
+              protocol: TCP
+    # External access: the Cilium Ingress (Browser on 7474) and the
+    # LoadBalancer (bolt 7687 / Browser 7474) for out-of-cluster clients.
+    - fromEntities:
+        - ingress
+        - world
+        - host
+      toPorts:
+        - ports:
+            - port: "7474"
+              protocol: TCP
             - port: "7687"
               protocol: TCP
 {{- end }}
