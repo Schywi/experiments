@@ -15,12 +15,12 @@ Default: **Qwen2.5-1.5B-Instruct**, `Q4_K_M` (from `bartowski/...-GGUF`).
 ~0.94 GiB of weights, ~1.5 GiB resident, ≈10–20 tok/s on this 6-core CPU.
 Swap `model.repo`/`model.file` in `values.yaml` for a 3B (≈4–8 tok/s) if wanted.
 
-## Build and import (on the host)
+## Build and push (on the host, rootless)
 
 ```bash
+config/registry/install.sh                  # once: runs the in-cluster registry
 buildah bud -t llama-server:local apps/models/llm
-buildah push llama-server:local oci-archive:/tmp/llama-server.tar
-sudo k3s ctr images import /tmp/llama-server.tar
+config/registry/push-image.sh llama-server  # -> 127.0.0.1:5000/llama-server:local
 ```
 
 ## Deploy

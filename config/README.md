@@ -8,6 +8,7 @@ platform entry points.
 
 ```text
 config/
+├── registry/                # rootless local image registry (native k3s profile)
 ├── metallb/                 # local Docker-bridge LoadBalancer installation and pool
 ├── sealed-secrets/          # Sealed Secrets controller for commit-safe secrets
 ├── cartography/             # Cartography infrastructure graph (Neo4j + Kubernetes sync)
@@ -27,6 +28,11 @@ config/
 preparation package for adding the runwasi Wasmtime shim to the existing k3d
 server. It deliberately does not run as part of bootstrap because it mutates
 and restarts the server node; see its README before use.
+
+`config/registry/` runs a small `registry:2` bound to the node's loopback so a
+buildah-built image reaches k3s **without `sudo`**: the node pulls the image
+instead of importing it, because every containerd import path is root-owned.
+See `config/registry/README.md`.
 
 The scripts expect Docker, k3d, Helm, and kubectl. For the normal workflow,
 run the repository entrypoint:

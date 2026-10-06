@@ -11,12 +11,12 @@ apps/models/kokoro/
 └── chart/               # Deployment + ClusterIP Service + weights PVC
 ```
 
-## Build and import (on the host)
+## Build and push (on the host, rootless)
 
 ```bash
+config/registry/install.sh                # once: runs the in-cluster registry
 buildah bud -t kokoro-tts:local apps/models/kokoro
-buildah push kokoro-tts:local oci-archive:/tmp/kokoro-tts.tar
-sudo k3s ctr images import /tmp/kokoro-tts.tar
+config/registry/push-image.sh kokoro-tts  # -> 127.0.0.1:5000/kokoro-tts:local
 ```
 
 ## Deploy

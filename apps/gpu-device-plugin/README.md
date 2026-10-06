@@ -25,12 +25,12 @@ apps/gpu-device-plugin/
   "slice" count is advisory only. See
   `research/native-k3s-gpu-models-plan.md` §7.
 
-## Build and import (on the host)
+## Build and push (on the host, rootless)
 
 ```bash
+config/registry/install.sh                     # once: runs the in-cluster registry
 buildah bud -t gpu-device-plugin:local apps/gpu-device-plugin
-buildah push gpu-device-plugin:local oci-archive:/tmp/gpu-device-plugin.tar
-sudo k3s ctr images import /tmp/gpu-device-plugin.tar
+config/registry/push-image.sh gpu-device-plugin # -> 127.0.0.1:5000/gpu-device-plugin:local
 ```
 
 ## Deploy

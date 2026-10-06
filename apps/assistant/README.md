@@ -25,12 +25,12 @@ chat.sh --port-forward--> svc/assistant:8080 --> pod(assistant)
 - `apps/models/llm` is deployed and serving (`svc/llm` in namespace `models`).
   The default `LLM_URL` is `http://llm.models.svc.cluster.local:8000`.
 
-## Build and import (on the host)
+## Build and push (on the host, rootless)
 
 ```bash
+config/registry/install.sh                # once: runs the in-cluster registry
 buildah bud -t assistant:local apps/assistant
-buildah push assistant:local oci-archive:/tmp/assistant.tar
-sudo k3s ctr images import /tmp/assistant.tar
+config/registry/push-image.sh assistant   # -> 127.0.0.1:5000/assistant:local
 ```
 
 ## Deploy

@@ -31,18 +31,19 @@ sudo bash config/k3s/install-k3s.sh      # installs the clean resolv.conf
 # (k3s restarts; verify with the smoke pod in config/k3s/validate.sh)
 ```
 
-## Build + import (on the host, once per app)
+## Build + push (on the host, once per app, rootless)
 
-k3s cannot `docker build`. Use `buildah` (rootless) and import into containerd:
+k3s cannot `docker build`. Use `buildah` (rootless) and push into the
+in-cluster registry (see `config/registry/`) — **no `sudo`**:
 
 ```bash
-sudo dnf install -y buildah
+export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+config/registry/install.sh                 # once: starts the registry + client config
 for app in laya kokoro llm; do
   tag=$( [ "$app" = laya ] && echo laya-serve   \
        || { [ "$app" = kokoro ] && echo kokoro-tts || echo llama-server; } )
   buildah bud -t "${tag}:local" "apps/models/${app}"
-  buildah push "${tag}:local" "oci-archive:/tmp/${tag}.tar"
-  sudo k3s ctr images import "/tmp/${tag}.tar"
+  config/registry/push-image.sh "${tag}"   # -> 127.0.0.1:5000/${tag}:local
 done
 ```
 
@@ -88,28 +89,30 @@ and generate a request — you should see the port-forward/service flows.
 ## Status
 
 - Charts are linted and render (see each app's README).
-- **Not yet built or deployed** — the images require `buildah` on the host, and
-  the DNS fix requires a host `k3s` restart. Neither is available to the agent
-  sandbox.
+- Images are built with `buildah` and pushed to the rootless in-cluster
+  registry (`config/registry/`) — no `sudo`, no containerd import step.
 
-## Importing built images into k3s (important)
+## How the images reach k3s (important)
 
-`buildah`/`podman` and k3s use **different image stores**. Building an image
-does not put it in the cluster. `buildah` also tags local images as
-`localhost/<name>`, while k3s resolves a bare `<name>:<tag>` to
-`docker.io/library/<name>:<tag>` — so an import under the wrong name looks like
-`ErrImageNeverPull`.
+`buildah`/`podman` and k3s use **different image stores**, and every path that
+writes into k3s's containerd is root-owned. Rather than import (which needs
+`sudo`), the images are **pulled from a local registry** the node can reach:
 
-Use the helper, which retags, exports, imports, and verifies:
-
-```bash
-config/k3s/import-image.sh localhost/laya-serve:local   laya-serve:local
-config/k3s/import-image.sh localhost/kokoro-tts:local   kokoro-tts:local
-config/k3s/import-image.sh localhost/llama-server:local llama-server:local
+```text
+buildah push  ──►  127.0.0.1:5000/<name>:local  ──pull──►  Pod
 ```
 
-Then confirm the names k3s actually has:
+`config/registry/` runs that registry (a `registry:2` bound to the node's
+loopback) and installs the user-scoped client config. Push with no `sudo`:
 
 ```bash
-sudo k3s ctr images ls | grep -E 'laya|kokoro|llama'
+export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+config/registry/install.sh
+config/registry/push-image.sh laya-serve
+config/registry/push-image.sh kokoro-tts
+config/registry/push-image.sh llama-server
 ```
+
+The charts reference `127.0.0.1:5000/<name>`, so no import step and no
+privileged access are needed. `config/k3s/import-image.sh` remains as an
+offline fallback (that single path still needs one `sudo` line).

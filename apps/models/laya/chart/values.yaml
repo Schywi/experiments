@@ -1,6 +1,6 @@
-# Built locally (buildah) and imported into the k3s node; see the Containerfile.
+# Built locally (buildah) and pushed to the in-cluster registry (config/registry/); see the Containerfile.
 image:
-  repository: laya-serve
+  repository: 127.0.0.1:5000/laya-serve
   tag: local
   pullPolicy: IfNotPresent
 

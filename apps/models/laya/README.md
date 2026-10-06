@@ -10,14 +10,12 @@ apps/models/laya/
 └── chart/               # Deployment + ClusterIP Service + weights PVC
 ```
 
-## Build and import (on the host)
-
-k3s cannot `docker build`; use buildah and import into containerd:
+## Build and push (on the host, rootless)
 
 ```bash
+config/registry/install.sh                # once: runs the in-cluster registry
 buildah bud -t laya-serve:local apps/models/laya
-buildah push laya-serve:local oci-archive:/tmp/laya-serve.tar
-sudo k3s ctr images import /tmp/laya-serve.tar
+config/registry/push-image.sh laya-serve  # -> 127.0.0.1:5000/laya-serve:local
 ```
 
 ## Deploy
