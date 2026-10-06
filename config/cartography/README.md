@@ -54,7 +54,8 @@ Then open:
 - `neo4j://neo4j.localhost:7687` — the bolt endpoint the Browser connects to
 
 Authentication is disabled, so connect with any user or no credentials (just
-click Connect).
+click Connect). Ready-to-run Cypher examples live in
+[`queries.cypher`](queries.cypher).
 
 ## How the sync authenticates
 
