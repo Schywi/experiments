@@ -12,9 +12,10 @@ spec:
     matchLabels:
       {{- include "grafana.selectorLabels" . | nindent 6 }}
   ingress:
-    # Cilium Ingress Controller -> Grafana.
+    # Cilium Ingress Controller -> Grafana, plus node health probes.
     - fromEntities:
         - ingress
+        - host
       toPorts:
         - ports:
             - port: "3000"

@@ -22,6 +22,12 @@ datasource:
 dashboards:
   enabled: true
 
+# Open Grafana directly on a dashboard instead of the empty home page. The path
+# is inside the mounted dashboards ConfigMap (see the deployment).
+homeDashboard:
+  enabled: true
+  path: /var/lib/grafana/dashboards/hubble-dashboard.json
+
 storage:
   size: 2Gi
   # Empty string uses the cluster default StorageClass.

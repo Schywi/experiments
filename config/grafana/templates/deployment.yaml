@@ -51,6 +51,20 @@ spec:
               value: "true"
             - name: GF_USERS_ALLOW_SIGN_UP
               value: "false"
+            {{- if .Values.homeDashboard.enabled }}
+            # Open straight onto a dashboard instead of the empty Grafana home.
+            - name: GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH
+              value: {{ .Values.homeDashboard.path | quote }}
+            {{- end }}
+            # The cluster has no route to grafana.com; these checks only delay
+            # startup (GET https://grafana.com ... i/o timeout) and can trip the
+            # startup/liveness probes on this single-node lab.
+            - name: GF_ANALYTICS_CHECK_FOR_UPDATES
+              value: "false"
+            - name: GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES
+              value: "false"
+            - name: GF_PLUGINS_PREINSTALL_DISABLED
+              value: "true"
           startupProbe:
             httpGet:
               path: /api/health

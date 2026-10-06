@@ -20,6 +20,15 @@ The `cilium-agent` runs with `hostNetwork`, so its metrics are reached through
 the host entity; the Cilium network policy in this chart allows both the pod and
 host paths.
 
+> **Prerequisite:** the running Cilium must be installed with the values in
+> `config/helm/cilium/values.yaml` (or `config/k3s/cilium-values.yaml`). Cilium
+> only starts exposing `:9962` (agent), `:9965` (Hubble agent), and `:9966`
+> (relay) after that release is applied, so re-run
+> `config/k3d/install-cilium.sh` after changing those values. You can confirm
+> from VictoriaMetrics with
+> `curl http://victoriametrics:8428/api/v1/query?query=up` — the `cilium-agent`,
+> `cilium-hubble`, and `hubble-relay` series must be `1`.
+
 ## Query surface
 
 - Prometheus-compatible API for Grafana:

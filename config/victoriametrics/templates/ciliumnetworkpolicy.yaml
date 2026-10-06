@@ -22,9 +22,10 @@ spec:
         - ports:
             - port: "8428"
               protocol: TCP
-    # vmui through the Cilium Ingress Controller.
+    # vmui through the Cilium Ingress Controller, plus node health probes.
     - fromEntities:
         - ingress
+        - host
       toPorts:
         - ports:
             - port: "8428"
