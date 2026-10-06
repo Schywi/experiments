@@ -21,3 +21,15 @@ server:
     type: ClusterIP
   ingress:
     enabled: false
+
+# The chart default probe timeout is 1s. On this single-node cluster the
+# repo-server health check intermittently exceeds it, so the liveness probe
+# kills the pod and it never becomes Ready (CrashLoopBackOff). Widen the
+# timeouts so the repo-server stays up and can serve manifests.
+repoServer:
+  livenessProbe:
+    timeoutSeconds: 15
+    failureThreshold: 6
+  readinessProbe:
+    timeoutSeconds: 5
+    failureThreshold: 6
