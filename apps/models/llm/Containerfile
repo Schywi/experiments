@@ -1,0 +1,30 @@
+# llama.cpp server (CPU) for a small GGUF LLM.
+#
+# Multi-stage: build llama-server from source (static ggml, native CPU opts for
+# this host's AVX2), then a slim runtime. Weights are NOT baked in -- an init
+# container downloads the GGUF onto a PVC (see chart/templates/deployment.yaml).
+FROM fedora:44 AS build
+
+RUN dnf -y install cmake ninja-build gcc-c++ git make && dnf clean all
+RUN git clone --depth 1 https://github.com/ggml-org/llama.cpp /src
+WORKDIR /src
+# BUILD_SHARED_LIBS=OFF yields a self-contained llama-server binary.
+RUN cmake -S . -B build -G Ninja \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DBUILD_SHARED_LIBS=OFF \
+      -DGGML_NATIVE=ON \
+      -DLLAMA_CURL=OFF \
+      -DLLAMA_BUILD_TESTS=OFF \
+      -DLLAMA_BUILD_EXAMPLES=OFF \
+      -DLLAMA_BUILD_SERVER=ON \
+ && cmake --build build --parallel 6 --target llama-server
+
+FROM fedora:44
+
+# libgomp is the OpenMP runtime llama.cpp links against; curl fetches weights.
+RUN dnf -y install libgomp curl libcurl && dnf clean all
+COPY --from=build /src/build/bin/llama-server /usr/local/bin/llama-server
+
+ENV MODEL_DIR=/models
+EXPOSE 8000
+ENTRYPOINT ["/usr/local/bin/llama-server"]

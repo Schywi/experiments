@@ -1,0 +1,18 @@
+{{- if .Values.model.persistence.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: llm-models
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "llm.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  {{- if .Values.model.persistence.storageClass }}
+  storageClassName: {{ .Values.model.persistence.storageClass | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.model.persistence.size }}
+{{- end }}

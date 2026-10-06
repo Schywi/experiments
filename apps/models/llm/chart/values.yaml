@@ -1,0 +1,33 @@
+# Built locally (buildah) and imported into the k3s node; see the Containerfile.
+image:
+  repository: llama-server
+  tag: local
+  pullPolicy: IfNotPresent
+
+# GGUF weights fetched onto a PVC by the init container.
+model:
+  # Hugging Face repo + file; the download URL is derived from these.
+  repo: bartowski/Qwen2.5-1.5B-Instruct-GGUF
+  file: Qwen2.5-1.5B-Instruct-Q4_K_M.gguf
+  dir: /models
+  contextSize: 4096
+  # Keep at or below the physical core count.
+  threads: "6"
+  persistence:
+    enabled: true
+    size: 4Gi
+    storageClass: ""
+
+service:
+  port: 8000
+
+# Extra args appended to llama-server (e.g. ["--flash-attn"]).
+extraArgs: []
+
+resources:
+  requests:
+    cpu: "1"
+    memory: 2Gi
+  limits:
+    cpu: "6"
+    memory: 4Gi
