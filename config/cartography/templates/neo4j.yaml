@@ -37,6 +37,10 @@ spec:
     - name: http
       port: 7474
       targetPort: http
+    # Port 80 so a hostname mapped to this LoadBalancer IP works without a port.
+    - name: web
+      port: 80
+      targetPort: http
 ---
 apiVersion: apps/v1
 kind: Deployment
