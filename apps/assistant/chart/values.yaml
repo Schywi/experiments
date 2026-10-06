@@ -1,0 +1,39 @@
+# Built locally (buildah) and pushed to the in-cluster registry (config/registry/).
+image:
+  repository: 127.0.0.1:5000/assistant
+  tag: local
+  pullPolicy: IfNotPresent
+
+# Upstream LLM: the in-cluster llama.cpp service (apps/models/llm).
+llm:
+  url: http://llm.models.svc.cluster.local:8000
+  model: qwen2.5-1.5b-instruct
+  timeoutSeconds: "60"
+
+# M5: read-only PromQL source. The in-cluster VictoriaMetrics store
+# (config/victoriametrics, namespace observability).
+vm:
+  url: http://victoriametrics.observability.svc.cluster.local:8428
+  queryTimeoutSeconds: "5"
+
+# M6: optional documentation corpus, mounted read-only at /corpus. Build it with
+# scripts/assistant-corpus.sh. Absent/empty => search_knowledge reports "no
+# corpus" instead of failing.
+corpus:
+  configMapName: assistant-corpus
+
+service:
+  port: 8080
+
+# Read-only ClusterRole + binding for the assistant ServiceAccount. When false,
+# no RBAC is created and no API token is mounted (text-only, Milestone 1 mode).
+rbac:
+  create: true
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi

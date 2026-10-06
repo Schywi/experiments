@@ -22,6 +22,14 @@ spec:
         - ports:
             - port: "8428"
               protocol: TCP
+    # The assistant (namespace `assistant`) queries the API read-only (M5).
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: assistant
+      toPorts:
+        - ports:
+            - port: "8428"
+              protocol: TCP
     # vmui through the Cilium Ingress Controller, plus node health probes.
     - fromEntities:
         - ingress
