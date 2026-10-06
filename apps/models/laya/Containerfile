@@ -1,0 +1,20 @@
+# Laya System-1 decision engine, served over the Jev-compatible HTTP API.
+#
+# CPU-only by design: Laya's GPU fast path is CUDA/TileLang, which has no route
+# on this host's AMD RX 570. We install the CPU PyTorch wheel explicitly so the
+# image does not pull multi-GB CUDA runtimes it can never use.
+FROM python:3.12-slim
+
+# CPU-only torch first, then Laya (which would otherwise drag in a CUDA torch).
+RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu torch \
+ && pip install --no-cache-dir "laya[serve]"
+
+# Weights are NOT baked in: an init container downloads them onto a PVC, and the
+# server runs offline from that cache (see chart/templates/deployment.yaml).
+ENV LAYA_HOST=0.0.0.0 \
+    LAYA_PORT=8000 \
+    LAYA_DEVICE=cpu \
+    HF_HOME=/models
+
+EXPOSE 8000
+ENTRYPOINT ["laya-serve"]

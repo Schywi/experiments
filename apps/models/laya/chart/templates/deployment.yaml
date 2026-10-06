@@ -1,0 +1,107 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: laya
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "laya.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "laya.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "laya.selectorLabels" . | nindent 8 }}
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        # Prime the Hugging Face cache on the PVC so the server can run offline.
+        - name: fetch-weights
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["python", "-c"]
+          args:
+            - |
+              from huggingface_hub import snapshot_download
+              snapshot_download("{{ .Values.models.repo }}")
+          env:
+            - name: HF_HOME
+              value: {{ .Values.models.hfHome | quote }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: models
+              mountPath: {{ .Values.models.hfHome }}
+      containers:
+        - name: laya
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.serve.port }}
+          env:
+            - name: HF_HOME
+              value: {{ .Values.models.hfHome | quote }}
+            # Run from the PVC cache; no network needed at serve time.
+            - name: HF_HUB_OFFLINE
+              value: "1"
+            - name: LAYA_HOST
+              value: {{ .Values.serve.host | quote }}
+            - name: LAYA_PORT
+              value: {{ .Values.serve.port | quote }}
+            - name: LAYA_DEVICE
+              value: {{ .Values.serve.device | quote }}
+            - name: LAYA_PRELOAD
+              value: {{ .Values.serve.preload | quote }}
+            - name: LAYA_THREADS
+              value: {{ .Values.serve.threads | quote }}
+          # Loading the checkpoints can take a while; the startup probe gives it
+          # up to 5 minutes before liveness begins.
+          startupProbe:
+            tcpSocket:
+              port: http
+            periodSeconds: 5
+            failureThreshold: 60
+          readinessProbe:
+            tcpSocket:
+              port: http
+            periodSeconds: 10
+            failureThreshold: 3
+          livenessProbe:
+            tcpSocket:
+              port: http
+            periodSeconds: 20
+            failureThreshold: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: models
+              mountPath: {{ .Values.models.hfHome }}
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: models
+          {{- if .Values.models.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: laya-models
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        - name: tmp
+          emptyDir: {}

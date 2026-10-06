@@ -1,0 +1,36 @@
+# Built locally (buildah) and imported into the k3s node; see the Containerfile.
+image:
+  repository: laya-serve
+  tag: local
+  pullPolicy: IfNotPresent
+
+# Weights are cached on a local-path PVC and primed by an init container.
+models:
+  repo: convaiinnovations/laya
+  hfHome: /models
+  persistence:
+    enabled: true
+    size: 4Gi
+    # Empty string uses the cluster default StorageClass (local-path here).
+    storageClass: ""
+
+serve:
+  host: 0.0.0.0
+  port: 8000
+  device: cpu
+  preload: "1"
+  # Keep at or below the physical core count.
+  threads: "6"
+  # Optional bearer token. Do NOT put a secret here; mount a Secret instead.
+  apiKey: ""
+
+service:
+  port: 8000
+
+resources:
+  requests:
+    cpu: "1"
+    memory: 2Gi
+  limits:
+    cpu: "6"
+    memory: 4Gi
