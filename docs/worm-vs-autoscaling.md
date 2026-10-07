@@ -125,31 +125,33 @@ resources:
   requests:
     memory: 600Ki
   limits:
-    memory: 32Mi
+    memory: 600Ki
 ```
 
 Source: `apps/worker/chart/values.yaml`.
 
-- **Request: 600 KiB (~0.59 MiB) per worker.** Kubernetes requires integer
-  bytes, so `0.6Mi` is rejected — the accepted equivalent is `600Ki`.
-- **Limit: 32 MiB per worker.** Because request < limit the worker is
-  *Burstable* on memory (it reserves 600 KiB, may burst to 32 MiB, and is
-  OOM-killed above it).
+- **Request == limit == 600 KiB (~0.59 MiB) per worker.** Because request
+  equals limit the worker is *Guaranteed* on memory again, and is OOM-killed
+  above 600 KiB. Kubernetes requires integer bytes, so `0.6Mi` is rejected —
+  the accepted equivalent is `600Ki`.
+- **Headroom is thin.** The measured peak is 356 KiB (see below), leaving only
+  ~244 KiB of headroom under the 600 KiB limit; a memory spike can OOMKill the
+  worker.
 - **Measured real usage: ~0.35 MiB RSS** (356 KiB VmRSS / VmHWM) for the
-  release static-musl binary — about 1% of the limit. See the measurement
-  method below.
+  release static-musl binary. See the measurement method below.
 - **Namespace ceiling: 640 MiB** via the `worm-worker-cap` ResourceQuota
   (`apps/worker/chart/templates/resourcequota.yaml`), enforced on **both**
   `requests.memory` and `limits.memory`.
-- **Worker cap: still 20.** The `limits.memory` quota (`640 MiB ÷ 32 MiB = 20`)
-  and the controller's `spec.maxReplicas: 20` (`apps/controller/chart/values.yaml`)
-  continue to bind. Lowering the request alone does **not** raise the cap — the
-  32 MiB limit still caps at 20. Raise `maxReplicas`, the quota, the limit, and
-  node memory together to go higher.
+- **Worker cap: still 20 — but now only because of `maxReplicas`.** At 600 KiB
+  per Pod the 640 MiB quota would permit ~1092 workers, so the quota no longer
+  binds; the controller's `spec.maxReplicas: 20`
+  (`apps/controller/chart/values.yaml`) is now the sole ceiling.
 
-Two independent walls enforce 20: the controller refuses the 21st intent, and
-the quota makes a 21st Pod unschedulable. A desired count above the quota is
-expected to remain **pending**, not to bypass the cap (`README.md`).
+The 20-worker ceiling is now enforced by the controller alone: it refuses the
+21st intent. Because the quota no longer binds at 600 KiB per Pod, the cap is a
+policy choice (`maxReplicas`), not a memory limit. To run more workers, raise
+`maxReplicas` (the quota already permits them); to keep the experiment inside a
+memory budget, keep `maxReplicas` low or cut the quota.
 
 ### How the 0.35 MiB figure was measured
 
