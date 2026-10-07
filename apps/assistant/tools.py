@@ -28,6 +28,22 @@ def _core() -> "client.CoreV1Api":
     return _core_client
 
 
+def audit(event: dict) -> None:
+    """Append one JSONL audit record. Best-effort: never breaks the request path.
+
+    Defined here (before the tool modules import it) so `observability`,
+    `knowledge`, and `actions` can `from tools import audit` without a
+    circular-import failure.
+    """
+    record = {"ts": datetime.now(timezone.utc).isoformat(), **event}
+    try:
+        os.makedirs(os.path.dirname(AUDIT_LOG), exist_ok=True)
+        with open(AUDIT_LOG, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(record) + "\n")
+    except OSError:
+        pass
+
+
 @dataclass(frozen=True)
 class Tool:
     name: str
@@ -84,8 +100,18 @@ def get_events(namespace: Optional[str] = None) -> list:
     return events[-50:]
 
 
+from actions import request as request_action  # M9
 from knowledge import search_knowledge  # M6
-from observability import query_prometheus, search_logs  # M5 (defined above)
+from observability import query_prometheus, search_logs  # M5
+
+
+def propose_action(action: str, args: Optional[dict] = None) -> dict:
+    """Propose a level-2 action; returns a confirmation token. Does NOT execute.
+
+    Execution requires a separate human POST to /actions/confirm with the token.
+    """
+    return request_action(action, args or {})
+
 
 REGISTRY: dict = {
     "get_pods": Tool("get_pods", 1, "List pods and their status", get_pods),
@@ -103,6 +129,11 @@ REGISTRY: dict = {
         "search_knowledge", 1,
         "Search the local documentation corpus for relevant passages", search_knowledge,
     ),
+    "propose_action": Tool(
+        "propose_action", 2,
+        "Propose an operational action (restart/scale) for human confirmation",
+        propose_action,
+    ),
 }
 
 
@@ -114,6 +145,8 @@ REGISTRY: dict = {
 _NS_RE = re.compile(r"\b(?:in|namespace)\s+([a-z0-9][a-z0-9-]*)")
 _POD_RE = re.compile(r"\b(?:pod|pods)\s+([a-z0-9][a-z0-9.-]*)")
 _NSNAME_RE = re.compile(r"\b(?:namespace|ns)\s+([a-z0-9][a-z0-9-]*)")
+_DEPLOY_RE = re.compile(r"\b(?:deployment|deploy)\s+([a-z0-9][a-z0-9.-]*)")
+_NUM_RE = re.compile(r"\b(?:to|replicas)\s+(\d+)")
 
 # M5 curated intent->PromQL catalog. The model never authors PromQL; these
 # queries are reviewed and bounded (a single instant query, trimmed server-side).
@@ -171,6 +204,23 @@ def route(message: str) -> Optional[tuple]:
     if "pod" in m:
         return "get_pods", ({"namespace": namespace} if namespace else {})
 
+    # M9: propose an operational action. propose_action only mints a
+    # confirmation token; nothing runs until a human POSTs /actions/confirm.
+    if "restart" in m or "scale" in m:
+        dep = _DEPLOY_RE.search(m)
+        if dep:
+            ns = _NSNAME_RE.search(m) or _NS_RE.search(m)
+            ns_name = ns.group(1) if ns else "default"
+            if "scale" in m:
+                num = _NUM_RE.search(m)
+                if num:
+                    return "propose_action", {"action": "scale_deployment",
+                        "args": {"namespace": ns_name, "name": dep.group(1),
+                                 "replicas": int(num.group(1))}}
+            if "restart" in m:
+                return "propose_action", {"action": "restart_deployment",
+                    "args": {"namespace": ns_name, "name": dep.group(1)}}
+
     # M6: documentation/teaching questions fall back to the knowledge corpus.
     if any(k in m for k in ("explain", "how does", "how do", "what is",
                             "architecture", "runbook", "documentation",
@@ -178,14 +228,3 @@ def route(message: str) -> Optional[tuple]:
         return "search_knowledge", {"query": message}
 
     return None
-
-
-def audit(event: dict) -> None:
-    """Append one JSONL audit record. Best-effort: never breaks the request path."""
-    record = {"ts": datetime.now(timezone.utc).isoformat(), **event}
-    try:
-        os.makedirs(os.path.dirname(AUDIT_LOG), exist_ok=True)
-        with open(AUDIT_LOG, "a", encoding="utf-8") as fh:
-            fh.write(json.dumps(record) + "\n")
-    except OSError:
-        pass

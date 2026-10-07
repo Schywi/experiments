@@ -16,6 +16,7 @@ from fastapi import FastAPI, File, HTTPException, Response, UploadFile
 from pydantic import BaseModel
 
 import voice  # M8
+import actions  # M9
 from tools import REGISTRY, audit, route
 from agent import investigate  # M7
 from starlette.concurrency import run_in_threadpool
@@ -137,3 +138,42 @@ async def transcribe_route(file: UploadFile = File(...)) -> dict:
     except httpx.HTTPError as exc:
         raise HTTPException(status_code=502, detail=f"STT upstream error: {exc}") from exc
     return {"text": text}
+
+
+# --- M9: controlled actions behind human confirmation -----------------------
+
+class ActionRequest(BaseModel):
+    tool: str
+    args: dict = {}
+
+
+class ActionConfirm(BaseModel):
+    token: str
+
+
+@app.get("/actions")
+def actions_route() -> dict:
+    return {"enabled": actions.enabled(), "catalog": actions.catalog(),
+            "pending": actions.list_pending()}
+
+
+@app.post("/actions/request")
+def action_request_route(req: ActionRequest) -> dict:
+    """Mint a confirmation token for a level-2 action. Nothing is executed."""
+    try:
+        return actions.request(req.tool, req.args)
+    except actions.PolicyError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/actions/confirm")
+def action_confirm_route(req: ActionConfirm) -> dict:
+    """Execute a previously requested action. Single-use token; human-triggered."""
+    try:
+        return actions.confirm(req.token)
+    except actions.UnknownToken as exc:
+        raise HTTPException(status_code=404, detail="unknown or already-used token") from exc
+    except actions.Expired as exc:
+        raise HTTPException(status_code=410, detail="token expired") from exc
+    except actions.PolicyError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc

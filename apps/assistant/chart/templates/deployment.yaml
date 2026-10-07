@@ -55,6 +55,12 @@ spec:
               value: {{ .Values.voice.kokoroVoice | quote }}
             - name: STT_URL
               value: {{ .Values.voice.sttUrl | quote }}
+            - name: ACTIONS_ENABLED
+              value: {{ .Values.rbac.allowActions | quote }}
+            - name: ACTION_NAMESPACES
+              value: {{ .Values.actions.allowNamespaces | quote }}
+            - name: ACTION_TTL_SECONDS
+              value: {{ .Values.actions.ttlSeconds | quote }}
           startupProbe:
             httpGet: {path: /healthz, port: http}
             periodSeconds: 2

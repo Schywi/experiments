@@ -36,6 +36,16 @@ service:
 # no RBAC is created and no API token is mounted (text-only, Milestone 1 mode).
 rbac:
   create: true
+  # M9: permit level-2 actions (restart/scale) to execute after human
+  # confirmation. Adds the write ClusterRole; off by default (least privilege).
+  allowActions: false
+
+# M9: bounds on level-2 actions.
+actions:
+  # Namespaces actions may target; empty = any namespace.
+  allowNamespaces: ""
+  # Confirmation token lifetime, seconds.
+  ttlSeconds: "120"
 
 resources:
   requests:
