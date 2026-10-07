@@ -2,7 +2,9 @@
 image:
   repository: 127.0.0.1:5000/assistant
   tag: local
-  pullPolicy: IfNotPresent
+  # Always: the in-cluster Kaniko build (config/registry/kaniko-build.sh) pushes a
+  # mutable `:local` tag, so a cached image must not be reused.
+  pullPolicy: Always
 
 # Upstream LLM: the in-cluster llama.cpp service (apps/models/llm).
 llm:
