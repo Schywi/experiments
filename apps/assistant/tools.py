@@ -102,6 +102,7 @@ def get_events(namespace: Optional[str] = None) -> list:
 
 from actions import request as request_action  # M9
 from knowledge import search_knowledge  # M6
+from memory import recall as recall_notes, remember  # M10
 from observability import query_prometheus, search_logs  # M5
 
 
@@ -133,6 +134,14 @@ REGISTRY: dict = {
         "propose_action", 2,
         "Propose an operational action (restart/scale) for human confirmation",
         propose_action,
+    ),
+    "remember": Tool(
+        "remember", 1,
+        "Store a durable note the user asked to keep", remember,
+    ),
+    "recall": Tool(
+        "recall", 1,
+        "Recall stored notes relevant to a query", recall_notes,
     ),
 }
 
@@ -203,6 +212,14 @@ def route(message: str) -> Optional[tuple]:
 
     if "pod" in m:
         return "get_pods", ({"namespace": namespace} if namespace else {})
+
+    # M10: explicit memory asks.
+    if m.startswith("remember"):
+        note = message.split("remember", 1)[1].strip(" :,-")
+        if note:
+            return "remember", {"text": note}
+    if "what do you remember" in m or m.startswith("recall"):
+        return "recall", {"query": message}
 
     # M9: propose an operational action. propose_action only mints a
     # confirmation token; nothing runs until a human POSTs /actions/confirm.

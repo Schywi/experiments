@@ -62,10 +62,12 @@ def _extract_json(text: str):
     return obj if isinstance(obj, dict) else None
 
 
-def investigate(message: str, llm_url: str, model: str, timeout: float = 60.0) -> dict:
+def investigate(message: str, llm_url: str, model: str, timeout: float = 60.0,
+                history: list | None = None) -> dict:
     """Run the bounded investigation loop and return {reply, steps, stopped}."""
     messages = [
         {"role": "system", "content": _SYSTEM + _catalog()},
+        *(history or []),
         {"role": "user", "content": message},
     ]
     steps = []

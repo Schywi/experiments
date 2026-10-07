@@ -29,6 +29,11 @@ voice:
   kokoroVoice: af_sarah
   sttUrl: ""
 
+# M10: durable memory (long-term notes + per-session history) on a small PVC.
+memory:
+  size: 1Gi
+  storageClassName: ""
+
 service:
   port: 8080
 

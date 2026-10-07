@@ -17,6 +17,7 @@ from pydantic import BaseModel
 
 import voice  # M8
 import actions  # M9
+import memory  # M10
 from tools import REGISTRY, audit, route
 from agent import investigate  # M7
 from starlette.concurrency import run_in_threadpool
@@ -36,6 +37,9 @@ app = FastAPI(title="assistant", version="0.2.0")
 
 class ChatRequest(BaseModel):
     message: str
+    # Optional conversation id: when set, recent turns are included and the new
+    # turn is stored (M10). Stateless when omitted.
+    session: str | None = None
 
 
 class ChatResponse(BaseModel):
@@ -96,17 +100,26 @@ def healthz() -> dict:
 @app.post("/chat", response_model=ChatResponse)
 async def chat(req: ChatRequest) -> ChatResponse:
     messages, used_tool = _build_messages(req.message)
+    if req.session:
+        messages = [messages[0], *memory.recent(req.session), *messages[1:]]
     reply = await _ask_llm(messages)
+    if req.session:
+        memory.append_turn(req.session, "user", req.message)
+        memory.append_turn(req.session, "assistant", reply)
     return ChatResponse(reply=reply, tool=used_tool)
 
 
 @app.post("/investigate", response_model=ChatResponse)
 async def investigate_route(req: ChatRequest) -> ChatResponse:
     """Milestone 7: bounded multi-step investigation over the level-1 tools."""
+    history = memory.recent(req.session) if req.session else None
     out = await run_in_threadpool(
-        investigate, req.message, LLM_URL, LLM_MODEL, REQUEST_TIMEOUT
+        investigate, req.message, LLM_URL, LLM_MODEL, REQUEST_TIMEOUT, history
     )
     used = ",".join(step["tool"] for step in out["steps"]) or None
+    if req.session:
+        memory.append_turn(req.session, "user", req.message)
+        memory.append_turn(req.session, "assistant", out["reply"])
     return ChatResponse(reply=out["reply"], tool=used)
 
 

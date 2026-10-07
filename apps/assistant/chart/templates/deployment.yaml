@@ -61,6 +61,8 @@ spec:
               value: {{ .Values.actions.allowNamespaces | quote }}
             - name: ACTION_TTL_SECONDS
               value: {{ .Values.actions.ttlSeconds | quote }}
+            - name: MEMORY_DIR
+              value: /memory
           startupProbe:
             httpGet: {path: /healthz, port: http}
             periodSeconds: 2
@@ -88,6 +90,8 @@ spec:
             - name: corpus
               mountPath: /corpus
               readOnly: true
+            - name: memory
+              mountPath: /memory
       volumes:
         - name: audit
           emptyDir: {}
@@ -98,3 +102,6 @@ spec:
           configMap:
             name: {{ .Values.corpus.configMapName }}
             optional: true
+        - name: memory
+          persistentVolumeClaim:
+            claimName: assistant-memory
