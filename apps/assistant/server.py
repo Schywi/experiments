@@ -12,9 +12,11 @@ import json
 import os
 
 import httpx
-from fastapi import FastAPI, File, HTTPException, Response, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Response, UploadFile
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
+import ui  # M11
 import voice  # M8
 import actions  # M9
 import memory  # M10
@@ -190,3 +192,42 @@ def action_confirm_route(req: ActionConfirm) -> dict:
         raise HTTPException(status_code=410, detail="token expired") from exc
     except actions.PolicyError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
+
+
+# --- M11: htmx chat front-end ----------------------------------------------
+
+@app.get("/", response_class=HTMLResponse)
+def index() -> HTMLResponse:
+    """The whole UI: one page, same origin as the JSON API."""
+    return HTMLResponse(ui.INDEX)
+
+
+@app.post("/ui/message", response_class=HTMLResponse)
+async def ui_message(
+    message: str = Form(...),
+    mode: str = Form("investigate"),
+    session: str = Form(""),
+) -> HTMLResponse:
+    """htmx target: answer one turn and return the HTML fragment to append."""
+    msg = message.strip()
+    if not msg:
+        return HTMLResponse("")
+    try:
+        if mode == "chat":
+            messages, tool = _build_messages(msg)
+            if session:
+                messages = [messages[0], *memory.recent(session), *messages[1:]]
+            reply = await _ask_llm(messages)
+        else:
+            history = memory.recent(session) if session else None
+            out = await run_in_threadpool(
+                investigate, msg, LLM_URL, LLM_MODEL, REQUEST_TIMEOUT, history
+            )
+            reply = out["reply"]
+            tool = ",".join(step["tool"] for step in out["steps"]) or None
+    except HTTPException as exc:
+        return HTMLResponse(ui.bubbles(msg, str(exc.detail), error=True))
+    if session:
+        memory.append_turn(session, "user", msg)
+        memory.append_turn(session, "assistant", reply)
+    return HTMLResponse(ui.bubbles(msg, reply, tool=tool))
