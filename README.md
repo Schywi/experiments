@@ -168,8 +168,10 @@ Cilium is pinned by the installer to `1.20.1`. The shared public values live in
 
 The Cilium images are the explicit exception to the repository's normal
 Docker-Hub-only external image policy. Repository-built application images are
-local names (`worm-controller:tilt`, `worm-regression:tilt`, and
-`worm-worker:tilt`), never `docker.io/...` references.
+served from the in-cluster registry at `127.0.0.1:5000/worm-controller:tilt`,
+`127.0.0.1:5000/worm-regression:tilt`, and `127.0.0.1:5000/worm-worker:tilt`
+(built in-cluster by Kaniko; see `config/registry/`), never `docker.io/...`
+references.
 
 For an existing cluster that predates Cilium 1.20, use the reviewed consecutive
 minor upgrade script instead of skipping releases:
@@ -200,6 +202,18 @@ ownership decisions.
 Do not register the stable Worm applications while Tilt or the local deployment
 scripts own the same resources. Two reconcilers managing one Deployment creates
 unreliable results.
+
+### Observability (Cilium/Hubble metrics)
+
+Cilium and Hubble export Prometheus metrics (enabled in the Cilium values
+files). `config/victoriametrics/` runs a single-node VictoriaMetrics store that
+scrapes the Cilium agent, operator, Hubble agent, and Hubble relay endpoints,
+and `config/grafana/` serves the official Cilium/Hubble dashboards from a
+provisioned datasource pointing at that store. Argo CD owns both through
+`config/argocd/applications/{victoriametrics,grafana}.yaml` in the
+`observability` namespace. Open `http://grafana.localhost/`. See
+[`config/grafana/README.md`](config/grafana/README.md) and
+[`config/victoriametrics/README.md`](config/victoriametrics/README.md).
 
 ## Worm data and control paths
 
@@ -277,6 +291,7 @@ scripts/                 Image build/import and direct Worm deployment scripts
 Tiltfile*                Optional, resource-oriented Tilt entrypoints
 start.sh                 Destructive one-command local bootstrap
 blog/ and research/      Design notes and local research material
+research/ai-workflow.md  How the local AI assistant is built, shipped, and run
 ```
 
 Read [`AGENTS.md`](AGENTS.md) before automating changes. It contains the
