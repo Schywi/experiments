@@ -14,7 +14,7 @@ from typing import Optional
 
 import httpx
 
-from tools import _core, audit  # reuse the in-cluster client + audit sink
+from k8sutil import _core, audit  # shared in-cluster client + audit sink
 
 VM_URL = os.environ.get(
     "VM_URL", "http://victoriametrics.observability.svc.cluster.local:8428"

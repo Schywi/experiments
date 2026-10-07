@@ -6,7 +6,7 @@ RUN pip install --no-cache-dir fastapi "uvicorn[standard]" httpx kubernetes \
  && mkdir -p /var/log/assistant && chown 10001:10001 /var/log/assistant
 
 WORKDIR /app
-COPY --chown=10001:10001 server.py tools.py observability.py knowledge.py agent.py voice.py actions.py memory.py /app/
+COPY --chown=10001:10001 server.py tools.py k8sutil.py observability.py knowledge.py agent.py voice.py actions.py memory.py /app/
 
 USER 10001
 EXPOSE 8080

@@ -16,7 +16,8 @@ import os
 
 import httpx
 
-from tools import REGISTRY, audit
+from k8sutil import audit
+from tools import REGISTRY
 
 MAX_STEPS = int(os.environ.get("AGENT_MAX_STEPS", "4"))
 MAX_TOOL_CHARS = int(os.environ.get("AGENT_MAX_TOOL_CHARS", "4000"))

@@ -22,7 +22,7 @@ from typing import Callable, Dict
 
 from kubernetes import client, config
 
-from tools import audit
+from k8sutil import audit
 
 PENDING_TTL = int(os.environ.get("ACTION_TTL_SECONDS", "120"))
 ACTIONS_ENABLED = os.environ.get("ACTIONS_ENABLED", "false").lower() == "true"
