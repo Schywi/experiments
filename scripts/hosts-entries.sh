@@ -33,6 +33,8 @@ cartography_ip="${CARTOGRAPHY_LB_IP:-${discovered_cartography:-${default_cartogr
 # (7687) work on one hostname.
 mapfile -t entries <<EOF
 ${ingress_ip} argocd.localhost
+${ingress_ip} assistant.localhost
+${ingress_ip} grafana.localhost victoriametrics.localhost
 ${cartography_ip} neo4j.localhost cartography.localhost
 EOF
 

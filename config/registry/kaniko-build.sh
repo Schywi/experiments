@@ -17,9 +17,10 @@
 # in-cluster builds.
 set -euo pipefail
 
-app="${1:?usage: kaniko-build.sh <app> [branch] [tag]}"
+app="${1:?usage: kaniko-build.sh <app> [branch] [tag] [dest-name]}"
 branch="${2:-native-k3s-gpu-models}"
 tag="${3:-local}"
+dest_name="${4:-${app}}"
 repo="${REPO_URL:-https://github.com/Schywi/experiments.git}"
 registry="${REGISTRY_ADDR:-192.168.0.28:5000}"
 ns="${KANIKO_NS:-registry}"
@@ -28,7 +29,7 @@ name="kaniko-${app}"
 
 git_url="git://${repo#*://}#refs/heads/${branch}"
 
-echo "==> building apps/${app} @ ${branch} -> ${registry}/${app}:${tag}"
+echo "==> building apps/${app} @ ${branch} -> ${registry}/${dest_name}:${tag}"
 echo "    git context: ${git_url}"
 
 job="$(mktemp --suffix=.yaml)"
@@ -58,7 +59,7 @@ spec:
             - "--context=${git_url}"
             - "--context-sub-path=apps/${app}"
             - "--dockerfile=Containerfile"
-            - "--destination=${registry}/${app}:${tag}"
+            - "--destination=${registry}/${dest_name}:${tag}"
             - "--insecure"
             - "--verbosity=info"
 YAML
@@ -71,4 +72,4 @@ if ! kubectl -n "${ns}" wait --for=condition=complete "job/${name}" --timeout=60
   kubectl -n "${ns}" logs "job/${name}" --tail=60 >&2 || true
   exit 1
 fi
-echo "==> pushed ${registry}/${app}:${tag}"
+echo "==> pushed ${registry}/${dest_name}:${tag}"
