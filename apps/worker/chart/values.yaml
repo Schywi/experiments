@@ -13,7 +13,7 @@ sampleIntervalMilliseconds: 1000
 resources:
   requests:
     cpu: 25m
-    memory: 32Mi
+    memory: 600Ki
   limits:
     cpu: 100m
     memory: 32Mi
