@@ -20,7 +20,8 @@ spec:
       automountServiceAccountToken: false
       terminationGracePeriodSeconds: 15
       securityContext:
-        runAsNonRoot: true
+        # Mirrors apps/models/llm: the image runs as root (no USER), so
+        # runAsNonRoot cannot be set here.
         seccompProfile:
           type: RuntimeDefault
       initContainers:
