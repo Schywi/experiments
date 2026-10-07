@@ -25,6 +25,7 @@ repo="${REPO_URL:-https://github.com/Schywi/experiments.git}"
 registry="${REGISTRY_ADDR:-192.168.0.28:5000}"
 ns="${KANIKO_NS:-registry}"
 executor="${KANIKO_IMAGE:-gcr.io/kaniko-project/executor:v1.23.2}"
+build_path="${BUILD_PATH:-apps/${app}}"
 name="kaniko-${app}"
 
 git_url="git://${repo#*://}#refs/heads/${branch}"
@@ -57,7 +58,7 @@ spec:
           image: ${executor}
           args:
             - "--context=${git_url}"
-            - "--context-sub-path=apps/${app}"
+            - "--context-sub-path=${build_path}"
             - "--dockerfile=Containerfile"
             - "--destination=${registry}/${dest_name}:${tag}"
             - "--insecure"
