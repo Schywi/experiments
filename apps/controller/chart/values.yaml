@@ -1,5 +1,5 @@
 image:
-  repository: worm-controller
+  repository: 127.0.0.1:5000/worm-controller
   tag: tilt
   pullPolicy: IfNotPresent
 

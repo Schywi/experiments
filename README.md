@@ -168,8 +168,10 @@ Cilium is pinned by the installer to `1.20.1`. The shared public values live in
 
 The Cilium images are the explicit exception to the repository's normal
 Docker-Hub-only external image policy. Repository-built application images are
-local names (`worm-controller:tilt`, `worm-regression:tilt`, and
-`worm-worker:tilt`), never `docker.io/...` references.
+served from the in-cluster registry at `127.0.0.1:5000/worm-controller:tilt`,
+`127.0.0.1:5000/worm-regression:tilt`, and `127.0.0.1:5000/worm-worker:tilt`
+(built in-cluster by Kaniko; see `config/registry/`), never `docker.io/...`
+references.
 
 For an existing cluster that predates Cilium 1.20, use the reviewed consecutive
 minor upgrade script instead of skipping releases:

@@ -125,32 +125,34 @@ resources:
   requests:
     memory: 600Ki
   limits:
-    memory: 600Ki
+    memory: 16Mi
 ```
 
 Source: `apps/worker/chart/values.yaml`.
 
-- **Request == limit == 600 KiB (~0.59 MiB) per worker.** Because request
-  equals limit the worker is *Guaranteed* on memory again, and is OOM-killed
-  above 600 KiB. Kubernetes requires integer bytes, so `0.6Mi` is rejected —
-  the accepted equivalent is `600Ki`.
-- **Headroom is thin.** The measured peak is 356 KiB (see below), leaving only
-  ~244 KiB of headroom under the 600 KiB limit; a memory spike can OOMKill the
-  worker.
+- **Request 600 KiB (~0.59 MiB); limit 16 MiB per worker.** The limit is a
+  workable pod floor, not the request: a 600 KiB *limit* OOM-kills the pod
+  sandbox `container init` (`container init was OOM-killed (memory limit too
+  low?)`) before the worker even starts, so the limit is raised while the
+  request stays tight. Kubernetes requires integer bytes, so `0.6Mi` is
+  rejected — the accepted equivalent is `600Ki`.
+- **QoS is Burstable, not Guaranteed.** Memory request ≠ limit, and CPU request
+  (`25m`) ≠ CPU limit (`100m`), so the Pod is **Burstable**.
 - **Measured real usage: ~0.35 MiB RSS** (356 KiB VmRSS / VmHWM) for the
-  release static-musl binary. See the measurement method below.
+  release static-musl binary — far under the 16 MiB limit. See the measurement
+  method below.
 - **Namespace ceiling: 640 MiB** via the `worm-worker-cap` ResourceQuota
   (`apps/worker/chart/templates/resourcequota.yaml`), enforced on **both**
   `requests.memory` and `limits.memory`.
-- **Worker cap: still 20 — but now only because of `maxReplicas`.** At 600 KiB
-  per Pod the 640 MiB quota would permit ~1092 workers, so the quota no longer
-  binds; the controller's `spec.maxReplicas: 20`
-  (`apps/controller/chart/values.yaml`) is now the sole ceiling.
+- **Worker cap: still 20 — but only because of `maxReplicas`.** At a 16 MiB
+  limit the 640 MiB quota would permit 40 workers, so the quota does not bind;
+  the controller's `spec.maxReplicas: 20`
+  (`apps/controller/chart/values.yaml`) is the sole ceiling.
 
 The 20-worker ceiling is now enforced by the controller alone: it refuses the
-21st intent. Because the quota no longer binds at 600 KiB per Pod, the cap is a
+21st intent. Because the quota does not bind at 16 MiB per Pod, the cap is a
 policy choice (`maxReplicas`), not a memory limit. To run more workers, raise
-`maxReplicas` (the quota already permits them); to keep the experiment inside a
+`maxReplicas` (the quota permits up to 40); to keep the experiment inside a
 memory budget, keep `maxReplicas` low or cut the quota.
 
 ### How the 0.35 MiB figure was measured

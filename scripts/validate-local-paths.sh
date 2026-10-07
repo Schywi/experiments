@@ -138,9 +138,9 @@ validate_worm_bindings() {
   local controller_values="${repo_root}/apps/controller/chart/values.yaml"
   local regression_values="${repo_root}/apps/regression/chart/values.yaml"
   local worker_values="${repo_root}/apps/worker/chart/values.yaml"
-  require_text "${controller_values}" '  repository: worm-controller' 'Worm controller is not a local image'
-  require_text "${regression_values}" '  repository: worm-regression' 'Worm regression is not a local image'
-  require_text "${worker_values}" '  repository: worm-worker' 'Worm worker is not a local image'
+  require_text "${controller_values}" '  repository: 127.0.0.1:5000/worm-controller' 'Worm controller is not the in-cluster registry image'
+  require_text "${regression_values}" '  repository: 127.0.0.1:5000/worm-regression' 'Worm regression is not the in-cluster registry image'
+  require_text "${worker_values}" '  repository: 127.0.0.1:5000/worm-worker' 'Worm worker is not the in-cluster registry image'
   require_text "${controller_values}" '  pullPolicy: IfNotPresent' 'Worm controller local registry pull policy is missing'
   require_text "${regression_values}" '  pullPolicy: IfNotPresent' 'Worm regression local registry pull policy is missing'
   require_text "${worker_values}" '  pullPolicy: IfNotPresent' 'Worm worker local registry pull policy is missing'

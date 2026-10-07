@@ -1,5 +1,5 @@
 image:
-  repository: worm-worker
+  repository: 127.0.0.1:5000/worm-worker
   tag: tilt
   pullPolicy: IfNotPresent
 
@@ -16,4 +16,4 @@ resources:
     memory: 600Ki
   limits:
     cpu: 100m
-    memory: 600Ki
+    memory: 16Mi
