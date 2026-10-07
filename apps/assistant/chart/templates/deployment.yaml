@@ -49,6 +49,12 @@ spec:
               value: {{ .Values.vm.queryTimeoutSeconds | quote }}
             - name: CORPUS_DIR
               value: /corpus
+            - name: KOKORO_URL
+              value: {{ .Values.voice.kokoroUrl | quote }}
+            - name: KOKORO_VOICE
+              value: {{ .Values.voice.kokoroVoice | quote }}
+            - name: STT_URL
+              value: {{ .Values.voice.sttUrl | quote }}
           startupProbe:
             httpGet: {path: /healthz, port: http}
             periodSeconds: 2

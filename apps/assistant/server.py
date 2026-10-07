@@ -12,9 +12,10 @@ import json
 import os
 
 import httpx
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, File, HTTPException, Response, UploadFile
 from pydantic import BaseModel
 
+import voice  # M8
 from tools import REGISTRY, audit, route
 from agent import investigate  # M7
 from starlette.concurrency import run_in_threadpool
@@ -106,3 +107,33 @@ async def investigate_route(req: ChatRequest) -> ChatResponse:
     )
     used = ",".join(step["tool"] for step in out["steps"]) or None
     return ChatResponse(reply=out["reply"], tool=used)
+
+
+class VoiceRequest(BaseModel):
+    message: str
+    voice: str | None = None
+
+
+@app.post("/speak")
+async def speak_route(req: VoiceRequest) -> Response:
+    """Milestone 8: text -> WAV via the in-cluster Kokoro TTS (voice is a bolt-on)."""
+    try:
+        audio = await run_in_threadpool(voice.speak, req.message, req.voice)
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail=f"TTS upstream error: {exc}") from exc
+    return Response(content=audio, media_type="audio/wav")
+
+
+@app.post("/voice/transcribe")
+async def transcribe_route(file: UploadFile = File(...)) -> dict:
+    """Milestone 8: audio -> text via a local STT service (only if STT_URL is set)."""
+    if not voice.stt_configured():
+        raise HTTPException(status_code=501, detail="STT not configured (set STT_URL)")
+    data = await file.read()
+    try:
+        text = await run_in_threadpool(
+            voice.transcribe, data, file.filename or "audio.wav"
+        )
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail=f"STT upstream error: {exc}") from exc
+    return {"text": text}
