@@ -30,7 +30,7 @@ service:
 resources:
   requests:
     cpu: "1"
-    memory: 2Gi
+    memory: 3Gi
   limits:
     cpu: "6"
-    memory: 4Gi
+    memory: 6Gi
