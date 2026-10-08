@@ -63,6 +63,8 @@ spec:
               value: {{ .Values.actions.ttlSeconds | quote }}
             - name: MEMORY_DIR
               value: /memory
+            - name: UI_LINKS
+              value: {{ .Values.ui.links | toJson | quote }}
           startupProbe:
             httpGet: {path: /healthz, port: http}
             periodSeconds: 2

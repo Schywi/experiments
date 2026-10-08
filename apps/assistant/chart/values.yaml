@@ -51,6 +51,14 @@ ingress:
   className: cilium
   host: assistant.localhost
 
+# M11: resource links shown in the chat UI header (JSON passed to the app).
+ui:
+  links:
+    - { label: "Grafana", url: "http://grafana.localhost/" }
+    - { label: "Hubble UI", url: "http://192.168.0.241/" }
+    - { label: "VictoriaMetrics", url: "http://victoriametrics.localhost/" }
+    - { label: "Argo CD", url: "http://argocd.localhost/" }
+
 # Read-only ClusterRole + binding for the assistant ServiceAccount. When false,
 # no RBAC is created and no API token is mounted (text-only, Milestone 1 mode).
 rbac:

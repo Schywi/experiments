@@ -13,6 +13,7 @@ observed facts (tool output) from hypotheses (inference).
 
 import json
 import os
+import time
 
 import httpx
 
@@ -65,18 +66,30 @@ def _extract_json(text: str):
 
 def investigate(message: str, llm_url: str, model: str, timeout: float = 60.0,
                 history: list | None = None) -> dict:
-    """Run the bounded investigation loop and return {reply, steps, stopped}."""
+    """Run the bounded investigation loop and return {reply, steps, stopped, metrics}."""
+    t0 = time.perf_counter()
+    llm_ms = 0.0
+    tool_ms = 0.0
     messages = [
         {"role": "system", "content": _SYSTEM + _catalog()},
         *(history or []),
         {"role": "user", "content": message},
     ]
     steps = []
+
+    def metrics() -> dict:
+        return {"elapsed_ms": round((time.perf_counter() - t0) * 1000, 1),
+                "llm_ms": round(llm_ms, 1), "tool_ms": round(tool_ms, 1),
+                "steps": len(steps)}
+
     for step in range(MAX_STEPS):
+        s = time.perf_counter()
         raw = _ask(llm_url, model, messages, timeout)
+        llm_ms += (time.perf_counter() - s) * 1000
         obj = _extract_json(raw)
         if obj and "answer" in obj:
-            return {"reply": str(obj["answer"]).strip(), "steps": steps, "stopped": "answer"}
+            return {"reply": str(obj["answer"]).strip(), "steps": steps,
+                    "stopped": "answer", "metrics": metrics()}
         if obj and "tool" in obj:
             name = str(obj["tool"])
             args = obj.get("args") or {}
@@ -88,11 +101,14 @@ def investigate(message: str, llm_url: str, model: str, timeout: float = 60.0,
                 continue
             audit({"event": "tool_call", "tool": name, "args": args,
                    "level": tool.level, "step": step})
+            ts = time.perf_counter()
             try:
                 result = tool.fn(**args) if isinstance(args, dict) else {}
             except Exception as exc:  # a failed tool is evidence, not a crash
                 result = {"error": f"{type(exc).__name__}: {exc}"}
-            steps.append({"tool": name, "args": args})
+            ms = (time.perf_counter() - ts) * 1000
+            tool_ms += ms
+            steps.append({"tool": name, "args": args, "ms": round(ms, 1)})
             messages.append({"role": "user", "content":
                 f"Tool result ({name}):\n{json.dumps(result)[:MAX_TOOL_CHARS]}"})
             continue
@@ -104,7 +120,9 @@ def investigate(message: str, llm_url: str, model: str, timeout: float = 60.0,
     messages.append({"role": "user", "content":
         'Stop investigating. Answer now with {"answer": ...}, separating '
         "observed facts from hypotheses."})
+    s = time.perf_counter()
     raw = _ask(llm_url, model, messages, timeout)
+    llm_ms += (time.perf_counter() - s) * 1000
     obj = _extract_json(raw) or {}
     return {"reply": str(obj.get("answer") or raw).strip(), "steps": steps,
-            "stopped": "max_steps"}
+            "stopped": "max_steps", "metrics": metrics()}

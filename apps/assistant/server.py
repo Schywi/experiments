@@ -10,6 +10,7 @@ human confirmation in a later milestone.
 
 import json
 import os
+import time
 
 import httpx
 from fastapi import FastAPI, File, Form, HTTPException, Response, UploadFile
@@ -28,6 +29,8 @@ LLM_URL = os.environ.get("LLM_URL", "http://llm.models.svc.cluster.local:8000").
 LLM_MODEL = os.environ.get("LLM_MODEL", "qwen2.5-1.5b-instruct")
 REQUEST_TIMEOUT = float(os.environ.get("REQUEST_TIMEOUT", "60"))
 MAX_TOKENS = int(os.environ.get("MAX_TOKENS", "512"))
+# M11: resource links shown in the chat UI header (JSON list of {label,url}).
+UI_LINKS = json.loads(os.environ.get("UI_LINKS", "[]") or "[]")
 SYSTEM_PROMPT = os.environ.get(
     "SYSTEM_PROMPT",
     "You are a concise assistant for a small Kubernetes cluster. "
@@ -47,6 +50,7 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     reply: str
     tool: str | None = None
+    metrics: dict | None = None
 
 
 def _build_messages(message: str) -> tuple[list, str | None]:
@@ -94,6 +98,38 @@ async def _ask_llm(messages: list) -> str:
     return data["choices"][0]["message"]["content"].strip()
 
 
+async def _ask_llm_stream(messages: list) -> tuple:
+    """Stream a reply to measure time-to-first-token; returns (text, ttft_ms, llm_ms)."""
+    payload = {"model": LLM_MODEL, "messages": messages,
+               "max_tokens": MAX_TOKENS, "temperature": 0.2, "stream": True}
+    parts, first, t0 = [], None, time.perf_counter()
+    try:
+        async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT) as client:
+            async with client.stream("POST", f"{LLM_URL}/v1/chat/completions",
+                                     json=payload) as resp:
+                resp.raise_for_status()
+                async for line in resp.aiter_lines():
+                    if not line.startswith("data:"):
+                        continue
+                    data = line[5:].strip()
+                    if data == "[DONE]":
+                        break
+                    try:
+                        obj = json.loads(data)
+                    except ValueError:
+                        continue
+                    delta = (obj.get("choices") or [{}])[0].get("delta", {}).get("content")
+                    if delta:
+                        if first is None:
+                            first = time.perf_counter()
+                        parts.append(delta)
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail=f"LLM upstream error: {exc}") from exc
+    total = time.perf_counter() - t0
+    ttft = None if first is None else (first - t0) * 1000
+    return "".join(parts).strip(), ttft, total * 1000
+
+
 @app.get("/healthz")
 def healthz() -> dict:
     return {"status": "ok"}
@@ -101,14 +137,18 @@ def healthz() -> dict:
 
 @app.post("/chat", response_model=ChatResponse)
 async def chat(req: ChatRequest) -> ChatResponse:
+    t0 = time.perf_counter()
     messages, used_tool = _build_messages(req.message)
     if req.session:
         messages = [messages[0], *memory.recent(req.session), *messages[1:]]
-    reply = await _ask_llm(messages)
+    reply, ttft_ms, llm_ms = await _ask_llm_stream(messages)
+    metrics = {"elapsed_ms": round((time.perf_counter() - t0) * 1000, 1),
+               "llm_ms": round(llm_ms, 1),
+               "ttft_ms": None if ttft_ms is None else round(ttft_ms, 1)}
     if req.session:
         memory.append_turn(req.session, "user", req.message)
         memory.append_turn(req.session, "assistant", reply)
-    return ChatResponse(reply=reply, tool=used_tool)
+    return ChatResponse(reply=reply, tool=used_tool, metrics=metrics)
 
 
 @app.post("/investigate", response_model=ChatResponse)
@@ -122,7 +162,7 @@ async def investigate_route(req: ChatRequest) -> ChatResponse:
     if req.session:
         memory.append_turn(req.session, "user", req.message)
         memory.append_turn(req.session, "assistant", out["reply"])
-    return ChatResponse(reply=out["reply"], tool=used)
+    return ChatResponse(reply=out["reply"], tool=used, metrics=out.get("metrics"))
 
 
 class VoiceRequest(BaseModel):
@@ -199,7 +239,7 @@ def action_confirm_route(req: ActionConfirm) -> dict:
 @app.get("/", response_class=HTMLResponse)
 def index() -> HTMLResponse:
     """The whole UI: one page, same origin as the JSON API."""
-    return HTMLResponse(ui.INDEX)
+    return HTMLResponse(ui.index(UI_LINKS))
 
 
 @app.post("/ui/message", response_class=HTMLResponse)
@@ -212,12 +252,16 @@ async def ui_message(
     msg = message.strip()
     if not msg:
         return HTMLResponse("")
+    t0 = time.perf_counter()
     try:
         if mode == "chat":
             messages, tool = _build_messages(msg)
             if session:
                 messages = [messages[0], *memory.recent(session), *messages[1:]]
-            reply = await _ask_llm(messages)
+            reply, ttft_ms, llm_ms = await _ask_llm_stream(messages)
+            metrics = {"elapsed_ms": round((time.perf_counter() - t0) * 1000, 1),
+                       "llm_ms": round(llm_ms, 1),
+                       "ttft_ms": None if ttft_ms is None else round(ttft_ms, 1)}
         else:
             history = memory.recent(session) if session else None
             out = await run_in_threadpool(
@@ -225,9 +269,10 @@ async def ui_message(
             )
             reply = out["reply"]
             tool = ",".join(step["tool"] for step in out["steps"]) or None
+            metrics = out.get("metrics")
     except HTTPException as exc:
         return HTMLResponse(ui.bubbles(msg, str(exc.detail), error=True))
     if session:
         memory.append_turn(session, "user", msg)
         memory.append_turn(session, "assistant", reply)
-    return HTMLResponse(ui.bubbles(msg, reply, tool=tool))
+    return HTMLResponse(ui.bubbles(msg, reply, tool=tool, metrics=metrics))
