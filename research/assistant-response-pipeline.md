@@ -65,6 +65,62 @@ Rules:
 - Tool args are validated/coerced against each tool's signature (fixes the
   `get_events(field=…)` failure).
 
+#### Layer 1b — Parallel rounds, not sequential hops
+
+The M7 loop calls one tool per LLM turn (`LLM→tool→LLM→tool→…`). Measured on
+this host a **tool call is ~0.1–0.3 s but one LLM call is ~13–45 s** (TTFT
+0.5–4.7 s + generation), and each turn **re-prefills the whole growing prompt**
+(CPU prefill dominates) — so N tools cost ~N+1 LLM calls with superlinear prompt
+cost. "What is unhealthy?" took ~90 s this way.
+
+Replace the per-tool hop with **rounds**:
+
+```
+round = plan(batch)  ->  run batch in PARALLEL  ->  correlate  ->  answer | next round
+        1 LLM call        threadpool, no LLM        1 LLM call
+```
+
+A round collapses N tool calls into **2 LLM calls** (one short plan, one
+correlate that reads the evidence **once**), instead of N+1.
+
+```
+LLM(plan: [hubble-flows, pod-status, metrics]) ─┬─ flows ─┐
+                                                ├─ pods  ─┤→ LLM(correlate) → {screen_md, speech}
+                                                └─ metrics┘
+```
+
+**Plan shape** (one call, short, schema-constrained JSON):
+
+```json
+{"tools": [{"tool": "get_pods", "args": {}}, {"tool": "query_prometheus", "args": {"query": "…"}}],
+ "hypothesis": "a workload is being OOM/denied", "sufficient": false}
+```
+
+**Stopping — cap by round + latency, not by tool count:**
+1. **Round budget** (e.g. `MAX_ROUNDS=3`).
+2. **Latency budget** (e.g. wall-clock `LATENCY_BUDGET_MS=20000`); on expiry force
+   the correlate/answer step.
+3. **Hypothesis-change gate**: a follow-up round runs **only if** correlate names a
+   *new* hypothesis. No new hypothesis ⇒ answer now. (This is what prevents the
+   thrash that produced the 90 s run.)
+
+**Deterministic fast path:** for known intents, skip the plan LLM call entirely —
+`route()` returns a **bundle** (e.g. "cluster health" →
+`[get_pods, get_events, query_prometheus(drops)]`), so the whole answer is **1 LLM
+call**. Keep the LLM planner only as the fallback for arbitrary questions.
+
+**Constraints / risks:**
+- Parallelism only helps *independent* gathering; anything needing a name from an
+  earlier round is a round-2 drill-down (exactly the hypothesis-gate case).
+- **Context budget:** the correlate prompt must fit the model context (1.5B →
+  4096 tokens). Every fact is **truncated/summarized to a per-fact budget** before
+  correlation; hard-cap total evidence tokens.
+- **Straggler barrier:** correlate waits for the slowest tool → per-tool timeout,
+  and emit the early `signal` as soon as the *first* tool returns.
+- Small models plan poorly → strict JSON + deterministic bundles as the default.
+- Same read-only tools; concurrency is a threadpool over the existing client.
+
+
 ### Layer 2 — Response layer → two outputs
 
 One prompt, two renderings (same facts in, different audiences out):
@@ -131,17 +187,22 @@ browser            /ask/stream           L1 agent            L2 response        
 
 ## 3. Migration steps (each independently shippable)
 
-1. **Facts** — wrap each tool call in Layer 1 to emit `{claim, source, evidence,
-   confidence}`; validate tool args. (Fixes correctness; no UI change.)
-2. **Dual output** — Layer 2 prompt returns `{screen_md, speech}` (JSON); the
+1. **Facts + arg validation** — wrap each tool call in Layer 1 to emit
+   `{claim, source, evidence, confidence}`; validate/coerce tool args. (Fixes
+   correctness; no UI change.)
+2. **Parallel rounds** — replace the per-tool hops with
+   `plan → fan-out(threadpool) → correlate`; add the round/latency/hypothesis-change
+   gates and deterministic intent bundles. *(Biggest latency win — see Layer 1b.)*
+3. **Dual output** — Layer 2 prompt returns `{screen_md, speech}` (JSON); the
    existing `/investigate` returns both. UI renders `screen_md` (start with a
    minimal, escaped markdown-subset renderer: paragraphs, bullets, fenced code,
    links).
-3. **Stream** — add `POST /ask/stream` (SSE) with `started/fact/signal/answer/audio/done`.
-4. **Background TTS** — start Kokoro on `speech`; `GET /audio/<id>`.
-5. **Early signal** — emit `signal` from the first observed fact; the UI may
+4. **Stream** — add `POST /ask/stream` (SSE) with
+   `started/fact/signal/answer/audio/done`.
+5. **Background TTS** — start Kokoro on `speech`; `GET /audio/<id>`.
+6. **Early signal** — emit `signal` from the first observed fact; the UI may
    auto-play it if "auto-speak" is on.
-6. **Rich sources** — render each fact's `source` as a link/chip and optional
+7. **Rich sources** — render each fact's `source` as a link/chip and optional
    log/terminal excerpt (read-only action palette, see §4).
 
 ## 4. Related: read-only terminal & links
