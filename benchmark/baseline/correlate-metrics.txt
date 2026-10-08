@@ -1,0 +1,41 @@
+Correlate latency baseline — captured from the production assistant /metrics
+(target http://192.168.0.243), stage="correlate", model="qwen2.5-1.5b-instruct".
+Frozen 2026-10-08.
+
+-- raw counters (21 correlate calls) --
+assistant_llm_requests_total{stage="correlate"}              21
+assistant_llm_input_tokens_total{stage="correlate"}          6064
+assistant_llm_output_tokens_total{stage="correlate"}         1890
+assistant_llm_prefill_seconds_sum{stage="correlate"}         28.802
+assistant_llm_generation_seconds_sum{stage="correlate"}      157.950
+assistant_llm_request_seconds_sum{stage="correlate"}         187.328
+assistant_llm_generation_tokens_per_second_sum{stage="correlate"} 273.611
+assistant_llm_prefill_tokens_per_second_sum{stage="correlate"}    26067.668
+
+-- derived per call --
+prompt tokens / call  = 6064 / 21            = 288.8
+output tokens / call  = 1890 / 21            = 90.0
+prefill   / call      = 28.802 / 21          = 1.37 s
+generation/ call      = 157.950 / 21         = 7.52 s
+request   / call      = 187.328 / 21         = 8.92 s
+generation tok/s      = 273.611 / 21         = 13.0 tok/s
+prefill    tok/s      = 26067.668 / 21       = 1241 tok/s
+
+-- request_seconds histogram (cumulative) --
+le=1:0  le=2:0  le=5:5  le=10:16  le=20:19  le=30:20  le=45:21  le=+Inf:21
+=> p50 ~8-9s, max <= 45s. NO 143s call exists on the production assistant.
+
+-- plan stage, same window (16 calls, for contrast) --
+prefill_seconds_sum   11.258  -> 0.70 s/call
+generation_seconds_sum 116.756 -> 7.30 s/call
+request_seconds_sum   128.880 -> 8.06 s/call
+
+-- context --
+llama-server contextSize = 4096 (apps/models/llm/chart/values.yaml)
+correlate prompt ~289 tokens; correlate output <= CORRELATE_MAX_TOKENS=450 (avg 90).
+Evidence handed to correlate is capped at EVIDENCE_CHARS=2600 (~650 tokens) but the
+observed prompt is only ~289 tokens, so correlate sees far less than the cap.
+
+CONCLUSION: on the production assistant, correlate is generation-bound and averages
+~8.9 s (84% generation, 15% prefill). The 143 s figure came from ONE /investigate
+call on the isolated assistant-laya pod and is an outlier, not the baseline.

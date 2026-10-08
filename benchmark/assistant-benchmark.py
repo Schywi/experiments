@@ -5,8 +5,8 @@ Measures the PLAN step only (via the debug `/plan` endpoint), so it does not pay
 the correlate cost. Run it against the production assistant (qwen planner) and the
 isolated `assistant-laya` (Laya planner) and compare:
 
-    BENCH_URL=http://192.168.0.243          python3 scripts/assistant-benchmark.py
-    BENCH_URL=http://127.0.0.1:18081        python3 scripts/assistant-benchmark.py
+    BENCH_URL=http://192.168.0.243          python3 benchmark/assistant-benchmark.py
+    BENCH_URL=http://127.0.0.1:18081        python3 benchmark/assistant-benchmark.py
 
 Each question has a GOLD "bundle" label from the plan catalog
 (unhealthy | traffic | drop | default). The planner's chosen label is read from
