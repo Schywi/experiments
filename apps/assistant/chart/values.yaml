@@ -38,6 +38,11 @@ memory:
 
 service:
   port: 8080
+  # Give the assistant its own LoadBalancer IP (Cilium LB IPAM, lan-pool) so you
+  # can reach it directly at http://192.168.0.243/ with no /etc/hosts entry —
+  # the ingress (assistant.localhost) still works too.
+  type: LoadBalancer
+  loadBalancerIP: "192.168.0.243"
 
 # M11: expose the htmx chat UI through the Cilium Ingress Controller as
 # assistant.localhost (add the host via scripts/hosts-entries.sh).

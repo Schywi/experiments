@@ -6,10 +6,18 @@ metadata:
   labels:
     {{- include "assistant.labels" . | nindent 4 }}
 spec:
-  type: ClusterIP
+  type: {{ .Values.service.type | default "ClusterIP" }}
+  {{- with .Values.service.loadBalancerIP }}
+  loadBalancerIP: {{ . }}
+  {{- end }}
   selector:
     {{- include "assistant.selectorLabels" . | nindent 4 }}
   ports:
     - name: http
       port: {{ .Values.service.port }}
+      targetPort: http
+    # Port 80 too, so a LoadBalancer IP (or a hostname mapped to it) is reachable
+    # without a port: http://<ip>/
+    - name: web
+      port: 80
       targetPort: http
