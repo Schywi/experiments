@@ -302,4 +302,5 @@ async def ui_message(
     if session:
         memory.append_turn(session, "user", msg)
         memory.append_turn(session, "assistant", reply)
-    return HTMLResponse(ui.assistant_bubble(reply, speech=speech, tool=tool, metrics=metrics))
+    return HTMLResponse(ui.assistant_bubble(reply, speech=speech, tool=tool,
+                                            metrics=metrics, markdown=(mode != "chat")))

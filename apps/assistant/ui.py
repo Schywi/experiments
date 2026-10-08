@@ -12,6 +12,7 @@ textContent so it is never parsed as HTML.
 """
 
 import html
+import re
 
 _PAGE = """<!doctype html>
 <html lang="en">
@@ -40,6 +41,17 @@ _PAGE = """<!doctype html>
     .user { align-self: flex-end; background: #1f6feb; color: #fff; }
     .bot { align-self: flex-start; background: #161b22; border: 1px solid #21262d; }
     .bot.err { border-color: #f85149; color: #ffb4ad; }
+    .bot.md { white-space: normal; }
+    .md h1, .md h2, .md h3 { margin: 6px 0 4px; }
+    .md h1 { font-size: 16px; } .md h2 { font-size: 15px; } .md h3 { font-size: 14px; }
+    .md p { margin: 5px 0; }
+    .md ul { margin: 5px 0; padding-left: 20px; }
+    .md li { margin: 2px 0; }
+    .md pre { background: #0d1117; border: 1px solid #30363d; border-radius: 6px;
+              padding: 8px; overflow-x: auto; }
+    .md code { background: #21262d; border-radius: 4px; padding: 0 4px; }
+    .md pre code { background: none; padding: 0; }
+    .md a { color: #58a6ff; }
     .bot.pending { color: #7d8590; }
     .meta { margin-top: 6px; font-size: 11px; color: #7d8590; }
     .tag { display: inline-block; margin-right: 6px; padding: 1px 6px;
@@ -187,13 +199,13 @@ def _fmt_metrics(metrics: dict) -> str:
 
 def assistant_bubble(reply: str, tool: str | None = None,
                      metrics: dict | None = None, error: bool = False,
-                     speech: str | None = None) -> str:
+                     speech: str | None = None, markdown: bool = False) -> str:
     """Render ONLY the assistant bubble (the user bubble is drawn client-side).
 
-    `reply` is what is shown; `speech` (if given) is what the 🔊 button speaks —
-    the short conversational line from the correlate step.
+    `reply` is what is shown (Markdown-rendered when `markdown`); `speech` (if
+    given) is what the 🔊 button speaks — the short conversational line.
     """
-    cls = "bot err" if error else "bot"
+    cls = "bot err" if error else ("bot md" if markdown else "bot")
     tags = [f'<span class="tag">{html.escape(t)}</span>'
             for t in str(tool or "").split(",") if t]
     if metrics:
@@ -201,14 +213,84 @@ def assistant_bubble(reply: str, tool: str | None = None,
         if text:
             tags.append(f'<span class="tag">{text}</span>')
     meta = f'<div class="meta">{"".join(tags)}</div>' if tags else ""
+    body = render_markdown(reply) if markdown else html.escape(reply)
     speak_text = speech or reply
     speak = "" if error else (
         f'<button class="speak" data-text="{html.escape(speak_text, quote=True)}"'
         ' title="Speak this reply">\U0001f50a</button>'
     )
-    return f'<div class="msg {cls}">{html.escape(reply)}{speak}{meta}</div>'
+    return f'<div class="msg {cls}">{body}{speak}{meta}</div>'
 
 
 def user_bubble(text: str) -> str:
     """Render a user bubble (server-side helper; the UI draws it client-side)."""
     return f'<div class="msg user">{html.escape(text)}</div>'
+
+
+# --- screen_md: a minimal, safe Markdown subset -> HTML ----------------------
+
+_HEADING = re.compile(r"^(#{1,4})\s+(.*)$")
+_BULLET = re.compile(r"^\s*[-*]\s+(.*)$")
+_LINK = re.compile(r"\[([^\]]+)\]\((https?://[^\s)]+)\)")
+_BOLD = re.compile(r"\*\*([^*]+)\*\*")
+_ITALIC = re.compile(r"(?<!\*)\*([^*]+)\*(?!\*)")
+_INLINE_CODE = re.compile(r"`([^`]+)`")
+
+
+def _inline(text: str) -> str:
+    text = html.escape(text)                       # escape FIRST, then decorate
+    text = _INLINE_CODE.sub(r"<code>\1</code>", text)
+    text = _BOLD.sub(r"<strong>\1</strong>", text)
+    text = _ITALIC.sub(r"<em>\1</em>", text)
+    text = _LINK.sub(
+        lambda m: f'<a href="{m.group(2)}" target="_blank" rel="noopener">{m.group(1)}</a>',
+        text)
+    return text
+
+
+def render_markdown(md: str) -> str:
+    """Render a safe subset of Markdown to HTML (no deps).
+
+    The model's text is untrusted: everything is HTML-escaped first, then a small
+    allowlist is applied — headings, bullet lists, fenced code, bold/italic,
+    inline code, and http(s)-only links. No raw HTML is ever emitted.
+    """
+    out, in_code, in_list = [], False, False
+
+    def close_list():
+        nonlocal in_list
+        if in_list:
+            out.append("</ul>")
+            in_list = False
+
+    for raw in (md or "").splitlines():
+        if raw.strip().startswith("```"):
+            close_list()
+            out.append("</code></pre>" if in_code else "<pre><code>")
+            in_code = not in_code
+            continue
+        if in_code:
+            out.append(html.escape(raw) + "\n")
+            continue
+        if not raw.strip():
+            close_list()
+            continue
+        heading = _HEADING.match(raw)
+        if heading:
+            close_list()
+            level = len(heading.group(1))
+            out.append(f"<h{level}>{_inline(heading.group(2))}</h{level}>")
+            continue
+        bullet = _BULLET.match(raw)
+        if bullet:
+            if not in_list:
+                out.append("<ul>")
+                in_list = True
+            out.append(f"<li>{_inline(bullet.group(1))}</li>")
+            continue
+        close_list()
+        out.append(f"<p>{_inline(raw)}</p>")
+    if in_code:
+        out.append("</code></pre>")
+    close_list()
+    return "".join(out)
