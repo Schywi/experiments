@@ -2,7 +2,7 @@
 
 - **Status:** complete
 - **Tag:** `e2-laya-vs-qwen-e2e`
-- **Base commit:** `__BASE__`
+- **Base commit:** `0f921e109218ac1cc32592049117f126586357ae`
 - **Model / prompt / evidence:** UNCHANGED (no optimization, no prompt edits, no
   quantization change). Only the *planner* differs between arms.
 
