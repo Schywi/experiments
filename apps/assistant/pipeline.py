@@ -129,16 +129,19 @@ def _catalog() -> str:
     return "\n".join(f"- {n}: {t.description}" for n, t in sorted(READ_TOOLS.items()))
 
 
-def plan(question, llm_url, model, timeout, history=None):
+def plan(question, llm_url, model, timeout, history=None, kind=None):
     """Return (batch, source, plan_ms).
 
     `source` is label-qualified ("bundle:<label>", "laya:<label>") so the chosen
     plan is observable for scoring; "llm"/"llm-failed" is the free-form Qwen path.
 
-    PLANNER_KIND=laya routes ONLY this step through the Laya/Jev decision engine
-    (the isolated assistant-laya experiment). Every other stage is unchanged.
+    `kind` (default: PLANNER_KIND env, else "qwen") selects the planner. Setting
+    it to "laya" routes ONLY this step through the Laya/Jev decision engine; the
+    /plan debug endpoint passes it explicitly so both planners can be benchmarked
+    from one deployment. Every other stage is unchanged.
     """
-    if os.environ.get("PLANNER_KIND", "qwen").lower() == "laya":
+    kind = (kind or os.environ.get("PLANNER_KIND", "qwen")).lower()
+    if kind == "laya":
         import laya_planner
         try:
             label, ms = laya_planner.classify(question, _CRITERIA)

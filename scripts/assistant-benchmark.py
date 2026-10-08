@@ -22,6 +22,9 @@ import time
 import urllib.request
 
 BASE = os.environ.get("BENCH_URL", "http://192.168.0.243").rstrip("/")
+# Optional planner override for the /plan endpoint (?kind=qwen|laya). Empty =>
+# the deployment's configured planner (assistant-laya -> laya).
+KIND = os.environ.get("BENCH_KIND", "").strip()
 
 # (question, gold label). The first five are the pre-existing benchmark prompts;
 # the rest are the labeled set added for the Laya-vs-qwen planner comparison.
@@ -89,7 +92,8 @@ def main():
     for q, gold in PLAN_QUESTIONS:
         t0 = time.perf_counter()
         try:
-            body = post("/plan", {"message": q})
+            path = f"/plan?kind={KIND}" if KIND else "/plan"
+            body = post(path, {"message": q})
             err = ""
         except Exception as exc:                     # noqa: BLE001
             body, err = {}, f"{type(exc).__name__}: {exc}"

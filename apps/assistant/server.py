@@ -219,15 +219,16 @@ async def investigate_route(req: ChatRequest) -> ChatResponse:
 
 
 @app.post("/plan")
-def plan_route(req: ChatRequest) -> dict:
+def plan_route(req: ChatRequest, kind: str | None = None) -> dict:
     """Debug: return ONLY the planner's decision (no tools, no correlate).
 
     Used by scripts/assistant-benchmark.py to measure planner choice + latency
-    without paying the correlate cost. Read-only; runs no tools, calls no LLM
-    beyond the plan step itself.
+    without paying the correlate cost. `?kind=qwen|laya` overrides the planner
+    for this call, so both planners are comparable from one deployment.
+    Read-only; runs no tools, calls no LLM beyond the plan step itself.
     """
     batch, source, ms = pipeline.plan(
-        req.message, LLM_URL, LLM_MODEL, PIPELINE_TIMEOUT, None)
+        req.message, LLM_URL, LLM_MODEL, PIPELINE_TIMEOUT, None, kind)
     return {"planner": source, "plan_ms": round(ms, 1),
             "tools": [{"tool": n, "args": a} for n, a in batch]}
 
