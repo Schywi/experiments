@@ -30,6 +30,8 @@ voice:
   kokoroUrl: http://kokoro.models.svc.cluster.local:8000
   kokoroVoice: af_sarah
   sttUrl: ""
+  # Synthesize speech in the background as soon as it exists (cache the WAV).
+  background: "true"
 
 # M10: durable memory (long-term notes + per-session history) on a small PVC.
 memory:

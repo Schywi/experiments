@@ -55,6 +55,8 @@ spec:
               value: {{ .Values.voice.kokoroVoice | quote }}
             - name: STT_URL
               value: {{ .Values.voice.sttUrl | quote }}
+            - name: TTS_BACKGROUND
+              value: {{ .Values.voice.background | quote }}
             - name: ACTIONS_ENABLED
               value: {{ .Values.rbac.allowActions | quote }}
             - name: ACTION_NAMESPACES

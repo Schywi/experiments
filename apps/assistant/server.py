@@ -8,6 +8,7 @@ to JSONL. Only level-1 (read-only) tools exist so far; level >= 2 will require
 human confirmation in a later milestone.
 """
 
+import asyncio
 import json
 import os
 import time
@@ -23,6 +24,7 @@ import actions  # M9
 import memory  # M10
 import llm_metrics  # instrumentation
 import pipeline  # plan -> fan-out -> correlate
+import tts_cache  # background TTS
 from tools import REGISTRY, audit, route
 from starlette.concurrency import run_in_threadpool
 
@@ -32,6 +34,8 @@ REQUEST_TIMEOUT = float(os.environ.get("REQUEST_TIMEOUT", "60"))
 # The two-call pipeline can take longer than a single chat call (plan + fan-out +
 # correlate); give it headroom before the correlate step degrades.
 PIPELINE_TIMEOUT = float(os.environ.get("PIPELINE_TIMEOUT", "150"))
+# Background TTS: synthesize speech as soon as it exists, cache the WAV.
+TTS_BACKGROUND = os.environ.get("TTS_BACKGROUND", "true").lower() == "true"
 MAX_TOKENS = int(os.environ.get("MAX_TOKENS", "512"))
 # M11: resource links shown in the chat UI header (JSON list of {label,url}).
 UI_LINKS = json.loads(os.environ.get("UI_LINKS", "[]") or "[]")
@@ -59,6 +63,29 @@ class ChatResponse(BaseModel):
     screen_md: str | None = None
     speech: str | None = None
     facts: list | None = None
+    # Background TTS: id to fetch the pre-synthesized WAV from /audio/<id>.
+    audio_id: str | None = None
+
+
+def _start_tts(text: str | None) -> str | None:
+    """Kick off speech synthesis in the background; return its audio id.
+
+    Returns None if disabled or the text is empty. The task outlives the request.
+    """
+    text = (text or "").strip()
+    if not TTS_BACKGROUND or not text:
+        return None
+    audio_id = tts_cache.new_id()
+
+    async def _job():
+        try:
+            wav = await run_in_threadpool(voice.speak, text)
+            tts_cache.put(audio_id, wav)
+        except Exception as exc:                     # noqa: BLE001
+            tts_cache.put_error(audio_id, f"{type(exc).__name__}: {exc}")
+
+    asyncio.create_task(_job())
+    return audio_id
 
 
 def _build_messages(message: str) -> tuple[list, str | None]:
@@ -165,7 +192,7 @@ async def chat(req: ChatRequest) -> ChatResponse:
         memory.append_turn(req.session, "user", req.message)
         memory.append_turn(req.session, "assistant", reply)
     return ChatResponse(reply=reply, tool=used_tool, metrics=metrics,
-                        screen_md=reply, speech=reply)
+                        screen_md=reply, speech=reply, audio_id=_start_tts(reply))
 
 
 @app.post("/investigate", response_model=ChatResponse)
@@ -181,7 +208,7 @@ async def investigate_route(req: ChatRequest) -> ChatResponse:
         memory.append_turn(req.session, "assistant", out["screen_md"])
     return ChatResponse(reply=out["screen_md"], tool=used, metrics=out["metrics"],
                         screen_md=out["screen_md"], speech=out["speech"],
-                        facts=out["facts"])
+                        facts=out["facts"], audio_id=_start_tts(out["speech"]))
 
 
 class VoiceRequest(BaseModel):
@@ -255,6 +282,20 @@ def action_confirm_route(req: ActionConfirm) -> dict:
 
 # --- M11: htmx chat front-end ----------------------------------------------
 
+@app.get("/audio/{audio_id}")
+def audio(audio_id: str) -> Response:
+    """Serve a background-synthesized WAV; 202 while still generating, 404 unknown."""
+    item = tts_cache.get(audio_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="unknown audio id")
+    if item["error"]:
+        raise HTTPException(status_code=502, detail=f"TTS failed: {item['error']}")
+    if item["wav"] is None:
+        return Response(status_code=202, headers={"Retry-After": "1"})
+    return Response(content=item["wav"], media_type="audio/wav",
+                    headers={"Cache-Control": "private, max-age=600"})
+
+
 @app.get("/metrics")
 def metrics_endpoint() -> Response:
     """Prometheus exposition (LLM per-stage instrumentation; measurement only)."""
@@ -302,5 +343,7 @@ async def ui_message(
     if session:
         memory.append_turn(session, "user", msg)
         memory.append_turn(session, "assistant", reply)
+    audio_id = _start_tts(speech)
     return HTMLResponse(ui.assistant_bubble(reply, speech=speech, tool=tool,
-                                            metrics=metrics, markdown=(mode != "chat")))
+                                            metrics=metrics, audio_id=audio_id,
+                                            markdown=(mode != "chat")))

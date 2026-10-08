@@ -152,18 +152,31 @@ _PAGE = """<!doctype html>
       var b = e.target.closest("button.speak");
       if (!b) return;
       var label = b.textContent, text = b.getAttribute("data-text") || "";
+      var audioUrl = b.getAttribute("data-audio");
       b.disabled = true; b.textContent = "\\u2026";
-      var t0 = performance.now();
-      fetch("/speak", { method: "POST", headers: { "content-type": "application/json" },
-                        body: JSON.stringify({ message: text }) })
-        .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.blob(); })
-        .then(function (blob) {
-          var audio = document.createElement("audio");
-          audio.controls = true; audio.autoplay = true; audio.src = URL.createObjectURL(blob);
-          b.replaceWith(audio);
-          window.toast("TTS ready in " + ((performance.now() - t0) / 1000).toFixed(2) + "s \\u2014 pause/seek enabled");
-        })
-        .catch(function (err) { b.disabled = false; b.textContent = label; window.toast("TTS failed: " + err.message, true); });
+      function playBlob(blob) {
+        var audio = document.createElement("audio");
+        audio.controls = true; audio.autoplay = true; audio.src = URL.createObjectURL(blob);
+        b.replaceWith(audio);
+      }
+      function speakOnDemand() {
+        var t0 = performance.now();
+        return fetch("/speak", { method: "POST", headers: { "content-type": "application/json" },
+                                 body: JSON.stringify({ message: text }) })
+          .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.blob(); })
+          .then(function (blob) { playBlob(blob);
+            window.toast("TTS ready in " + ((performance.now() - t0) / 1000).toFixed(2) + "s"); });
+      }
+      var p = audioUrl ? fetch(audioUrl).then(function (r) {
+          if (r.status === 200) return r.blob();
+          if (r.status === 202) throw { pending: true };
+          throw new Error("HTTP " + r.status);
+        }).then(function (blob) { playBlob(blob); window.toast("Played background TTS"); })
+        : speakOnDemand();
+      Promise.resolve(p).catch(function (err) {
+        if (err && err.pending) { window.toast("TTS still generating\\u2026"); return speakOnDemand(); }
+        window.toast("TTS failed: " + (err && err.message || err), true);
+      }).finally(function () { b.disabled = false; b.textContent = label; });
     });
   </script>
 </body>
@@ -199,11 +212,13 @@ def _fmt_metrics(metrics: dict) -> str:
 
 def assistant_bubble(reply: str, tool: str | None = None,
                      metrics: dict | None = None, error: bool = False,
-                     speech: str | None = None, markdown: bool = False) -> str:
+                     speech: str | None = None, markdown: bool = False,
+                     audio_id: str | None = None) -> str:
     """Render ONLY the assistant bubble (the user bubble is drawn client-side).
 
     `reply` is what is shown (Markdown-rendered when `markdown`); `speech` (if
-    given) is what the 🔊 button speaks — the short conversational line.
+    given) is what the 🔊 button speaks; `audio_id` points at the background-
+    synthesized WAV so the button plays instantly instead of synthesizing.
     """
     cls = "bot err" if error else ("bot md" if markdown else "bot")
     tags = [f'<span class="tag">{html.escape(t)}</span>'
@@ -215,8 +230,10 @@ def assistant_bubble(reply: str, tool: str | None = None,
     meta = f'<div class="meta">{"".join(tags)}</div>' if tags else ""
     body = render_markdown(reply) if markdown else html.escape(reply)
     speak_text = speech or reply
+    attr = (f' data-audio="/audio/{html.escape(str(audio_id), quote=True)}"'
+            if audio_id else "")
     speak = "" if error else (
-        f'<button class="speak" data-text="{html.escape(speak_text, quote=True)}"'
+        f'<button class="speak" data-text="{html.escape(speak_text, quote=True)}"{attr}'
         ' title="Speak this reply">\U0001f50a</button>'
     )
     return f'<div class="msg {cls}">{body}{speak}{meta}</div>'
