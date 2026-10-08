@@ -12,6 +12,7 @@ textContent so it is never parsed as HTML.
 """
 
 import html
+import json
 import re
 
 _PAGE = """<!doctype html>
@@ -56,6 +57,15 @@ _PAGE = """<!doctype html>
     .meta { margin-top: 6px; font-size: 11px; color: #7d8590; }
     .tag { display: inline-block; margin-right: 6px; padding: 1px 6px;
            border-radius: 6px; background: #21262d; }
+    .evidence { margin-top: 6px; font-size: 12px; }
+    .evidence > summary { cursor: pointer; color: #7d8590; }
+    .evidence ul { margin: 4px 0; padding-left: 16px; }
+    .evidence li { margin: 3px 0; }
+    .evidence code { background: #21262d; border-radius: 4px; padding: 0 4px; }
+    .evidence a { color: #58a6ff; text-decoration: none; }
+    .copy { margin-left: 6px; font-size: 11px; border: 1px solid #30363d;
+            background: #0d1117; color: #7d8590; border-radius: 5px;
+            padding: 0 6px; cursor: pointer; }
     .speak { margin-left: 8px; padding: 0 7px; font-size: 13px; line-height: 1.6;
              border: 1px solid #30363d; background: #0d1117; color: #e6edf3;
              border-radius: 6px; cursor: pointer; }
@@ -178,6 +188,17 @@ _PAGE = """<!doctype html>
         window.toast("TTS failed: " + (err && err.message || err), true);
       }).finally(function () { b.disabled = false; b.textContent = label; });
     });
+    // Evidence trail: copy-to-clipboard for a reproducible command/query.
+    document.addEventListener("click", function (e) {
+      var c = e.target.closest("button.copy");
+      if (!c) return;
+      var text = c.getAttribute("data-copy") || "";
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(
+          function () { window.toast("Copied"); },
+          function () { window.toast("Copy failed", true); });
+      } else { window.toast("Copy failed", true); }
+    });
   </script>
 </body>
 </html>
@@ -210,15 +231,50 @@ def _fmt_metrics(metrics: dict) -> str:
     return " &middot; ".join(bits)
 
 
+def _fmt_fact(fact: dict) -> str:
+    """One evidence-trail row: tool, args, latency, reproducible command, links."""
+    tool = html.escape(str(fact.get("tool", "?")))
+    args = fact.get("args") or {}
+    bits = []
+    if args:
+        bits.append(html.escape(json.dumps(args, sort_keys=True)))
+    if fact.get("ms") is not None:
+        bits.append(f'{fact["ms"]} ms')
+    line = f"<code>{tool}</code>"
+    if bits:
+        line += " &middot; " + " &middot; ".join(bits)
+    rep = fact.get("reproduce") or {}
+    copyable = rep.get("cli") or rep.get("promql")
+    if copyable:
+        line += f" <code>{html.escape(str(copyable))}</code>"
+        line += (f'<button class="copy" data-copy="{html.escape(str(copyable), quote=True)}"'
+                 ' title="Copy">copy</button>')
+    for name, url in (fact.get("links") or {}).items():
+        line += (f' <a href="{html.escape(str(url), quote=True)}" target="_blank"'
+                 f' rel="noopener">Open in {html.escape(str(name).title())}</a>')
+    return f"<li>{line}</li>"
+
+
+def _evidence_block(facts: list | None) -> str:
+    facts = facts or []
+    if not facts:
+        return ""
+    rows = "".join(_fmt_fact(f) for f in facts)
+    return (f'<details class="evidence"><summary>Evidence ({len(facts)})</summary>'
+            f"<ul>{rows}</ul></details>")
+
+
 def assistant_bubble(reply: str, tool: str | None = None,
                      metrics: dict | None = None, error: bool = False,
                      speech: str | None = None, markdown: bool = False,
-                     audio_id: str | None = None) -> str:
+                     audio_id: str | None = None,
+                     facts: list | None = None) -> str:
     """Render ONLY the assistant bubble (the user bubble is drawn client-side).
 
     `reply` is what is shown (Markdown-rendered when `markdown`); `speech` (if
     given) is what the 🔊 button speaks; `audio_id` points at the background-
-    synthesized WAV so the button plays instantly instead of synthesizing.
+    synthesized WAV so the button plays instantly instead of synthesizing;
+    `facts` renders a collapsed, copyable evidence trail (never sent to the LLM).
     """
     cls = "bot err" if error else ("bot md" if markdown else "bot")
     tags = [f'<span class="tag">{html.escape(t)}</span>'
@@ -228,6 +284,7 @@ def assistant_bubble(reply: str, tool: str | None = None,
         if text:
             tags.append(f'<span class="tag">{text}</span>')
     meta = f'<div class="meta">{"".join(tags)}</div>' if tags else ""
+    evidence = "" if error else _evidence_block(facts)
     body = render_markdown(reply) if markdown else html.escape(reply)
     speak_text = speech or reply
     attr = (f' data-audio="/audio/{html.escape(str(audio_id), quote=True)}"'
@@ -236,7 +293,7 @@ def assistant_bubble(reply: str, tool: str | None = None,
         f'<button class="speak" data-text="{html.escape(speak_text, quote=True)}"{attr}'
         ' title="Speak this reply">\U0001f50a</button>'
     )
-    return f'<div class="msg {cls}">{body}{speak}{meta}</div>'
+    return f'<div class="msg {cls}">{body}{speak}{evidence}{meta}</div>'
 
 
 def user_bubble(text: str) -> str:

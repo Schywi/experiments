@@ -67,6 +67,14 @@ spec:
               value: /memory
             - name: UI_LINKS
               value: {{ .Values.ui.links | toJson | quote }}
+            - name: GRAFANA_URL
+              value: {{ .Values.provenance.grafanaUrl | quote }}
+            - name: HUBBLE_URL
+              value: {{ .Values.provenance.hubbleUrl | quote }}
+            - name: GRAFANA_DATASOURCE_UID
+              value: {{ .Values.provenance.grafanaDatasourceUid | quote }}
+            - name: GRAFANA_DATASOURCE_NAME
+              value: {{ .Values.provenance.grafanaDatasourceName | quote }}
           startupProbe:
             httpGet: {path: /healthz, port: http}
             periodSeconds: 2

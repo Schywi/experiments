@@ -24,6 +24,7 @@ import actions  # M9
 import memory  # M10
 import llm_metrics  # instrumentation
 import pipeline  # plan -> fan-out -> correlate
+import provenance  # human-reproducibility metadata (outside the LLM context)
 import tts_cache  # background TTS
 from tools import REGISTRY, audit, route
 from starlette.concurrency import run_in_threadpool
@@ -213,7 +214,8 @@ async def investigate_route(req: ChatRequest) -> ChatResponse:
         memory.append_turn(req.session, "assistant", out["screen_md"])
     return ChatResponse(reply=out["screen_md"], tool=used, metrics=out["metrics"],
                         screen_md=out["screen_md"], speech=out["speech"],
-                        facts=out["facts"], audio_id=_start_tts(out["speech"]))
+                        facts=provenance.enrich_all(out["facts"]),
+                        audio_id=_start_tts(out["speech"]))
 
 
 class VoiceRequest(BaseModel):
@@ -325,6 +327,7 @@ async def ui_message(
         return HTMLResponse("")
     t0 = time.perf_counter()
     speech = None
+    facts = None
     try:
         if mode == "chat":
             messages, tool = _build_messages(msg)
@@ -343,6 +346,7 @@ async def ui_message(
             reply, speech = out["screen_md"], out["speech"]
             tool = ",".join(sorted({f["tool"] for f in out["facts"]})) or None
             metrics = out["metrics"]
+            facts = provenance.enrich_all(out["facts"])
     except HTTPException as exc:
         return HTMLResponse(ui.assistant_bubble(str(exc.detail), error=True))
     if session:
@@ -351,4 +355,4 @@ async def ui_message(
     audio_id = _start_tts(speech)
     return HTMLResponse(ui.assistant_bubble(reply, speech=speech, tool=tool,
                                             metrics=metrics, audio_id=audio_id,
-                                            markdown=(mode != "chat")))
+                                            markdown=(mode != "chat"), facts=facts))
