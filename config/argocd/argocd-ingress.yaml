@@ -19,3 +19,15 @@ spec:
                 name: argocd-server
                 port:
                   number: 80
+    # DNS host: resolves to the shared Cilium ingress LB (192.168.0.240), no
+    # /etc/hosts. argocd.localhost above remains the hosts-entries.sh fallback.
+    - host: argocd.192.168.0.240.nip.io
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: argocd-server
+                port:
+                  number: 80

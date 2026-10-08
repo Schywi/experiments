@@ -1,4 +1,12 @@
 #!/usr/bin/env bash
+# FALLBACK ONLY. Prefer the DNS hosts: every ingress now also serves
+# <name>.192.168.0.240.nip.io, which resolves to the shared Cilium LoadBalancer
+# with NO /etc/hosts entry (the *.localhost names stay only as this fallback).
+#
+# IMPORTANT: remove the /etc/hosts lines for *.localhost once you use the DNS
+# hosts -- they are no longer needed and only cause confusion. Keep this script
+# for environments with no DNS resolution of the nip.io names.
+#
 # Print (or apply) the /etc/hosts entries for the local platform hostnames.
 #
 # Browsers resolve *.localhost to loopback, so the Cilium Ingress hostnames

@@ -51,15 +51,18 @@ service:
 ingress:
   enabled: true
   className: cilium
-  host: assistant.localhost
+  # *.localhost = scripts/hosts-entries.sh fallback; nip.io = DNS -> Cilium LB.
+  hosts:
+    - assistant.localhost
+    - assistant.192.168.0.240.nip.io
 
 # M11: resource links shown in the chat UI header (JSON passed to the app).
 ui:
   links:
-    - { label: "Grafana", url: "http://grafana.localhost/" }
-    - { label: "Hubble UI", url: "http://192.168.0.241/" }
-    - { label: "VictoriaMetrics", url: "http://victoriametrics.localhost/" }
-    - { label: "Argo CD", url: "http://argocd.localhost/" }
+    - { label: "Grafana", url: "http://grafana.192.168.0.240.nip.io/" }
+    - { label: "Hubble UI", url: "http://hubble.192.168.0.240.nip.io/" }
+    - { label: "VictoriaMetrics", url: "http://victoriametrics.192.168.0.240.nip.io/" }
+    - { label: "Argo CD", url: "http://argocd.192.168.0.240.nip.io/" }
 
 # Read-only ClusterRole + binding for the assistant ServiceAccount. When false,
 # no RBAC is created and no API token is mounted (text-only, Milestone 1 mode).

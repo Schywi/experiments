@@ -73,6 +73,17 @@ Options, in order of preference:
 
 Until this lands, every "deep link" is only as good as the host file.
 
+### Status — implemented
+
+Each ingress (grafana, victoriametrics, cartography, argocd, assistant,
+hubble-ui) now also serves a **DNS host** `<name>.192.168.0.240.nip.io` that
+resolves to the shared Cilium ingress LB with **no `/etc/hosts`**. The
+`*.localhost` hosts remain as the fallback, and `scripts/hosts-entries.sh` is
+**kept as a fallback** (not deleted).
+
+**IMPORTANT: remove the `/etc/hosts` lines for `*.localhost`** now that the
+`nip.io` hosts work — they are no longer needed.
+
 ---
 
 ## Part 1 — Evidence provenance

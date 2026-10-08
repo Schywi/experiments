@@ -56,7 +56,11 @@ ciliumNetworkPolicy:
   enabled: true
 
 ingress:
-  # Expose Grafana through the Cilium Ingress Controller as grafana.localhost.
+  # Expose Grafana through the Cilium Ingress Controller. The *.localhost host
+  # is the scripts/hosts-entries.sh fallback; the <name>.<ingress-ip>.nip.io
+  # host resolves to the shared Cilium LoadBalancer with NO /etc/hosts entry.
   enabled: true
   className: cilium
-  host: grafana.localhost
+  hosts:
+    - grafana.localhost
+    - grafana.192.168.0.240.nip.io

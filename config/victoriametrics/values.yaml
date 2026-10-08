@@ -48,4 +48,8 @@ ingress:
   # Controller, like argocd.localhost and grafana.localhost.
   enabled: true
   className: cilium
-  host: victoriametrics.localhost
+  # The *.localhost host is the scripts/hosts-entries.sh fallback; the
+  # <name>.<ingress-ip>.nip.io host resolves to the Cilium LB with no /etc/hosts.
+  hosts:
+    - victoriametrics.localhost
+    - victoriametrics.192.168.0.240.nip.io

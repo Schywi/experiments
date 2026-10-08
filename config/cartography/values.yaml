@@ -61,5 +61,8 @@ ingress:
   enabled: true
   className: cilium
   hosts:
+    # *.localhost = scripts/hosts-entries.sh fallback; nip.io = DNS -> Cilium LB.
     - neo4j.localhost
     - cartography.localhost
+    - cartography.192.168.0.240.nip.io
+    - neo4j.192.168.0.240.nip.io
