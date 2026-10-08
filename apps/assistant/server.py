@@ -36,6 +36,9 @@ REQUEST_TIMEOUT = float(os.environ.get("REQUEST_TIMEOUT", "60"))
 PIPELINE_TIMEOUT = float(os.environ.get("PIPELINE_TIMEOUT", "150"))
 # Background TTS: synthesize speech as soon as it exists, cache the WAV.
 TTS_BACKGROUND = os.environ.get("TTS_BACKGROUND", "true").lower() == "true"
+# Keep strong refs to background tasks; a bare create_task() can be GC'd before
+# it runs (which silently dropped the TTS synthesis).
+_bg_tasks: set = set()
 MAX_TOKENS = int(os.environ.get("MAX_TOKENS", "512"))
 # M11: resource links shown in the chat UI header (JSON list of {label,url}).
 UI_LINKS = json.loads(os.environ.get("UI_LINKS", "[]") or "[]")
@@ -84,7 +87,9 @@ def _start_tts(text: str | None) -> str | None:
         except Exception as exc:                     # noqa: BLE001
             tts_cache.put_error(audio_id, f"{type(exc).__name__}: {exc}")
 
-    asyncio.create_task(_job())
+    task = asyncio.create_task(_job())
+    _bg_tasks.add(task)
+    task.add_done_callback(_bg_tasks.discard)
     return audio_id
 
 
