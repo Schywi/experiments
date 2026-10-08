@@ -21,6 +21,11 @@ spec:
       terminationGracePeriodSeconds: 30
       securityContext:
         runAsNonRoot: true
+        # The python:3.12-slim image has no USER, so pin a non-root uid the
+        # kubelet will accept; fsGroup makes the weights PVC writable by it.
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
         seccompProfile:
           type: RuntimeDefault
       initContainers:
