@@ -1,109 +1,136 @@
 #!/usr/bin/env python3
-"""Benchmark the assistant: per-question latency + per-stage LLM tokens/timings.
+"""Planner benchmark: bundle-selection accuracy + latency for a target assistant.
 
-For each question it snapshots /metrics, calls the endpoint, snapshots again, and
-reports the deltas by stage (plan / correlate / chat) plus the response's own
-plan_ms / tool_ms / correlate_ms. Read-only; no writes to the cluster.
+Measures the PLAN step only (via the debug `/plan` endpoint), so it does not pay
+the correlate cost. Run it against the production assistant (qwen planner) and the
+isolated `assistant-laya` (Laya planner) and compare:
 
-  BENCH_URL=http://192.168.0.243 python3 scripts/assistant-benchmark.py
+    BENCH_URL=http://192.168.0.243          python3 scripts/assistant-benchmark.py
+    BENCH_URL=http://127.0.0.1:18081        python3 scripts/assistant-benchmark.py
+
+Each question has a GOLD "bundle" label from the plan catalog
+(unhealthy | traffic | drop | default). The planner's chosen label is read from
+the `planner` field: "laya:<l>", "bundle:<l>", "laya-fallback:<l>", or "llm"
+(qwen free-form, no label). Accuracy = chosen label == gold, over labeled rows.
+Read-only; runs no tools, no writes.
 """
 
 import json
 import os
-import re
+import statistics
 import time
 import urllib.request
 
 BASE = os.environ.get("BENCH_URL", "http://192.168.0.243").rstrip("/")
 
-QUESTIONS = [
-    ("investigate", "is anything unhealthy?"),
-    ("investigate", "what is the current network traffic?"),
-    ("investigate", "are there any dns errors?"),
-    ("investigate", "list the pods in the models namespace"),
-    ("investigate", "explain how traffic reaches the cluster"),
-    ("chat", "what pods run in worm-lab?"),
-    ("chat", "how many namespaces exist?"),
+# (question, gold label). The first five are the pre-existing benchmark prompts;
+# the rest are the labeled set added for the Laya-vs-qwen planner comparison.
+PLAN_QUESTIONS = [
+    # --- pre-existing ---
+    ("is anything unhealthy?", "unhealthy"),
+    ("what is the current network traffic?", "traffic"),
+    ("are there any dns errors?", "drop"),
+    ("list the pods in the models namespace", "default"),
+    ("explain how traffic reaches the cluster", "traffic"),
+    # --- labeled set: unhealthy ---
+    ("which pods are crash looping?", "unhealthy"),
+    ("are any deployments unhealthy?", "unhealthy"),
+    ("why did pods restart?", "unhealthy"),
+    ("is anything broken in the cluster?", "unhealthy"),
+    ("which workloads are down?", "unhealthy"),
+    ("any failing pods right now?", "unhealthy"),
+    # --- labeled set: traffic ---
+    ("is the network slow?", "traffic"),
+    ("what is the request throughput?", "traffic"),
+    ("why is the api latency high?", "traffic"),
+    ("how much traffic is flowing?", "traffic"),
+    ("are requests slow right now?", "traffic"),
+    # --- labeled set: drop ---
+    ("are packets being dropped?", "drop"),
+    ("is there any packet loss?", "drop"),
+    ("are there dns failures?", "drop"),
+    ("why are dns lookups failing?", "drop"),
+    ("show me packet drops", "drop"),
+    # --- labeled set: default ---
+    ("how many namespaces exist?", "default"),
+    ("what services are running?", "default"),
+    ("list the nodes", "default"),
+    ("what is deployed in worm-lab?", "default"),
+    ("summarize the cluster", "default"),
+    ("what kubernetes version are we on?", "default"),
 ]
 
-_METRIC_RE = re.compile(r"^assistant_llm_(\w+)(?:\{([^}]*)\})?\s+([0-9.eE+-]+)$")
 
-
-def get_metrics():
-    with urllib.request.urlopen(f"{BASE}/metrics", timeout=10) as r:
-        text = r.read().decode()
-    out = {}
-    for line in text.splitlines():
-        m = _METRIC_RE.match(line)
-        if m:
-            out[(m.group(1), m.group(2) or "")] = float(m.group(3))
-    return out
-
-
-def stage_of(labels):
-    m = re.search(r'stage="([^"]+)"', labels)
-    return m.group(1) if m else "?"
-
-
-def deltas(before, after):
-    """token/sum deltas by stage for the counters we care about."""
-    out = {}
-    for (metric, labels), val in after.items():
-        d = val - before.get((metric, labels), 0.0)
-        if d <= 0:
-            continue
-        stage = stage_of(labels)
-        if metric == "input_tokens_total":
-            out[f"in_{stage}"] = int(d)
-        elif metric == "output_tokens_total":
-            out[f"out_{stage}"] = int(d)
-        elif metric == "generation_seconds_sum":
-            out[f"gen_s_{stage}"] = round(d, 1)
-        elif metric == "prefill_seconds_sum":
-            out[f"prefill_s_{stage}"] = round(d, 1)
-    return out
-
-
-def post(path, payload):
+def post(path, payload, timeout=200):
     req = urllib.request.Request(
         f"{BASE}{path}", data=json.dumps(payload).encode(),
         headers={"content-type": "application/json"})
-    t0 = time.perf_counter()
-    with urllib.request.urlopen(req, timeout=300) as r:
-        body = json.loads(r.read().decode())
-    return body, (time.perf_counter() - t0) * 1000
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return json.loads(r.read().decode())
+
+
+def label_of(planner):
+    """'laya:traffic' -> 'traffic'; 'bundle:drop' -> 'drop'; 'llm' -> None."""
+    if not planner or ":" not in planner:
+        return None
+    return planner.split(":", 1)[1]
+
+
+def pct(values, p):
+    if not values:
+        return None
+    values = sorted(values)
+    k = max(0, min(len(values) - 1, int(round((p / 100) * (len(values) - 1)))))
+    return values[k]
 
 
 def main():
     rows = []
-    for mode, q in QUESTIONS:
-        endpoint = "/investigate" if mode == "investigate" else "/chat"
-        before = get_metrics()
+    for q, gold in PLAN_QUESTIONS:
+        t0 = time.perf_counter()
         try:
-            body, wall = post(endpoint, {"message": q})
+            body = post("/plan", {"message": q})
             err = ""
-        except Exception as exc:               # noqa: BLE001
-            body, wall, err = {}, 0.0, f"{type(exc).__name__}: {exc}"
-        after = get_metrics()
-        row = {"mode": mode, "q": q, "wall_ms": round(wall, 1), "err": err}
-        m = body.get("metrics") or {}
-        row.update({"planner": m.get("planner"), "plan_ms": m.get("plan_ms"),
-                    "tool_ms": m.get("tool_ms"), "correlate_ms": m.get("correlate_ms"),
-                    "elapsed_ms": m.get("elapsed_ms"), "facts": m.get("facts")})
-        row.update(deltas(before, after))
-        rows.append(row)
-        print(json.dumps(row), flush=True)
+        except Exception as exc:                     # noqa: BLE001
+            body, err = {}, f"{type(exc).__name__}: {exc}"
+        wall = (time.perf_counter() - t0) * 1000
+        planner = body.get("planner")
+        chosen = label_of(planner)
+        rows.append({"q": q, "gold": gold, "planner": planner, "chosen": chosen,
+                     "plan_ms": body.get("plan_ms"), "wall_ms": round(wall, 1),
+                     "tools": [t.get("tool") for t in (body.get("tools") or [])],
+                     "ok": chosen == gold, "err": err})
+        print(json.dumps(rows[-1]), flush=True)
 
     with open("/tmp/bench.json", "w", encoding="utf-8") as fh:
-        json.dump(rows, fh, indent=2)
+        json.dump({"base": BASE, "rows": rows}, fh, indent=2)
 
-    print("\n| question | mode | planner | elapsed | plan | tools | correlate | plan tok (in/out) | corr tok (in/out) | err |")
-    print("|---|---|---|---|---|---|---|---|---|---|")
+    scored = [r for r in rows if r["gold"]]
+    correct = [r for r in scored if r["ok"]]
+    acc = (len(correct) / len(scored) * 100) if scored else 0.0
+    plan_lat = [r["plan_ms"] for r in scored if isinstance(r["plan_ms"], (int, float))
+                and r["plan_ms"] > 0]
+
+    print(f"\n=== target: {BASE} ===")
+    print(f"accuracy: {len(correct)}/{len(scored)} = {acc:.1f}%")
+    by_label = {}
+    for r in scored:
+        d = by_label.setdefault(r["gold"], [0, 0])
+        d[1] += 1
+        d[0] += 1 if r["ok"] else 0
+    for label, (ok, tot) in sorted(by_label.items()):
+        print(f"  {label:10s} {ok}/{tot}")
+    if plan_lat:
+        print(f"plan latency ms: p50={pct(plan_lat,50):.0f} p95={pct(plan_lat,95):.0f} "
+              f"mean={statistics.mean(plan_lat):.0f} n={len(plan_lat)}")
+    no_label = [r for r in scored if r["chosen"] is None]
+    print(f"rows with no label (qwen free-form 'llm'): {len(no_label)}")
+
+    print("\n| question | gold | chosen | plan_ms | ok |")
+    print("|---|---|---|---|---|")
     for r in rows:
-        print(f"| {r['q'][:38]} | {r['mode']} | {r.get('planner') or '-'} | "
-              f"{r.get('elapsed_ms')} | {r.get('plan_ms')} | {r.get('tool_ms')} | "
-              f"{r.get('correlate_ms')} | {r.get('in_plan','-')}/{r.get('out_plan','-')} | "
-              f"{r.get('in_correlate','-')}/{r.get('out_correlate','-')} | {r['err']} |")
+        print(f"| {r['q'][:42]} | {r['gold']} | {r['chosen'] or r['planner'] or '-'} | "
+              f"{r['plan_ms']} | {r['ok']} |")
 
 
 if __name__ == "__main__":

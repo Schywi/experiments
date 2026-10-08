@@ -218,6 +218,20 @@ async def investigate_route(req: ChatRequest) -> ChatResponse:
                         audio_id=_start_tts(out["speech"]))
 
 
+@app.post("/plan")
+def plan_route(req: ChatRequest) -> dict:
+    """Debug: return ONLY the planner's decision (no tools, no correlate).
+
+    Used by scripts/assistant-benchmark.py to measure planner choice + latency
+    without paying the correlate cost. Read-only; runs no tools, calls no LLM
+    beyond the plan step itself.
+    """
+    batch, source, ms = pipeline.plan(
+        req.message, LLM_URL, LLM_MODEL, PIPELINE_TIMEOUT, None)
+    return {"planner": source, "plan_ms": round(ms, 1),
+            "tools": [{"tool": n, "args": a} for n, a in batch]}
+
+
 class VoiceRequest(BaseModel):
     message: str
     voice: str | None = None
