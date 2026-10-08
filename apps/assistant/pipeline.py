@@ -30,6 +30,12 @@ MAX_FACTS = 6
 PER_FACT_CHARS = 600      # evidence kept per fact
 EVIDENCE_CHARS = 2600     # total evidence handed to correlate
 TOOL_TIMEOUT = 8.0
+PLAN_MAX_TOKENS = 160     # a tool-call batch is short
+CORRELATE_MAX_TOKENS = 256  # fits the 60s budget at ~5.6 tok/s
+
+
+class _LLMError(Exception):
+    """Raised when the local LLM call fails (timeout, upstream error)."""
 
 READ_TOOLS = {name: tool for name, tool in REGISTRY.items() if tool.level <= 1}
 
@@ -74,14 +80,17 @@ def _extract_json(text: str):
 
 
 def _llm(llm_url, model, messages, timeout, stage, max_tokens=512):
-    """One LLM call, recorded by stage. Returns (text, ms)."""
+    """One LLM call, recorded by stage. Returns (text, ms). Raises _LLMError."""
     payload = {"model": model, "messages": messages,
                "max_tokens": max_tokens, "temperature": 0.2}
     t0 = time.perf_counter()
-    with httpx.Client(timeout=timeout) as client:
-        resp = client.post(f"{llm_url.rstrip('/')}/v1/chat/completions", json=payload)
-        resp.raise_for_status()
-        data = resp.json()
+    try:
+        with httpx.Client(timeout=timeout) as client:
+            resp = client.post(f"{llm_url.rstrip('/')}/v1/chat/completions", json=payload)
+            resp.raise_for_status()
+            data = resp.json()
+    except httpx.HTTPError as exc:
+        raise _LLMError(f"{type(exc).__name__}: {exc}") from exc
     ms = (time.perf_counter() - t0) * 1000
     llm_metrics.record_payload(stage, model, data, total_ms=ms)
     return data["choices"][0]["message"]["content"].strip(), ms
@@ -110,8 +119,9 @@ def plan(question, llm_url, model, timeout, history=None):
                 *(history or []),
                 {"role": "user", "content": question}]
     try:
-        raw, ms = _llm(llm_url, model, messages, timeout, "plan", max_tokens=256)
-    except Exception:
+        raw, ms = _llm(llm_url, model, messages, timeout, "plan",
+                       max_tokens=PLAN_MAX_TOKENS)
+    except _LLMError:
         return _DEFAULT_BUNDLE, "llm-failed", 0.0
     batch = []
     obj = _extract_json(raw) or {}
@@ -159,13 +169,21 @@ def run_batch(batch) -> list:
     with futures.ThreadPoolExecutor(max_workers=max(1, len(batch))) as pool:
         submitted = {pool.submit(_run_one, name, args): (name, args)
                      for name, args in batch[:MAX_FACTS]}
-        for fut in futures.as_completed(submitted, timeout=TOOL_TIMEOUT + 2):
-            name, args = submitted[fut]
-            try:
-                facts.append(fut.result())
-            except Exception as exc:
-                facts.append({"tool": name, "args": args, "ok": False,
-                              "evidence": f"timeout/error: {exc}", "ms": None})
+        collected = set()
+        try:
+            for fut in futures.as_completed(submitted, timeout=TOOL_TIMEOUT + 2):
+                name, args = submitted[fut]
+                collected.add(fut)
+                try:
+                    facts.append(fut.result())
+                except Exception as exc:
+                    facts.append({"tool": name, "args": args, "ok": False,
+                                  "evidence": f"error: {exc}", "ms": None})
+        except futures.TimeoutError:
+            for fut, (name, args) in submitted.items():
+                if fut not in collected:
+                    facts.append({"tool": name, "args": args, "ok": False,
+                                  "evidence": "tool timeout", "ms": None})
     return facts
 
 
@@ -179,7 +197,14 @@ def correlate(question, facts, llm_url, model, timeout):
         {"role": "system", "content": _CORRELATE_SYS},
         {"role": "user", "content": f"Question: {question}\n\nEvidence:\n{evidence}"},
     ]
-    raw, ms = _llm(llm_url, model, messages, timeout, "correlate", max_tokens=700)
+    try:
+        raw, ms = _llm(llm_url, model, messages, timeout, "correlate",
+                       max_tokens=CORRELATE_MAX_TOKENS)
+    except _LLMError as exc:
+        digest = "\n".join(f"- [{f['tool']}] {f['evidence'][:200]}" for f in facts)
+        return {"screen_md": f"Correlation unavailable ({exc}).\n\nRaw evidence:\n{digest}",
+                "speech": "I gathered the evidence but could not summarize it in time.",
+                "correlate_ms": 0.0}
     obj = _extract_json(raw) or {}
     screen = str(obj.get("screen_md") or raw).strip()
     speech = str(obj.get("speech") or "").strip() or screen[:200]

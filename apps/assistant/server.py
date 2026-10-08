@@ -29,6 +29,9 @@ from starlette.concurrency import run_in_threadpool
 LLM_URL = os.environ.get("LLM_URL", "http://llm.models.svc.cluster.local:8000").rstrip("/")
 LLM_MODEL = os.environ.get("LLM_MODEL", "qwen2.5-1.5b-instruct")
 REQUEST_TIMEOUT = float(os.environ.get("REQUEST_TIMEOUT", "60"))
+# The two-call pipeline can take longer than a single chat call (plan + fan-out +
+# correlate); give it headroom before the correlate step degrades.
+PIPELINE_TIMEOUT = float(os.environ.get("PIPELINE_TIMEOUT", "150"))
 MAX_TOKENS = int(os.environ.get("MAX_TOKENS", "512"))
 # M11: resource links shown in the chat UI header (JSON list of {label,url}).
 UI_LINKS = json.loads(os.environ.get("UI_LINKS", "[]") or "[]")
@@ -170,7 +173,7 @@ async def investigate_route(req: ChatRequest) -> ChatResponse:
     """Two-call pipeline: plan -> parallel fan-out -> correlate (screen_md + speech)."""
     history = memory.recent(req.session) if req.session else None
     out = await run_in_threadpool(
-        pipeline.run, req.message, LLM_URL, LLM_MODEL, REQUEST_TIMEOUT, history
+        pipeline.run, req.message, LLM_URL, LLM_MODEL, PIPELINE_TIMEOUT, history
     )
     used = ",".join(sorted({f["tool"] for f in out["facts"]})) or None
     if req.session:
@@ -289,7 +292,7 @@ async def ui_message(
         else:
             history = memory.recent(session) if session else None
             out = await run_in_threadpool(
-                pipeline.run, msg, LLM_URL, LLM_MODEL, REQUEST_TIMEOUT, history
+                pipeline.run, msg, LLM_URL, LLM_MODEL, PIPELINE_TIMEOUT, history
             )
             reply, speech = out["screen_md"], out["speech"]
             tool = ",".join(sorted({f["tool"] for f in out["facts"]})) or None
