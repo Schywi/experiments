@@ -98,10 +98,57 @@ def _extract_json(text: str):
     return obj if isinstance(obj, dict) else None
 
 
-def _llm(llm_url, model, messages, timeout, stage, max_tokens=512):
-    """One LLM call, recorded by stage. Returns (text, ms). Raises _LLMError."""
+def _looks_like_json(text: str) -> bool:
+    """True when text looks like leaked raw JSON rather than a rendered answer."""
+    t = (text or "").strip()
+    return t.startswith("{") or t.startswith("[") or '"screen_md"' in t
+
+
+def _parse_tools(obj) -> list:
+    if not isinstance(obj, dict):
+        return []
+    batch = []
+    for item in (obj.get("tools") or [])[:MAX_FACTS]:
+        if isinstance(item, dict) and item.get("tool"):
+            batch.append((str(item["tool"]), item.get("args") or {}))
+    return batch
+
+
+def _parse_answer(raw: str):
+    """Return (screen_md, speech) ONLY if the {screen_md, speech} contract held."""
+    obj = _extract_json(raw)
+    if not isinstance(obj, dict):
+        return None, None
+    screen = str(obj.get("screen_md") or "").strip()
+    if not screen or _looks_like_json(screen):     # reject a leaked/nested JSON blob
+        return None, None
+    speech = str(obj.get("speech") or "").strip() or screen[:200]
+    return screen, speech
+
+
+def _fallback_digest(facts) -> dict:
+    """A clean, deterministic answer when the model cannot produce the contract.
+
+    Never the raw model output — a readable list of the evidence we did gather.
+    """
+    lines = [f"- [{f['tool']}] {f['evidence'][:180]}" for f in facts] or ["- (no evidence)"]
+    return {"screen_md": "Could not format a summary. Raw evidence:\n" + "\n".join(lines),
+            "speech": "I gathered the evidence but could not summarize it."}
+
+
+def _llm(llm_url, model, messages, timeout, stage, max_tokens=512, json_mode=False):
+    """One LLM call, recorded by stage. Returns (text, ms). Raises _LLMError.
+
+    With json_mode the request constrains the model to a single JSON object
+    (llama.cpp honours OpenAI `response_format`) and adds a mild repeat penalty to
+    break the degenerate loops small models fall into. This is the enforcement the
+    prompt alone could not provide.
+    """
     payload = {"model": model, "messages": messages,
                "max_tokens": max_tokens, "temperature": 0.2}
+    if json_mode:
+        payload["response_format"] = {"type": "json_object"}
+        payload["repeat_penalty"] = 1.1
     t0 = time.perf_counter()
     try:
         with httpx.Client(timeout=timeout) as client:
@@ -160,17 +207,18 @@ def plan(question, llm_url, model, timeout, history=None, kind=None):
     messages = [{"role": "system", "content": _PLAN_SYS + _catalog()},
                 *(history or []),
                 {"role": "user", "content": question}]
-    try:
-        raw, ms = _llm(llm_url, model, messages, timeout, "plan",
-                       max_tokens=PLAN_MAX_TOKENS)
-    except _LLMError:
-        return _DEFAULT_BUNDLE, "llm-failed", 0.0
-    batch = []
-    obj = _extract_json(raw) or {}
-    for item in (obj.get("tools") or [])[:MAX_FACTS]:
-        if isinstance(item, dict) and item.get("tool"):
-            batch.append((str(item["tool"]), item.get("args") or {}))
-    return (batch or _DEFAULT_BUNDLE), "llm", ms
+    ms = 0.0
+    for _ in range(2):                              # one plan call + one retry
+        try:
+            raw, took = _llm(llm_url, model, messages, timeout, "plan",
+                             max_tokens=PLAN_MAX_TOKENS, json_mode=True)
+            ms += took
+        except _LLMError:
+            return _DEFAULT_BUNDLE, "llm-failed", ms
+        batch = _parse_tools(_extract_json(raw))
+        if batch:
+            return batch, "llm", ms
+    return _DEFAULT_BUNDLE, "llm-fallback", ms
 
 
 # --- FAN-OUT -----------------------------------------------------------------
@@ -239,18 +287,23 @@ def correlate(question, facts, llm_url, model, timeout):
         {"role": "system", "content": _CORRELATE_SYS},
         {"role": "user", "content": f"Question: {question}\n\nEvidence:\n{evidence}"},
     ]
-    try:
-        raw, ms = _llm(llm_url, model, messages, timeout, "correlate",
-                       max_tokens=CORRELATE_MAX_TOKENS)
-    except _LLMError as exc:
-        digest = "\n".join(f"- [{f['tool']}] {f['evidence'][:200]}" for f in facts)
-        return {"screen_md": f"Correlation unavailable ({exc}).\n\nRaw evidence:\n{digest}",
-                "speech": "I gathered the evidence but could not summarize it in time.",
-                "correlate_ms": 0.0}
-    obj = _extract_json(raw) or {}
-    screen = str(obj.get("screen_md") or raw).strip()
-    speech = str(obj.get("speech") or "").strip() or screen[:200]
-    return {"screen_md": screen, "speech": speech, "correlate_ms": ms}
+    ms = 0.0
+    for _ in range(2):                              # one call + one retry
+        try:
+            raw, took = _llm(llm_url, model, messages, timeout, "correlate",
+                             max_tokens=CORRELATE_MAX_TOKENS, json_mode=True)
+            ms += took
+        except _LLMError as exc:
+            out = _fallback_digest(facts)
+            out.update(correlate_ms=round(ms, 1), degraded=str(exc))
+            return out
+        screen, speech = _parse_answer(raw)
+        if screen:
+            return {"screen_md": screen, "speech": speech, "correlate_ms": ms}
+    # Contract not honoured even with JSON enforcement: degrade to clean evidence.
+    out = _fallback_digest(facts)
+    out.update(correlate_ms=round(ms, 1), degraded="invalid-json")
+    return out
 
 
 def run(question, llm_url, model, timeout=60.0, history=None, max_rounds=1):
