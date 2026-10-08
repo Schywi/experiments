@@ -31,7 +31,7 @@ PER_FACT_CHARS = 600      # evidence kept per fact
 EVIDENCE_CHARS = 2600     # total evidence handed to correlate
 TOOL_TIMEOUT = 8.0
 PLAN_MAX_TOKENS = 160     # a tool-call batch is short
-CORRELATE_MAX_TOKENS = 256  # fits the 60s budget at ~5.6 tok/s
+CORRELATE_MAX_TOKENS = 450  # screen_md + speech must fit intact (not truncated)
 
 
 class _LLMError(Exception):
@@ -69,11 +69,16 @@ _CORRELATE_SYS = (
 
 
 def _extract_json(text: str):
-    start, end = text.find("{"), text.rfind("}")
+    stripped = text.strip()
+    if stripped.startswith("```"):          # tolerate ```json ... ``` fences
+        stripped = stripped.strip("`").strip()
+        if stripped[:4].lower() == "json":
+            stripped = stripped[4:].lstrip()
+    start, end = stripped.find("{"), stripped.rfind("}")
     if start == -1 or end <= start:
         return None
     try:
-        obj = json.loads(text[start:end + 1])
+        obj = json.loads(stripped[start:end + 1])
     except (ValueError, TypeError):
         return None
     return obj if isinstance(obj, dict) else None
