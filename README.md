@@ -293,6 +293,7 @@ start.sh                 Destructive one-command local bootstrap
 blog/ and research/      Design notes and local research material
 research/ai-workflow.md  How the local AI assistant is built, shipped, and run
 research/reasoner-and-topology.md  Reasoning-model + topology-tool investigation
+research/evidence-provenance.md     Evidence provenance, deep links, and cartography plan
 ```
 
 Read [`AGENTS.md`](AGENTS.md) before automating changes. It contains the
