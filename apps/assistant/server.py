@@ -271,8 +271,8 @@ async def ui_message(
             tool = ",".join(step["tool"] for step in out["steps"]) or None
             metrics = out.get("metrics")
     except HTTPException as exc:
-        return HTMLResponse(ui.bubbles(msg, str(exc.detail), error=True))
+        return HTMLResponse(ui.assistant_bubble(str(exc.detail), error=True))
     if session:
         memory.append_turn(session, "user", msg)
         memory.append_turn(session, "assistant", reply)
-    return HTMLResponse(ui.bubbles(msg, reply, tool=tool, metrics=metrics))
+    return HTMLResponse(ui.assistant_bubble(reply, tool=tool, metrics=metrics))

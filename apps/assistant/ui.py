@@ -1,10 +1,14 @@
-"""Milestone 11: a tiny htmx chat front-end (no build step, no framework).
+"""Milestone 11: a lightweight chat front-end (no build step, no framework).
 
-Served by the assistant itself, so the UI is same-origin with the JSON API. One
-page plus an HTML-fragment endpoint; htmx wires them. Replies are escaped — the
-model's output is untrusted text. Includes a resource-links bar, a live elapsed
-timer while thinking, per-reply metrics, and a Kokoro speak control with native
-pause/seek.
+Served by the assistant itself, so the UI is same-origin with the JSON API.
+
+UX: your message and a "thinking" bubble appear IMMEDIATELY on submit (optimistic),
+not when the reply arrives; the reply then fills the placeholder. Includes a
+resource-links bar, a live elapsed timer, per-reply metrics, toasts, and a Kokoro
+speak control that swaps in a native <audio controls> (pause/seek).
+
+The reply text is escaped server-side; the user's own text is inserted with
+textContent so it is never parsed as HTML.
 """
 
 import html
@@ -15,7 +19,6 @@ _PAGE = """<!doctype html>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title>Cluster Assistant</title>
-  <script src="https://unpkg.com/htmx.org@2.0.4"></script>
   <style>
     :root { color-scheme: dark; }
     * { box-sizing: border-box; }
@@ -37,6 +40,7 @@ _PAGE = """<!doctype html>
     .user { align-self: flex-end; background: #1f6feb; color: #fff; }
     .bot { align-self: flex-start; background: #161b22; border: 1px solid #21262d; }
     .bot.err { border-color: #f85149; color: #ffb4ad; }
+    .bot.pending { color: #7d8590; }
     .meta { margin-top: 6px; font-size: 11px; color: #7d8590; }
     .tag { display: inline-block; margin-right: 6px; padding: 1px 6px;
            border-radius: 6px; background: #21262d; }
@@ -50,9 +54,7 @@ _PAGE = """<!doctype html>
            background: #0d1117; color: #e6edf3; padding: 8px 10px; }
     input[name=message] { flex: 1; }
     button.send { background: #238636; border-color: #2ea043; color: #fff; cursor: pointer; }
-    #spin { color: #7d8590; font-size: 12px; }
-    .htmx-indicator { display: none; }
-    .htmx-request .htmx-indicator, .htmx-request.htmx-indicator { display: inline; }
+    button.send:disabled { opacity: .6; cursor: default; }
     #toast { position: fixed; right: 16px; bottom: 72px; display: flex;
              flex-direction: column; gap: 8px; z-index: 10; }
     .toast { background: #161b22; border: 1px solid #30363d; border-left: 3px solid #58a6ff;
@@ -66,44 +68,74 @@ _PAGE = """<!doctype html>
   <header>
     <h1>Cluster Assistant</h1>
     <span class="muted">read-only &middot; local LLM</span>
-    <span id="spin" class="htmx-indicator">thinking&hellip; <b id="tick">0.0</b>s</span>
     <nav class="links">__LINKS__</nav>
   </header>
   <main id="thread"></main>
-  <form id="composer" hx-post="/ui/message" hx-target="#thread" hx-swap="beforeend"
-        hx-indicator="#spin" hx-disabled-elt="button.send"
-        hx-on::before-request="window.__startTimer()"
-        hx-on::after-request="window.__stopTimer(); if(event.detail.successful){this.reset();const t=document.getElementById('thread');t.scrollTop=t.scrollHeight;}">
+  <form id="composer">
     <input type="hidden" name="session" id="session"/>
-    <select name="mode" title="investigate = multi-step tool loop; chat = one step">
+    <select name="mode" id="mode" title="investigate = multi-step tool loop; chat = one step">
       <option value="investigate">investigate</option>
       <option value="chat">chat</option>
     </select>
-    <input name="message" placeholder="Ask about the cluster&hellip;" autocomplete="off" required autofocus/>
+    <input name="message" id="message" placeholder="Ask about the cluster&hellip;"
+           autocomplete="off" required autofocus/>
     <button class="send" type="submit">Send</button>
   </form>
   <div id="toast"></div>
   <script>
+    var thread = document.getElementById("thread");
     (function () {
       var k = "assistant-session";
       var s = localStorage.getItem(k);
       if (!s) { s = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now()); localStorage.setItem(k, s); }
       document.getElementById("session").value = s;
     })();
-    window.__timer = null;
-    window.__startTimer = function () {
-      var t0 = performance.now(), el = document.getElementById("tick");
-      window.__timer = setInterval(function () { el.textContent = ((performance.now() - t0) / 1000).toFixed(1); }, 100);
-    };
-    window.__stopTimer = function () { clearInterval(window.__timer); };
     window.toast = function (msg, isErr) {
       var d = document.createElement("div");
       d.className = "toast" + (isErr ? " err" : "");
       d.textContent = msg;
-      var box = document.getElementById("toast");
-      box.appendChild(d);
+      document.getElementById("toast").appendChild(d);
       setTimeout(function () { d.remove(); }, 6000);
     };
+    // Optimistic send: show the user bubble + a thinking bubble right away.
+    document.getElementById("composer").addEventListener("submit", function (e) {
+      e.preventDefault();
+      var input = document.getElementById("message");
+      var text = input.value.trim();
+      if (!text) return;
+      var u = document.createElement("div");
+      u.className = "msg user";
+      u.textContent = text;
+      thread.appendChild(u);
+      var ph = document.createElement("div");
+      ph.className = "msg bot pending";
+      ph.innerHTML = "thinking&hellip; <b>0.0</b>s";
+      thread.appendChild(ph);
+      thread.scrollTop = thread.scrollHeight;
+      input.value = "";
+      var send = document.querySelector("button.send"); send.disabled = true;
+      var t0 = performance.now();
+      var tick = setInterval(function () {
+        var b = ph.querySelector("b");
+        if (b) b.textContent = ((performance.now() - t0) / 1000).toFixed(1);
+      }, 100);
+      var body = new URLSearchParams();
+      body.set("message", text);
+      body.set("mode", document.getElementById("mode").value);
+      body.set("session", document.getElementById("session").value);
+      fetch("/ui/message", { method: "POST",
+                             headers: { "content-type": "application/x-www-form-urlencoded" },
+                             body: body })
+        .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.text(); })
+        .then(function (frag) { ph.outerHTML = frag; thread.scrollTop = thread.scrollHeight; })
+        .catch(function (err) {
+          ph.className = "msg bot err";
+          ph.textContent = "Request failed: " + (err.message || err);
+          window.toast("Request failed", true);
+        })
+        .finally(function () { clearInterval(tick); send.disabled = false; input.focus(); });
+    });
+    // Speak: fetch the WAV, then swap in a native audio element (pause/seek).
     document.addEventListener("click", function (e) {
       var b = e.target.closest("button.speak");
       if (!b) return;
@@ -120,9 +152,6 @@ _PAGE = """<!doctype html>
           window.toast("TTS ready in " + ((performance.now() - t0) / 1000).toFixed(2) + "s \\u2014 pause/seek enabled");
         })
         .catch(function (err) { b.disabled = false; b.textContent = label; window.toast("TTS failed: " + err.message, true); });
-    });
-    document.addEventListener("htmx:responseError", function (e) {
-      window.toast("Request failed (HTTP " + e.detail.xhr.status + ")", true);
     });
   </script>
 </body>
@@ -156,9 +185,9 @@ def _fmt_metrics(metrics: dict) -> str:
     return " &middot; ".join(bits)
 
 
-def bubbles(user: str, reply: str, tool: str | None = None,
-            metrics: dict | None = None, error: bool = False) -> str:
-    """Render one exchange (user + assistant) as an htmx-swappable fragment."""
+def assistant_bubble(reply: str, tool: str | None = None,
+                     metrics: dict | None = None, error: bool = False) -> str:
+    """Render ONLY the assistant bubble (the user bubble is drawn client-side)."""
     cls = "bot err" if error else "bot"
     tags = [f'<span class="tag">{html.escape(t)}</span>'
             for t in str(tool or "").split(",") if t]
@@ -171,7 +200,9 @@ def bubbles(user: str, reply: str, tool: str | None = None,
         f'<button class="speak" data-text="{html.escape(reply, quote=True)}"'
         ' title="Speak this reply">\U0001f50a</button>'
     )
-    return (
-        f'<div class="msg user">{html.escape(user)}</div>'
-        f'<div class="msg {cls}">{html.escape(reply)}{speak}{meta}</div>'
-    )
+    return f'<div class="msg {cls}">{html.escape(reply)}{speak}{meta}</div>'
+
+
+def user_bubble(text: str) -> str:
+    """Render a user bubble (server-side helper; the UI draws it client-side)."""
+    return f'<div class="msg user">{html.escape(text)}</div>'
