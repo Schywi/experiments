@@ -25,6 +25,14 @@ directory rather than recreating platform-specific top-level trees.
 - Keep Argo CD reachable only through its internal ClusterIP. Never add a
   public LoadBalancer, ingress, or host-wide port binding for it.
 
+## Argo CD Applications — Contextual targetRevision
+
+- Argo CD Applications must **NEVER target `main`**. An Application reads the
+  branch its work actually lives on (e.g. `native-k3s-gpu-models`, `trackc`) or
+  a pinned commit — never `main`. Argo is contextual.
+- When adding an Application, set `targetRevision:` to the current working
+  branch, not a shared default.
+
 ## Tilt Runtime Control
 
 - Agents are forbidden from running `tilt up` or `tilt down`.
