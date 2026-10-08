@@ -46,14 +46,13 @@ give each a **DNS-resolvable hostname** — no `/etc/hosts`.
 
 Options, in order of preference:
 
-1. **Wildcard DNS → the LB IP (recommended).** Point a DNS name at the shared
-   ingress LB and name services under it:
-   - `*.192.168.0.240.nip.io` (public wildcard DNS; any `<name>.192.168.0.240.nip.io`
-     resolves to `192.168.0.240`), or a LAN resolver entry
-     `address=/apps.home/192.168.0.240` (Pi-hole/Unbound/dnsmasq).
-   - Ingress hosts become `grafana.192.168.0.240.nip.io`,
-     `argocd.192.168.0.240.nip.io`, `assistant.192.168.0.240.nip.io`, …
-   - **Browser-resolvable with no host file**; the RFC is respected.
+1. **LAN resolver for a wildcard zone → the LB IP (chosen).** Answer `*.home.arpa`
+   (RFC 8375) with the shared ingress LB — `address=/home.arpa/192.168.0.240`
+   in dnsmasq/Pi-hole (see `config/dns/`). Ingress hosts become
+   `grafana.home.arpa`, `argocd.home.arpa`, `assistant.home.arpa`, … —
+   **browser-resolvable with no host file** and no external DNS dependency.
+   (A public wildcard like `nip.io` was considered and rejected: it leaks the
+   private IP to public DNS and adds an internet dependency.)
 2. **Path-based on one host** (`http://apps.192.168.0.240.nip.io/grafana`).
    Fewest names, but Grafana / VictoriaMetrics / Argo CD / Neo4j serve
    absolute-path assets and need per-app sub-path config — more friction.
@@ -76,13 +75,16 @@ Until this lands, every "deep link" is only as good as the host file.
 ### Status — implemented
 
 Each ingress (grafana, victoriametrics, cartography, argocd, assistant,
-hubble-ui) now also serves a **DNS host** `<name>.192.168.0.240.nip.io` that
-resolves to the shared Cilium ingress LB with **no `/etc/hosts`**. The
-`*.localhost` hosts remain as the fallback, and `scripts/hosts-entries.sh` is
-**kept as a fallback** (not deleted).
+hubble-ui) now also serves a **LAN-DNS host** `<name>.home.arpa` that the
+resolver answers with the shared Cilium ingress LB (`192.168.0.240`) — **no
+`/etc/hosts`**. The `*.localhost` hosts remain as the fallback, and
+`scripts/hosts-entries.sh` is **kept as a fallback** (not deleted).
+
+`home.arpa` (RFC 8375) is the correct zone for a home/lab LAN; see `config/dns/`
+for the dnsmasq/Unbound snippet.
 
 **IMPORTANT: remove the `/etc/hosts` lines for `*.localhost`** now that the
-`nip.io` hosts work — they are no longer needed.
+`home.arpa` hosts resolve — they are no longer needed.
 
 ---
 

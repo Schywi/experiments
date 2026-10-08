@@ -19,8 +19,8 @@ spec:
                 name: hubble-ui
                 port:
                   number: 80
-    # DNS host -> the shared Cilium ingress LB, no /etc/hosts.
-    - host: hubble.192.168.0.240.nip.io
+    # LAN-DNS host -> the shared Cilium ingress LB, no /etc/hosts.
+    - host: hubble.home.arpa
       http:
         paths:
           - path: /

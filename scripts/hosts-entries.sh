@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
-# FALLBACK ONLY. Prefer the DNS hosts: every ingress now also serves
-# <name>.192.168.0.240.nip.io, which resolves to the shared Cilium LoadBalancer
-# with NO /etc/hosts entry (the *.localhost names stay only as this fallback).
+# FALLBACK ONLY. Prefer the LAN DNS hosts: every ingress also serves
+# <name>.home.arpa, answered by your LAN resolver -> the shared Cilium
+# LoadBalancer, with NO /etc/hosts entry (the *.localhost names stay only as
+# this fallback). See config/dns/.
 #
 # IMPORTANT: remove the /etc/hosts lines for *.localhost once you use the DNS
 # hosts -- they are no longer needed and only cause confusion. Keep this script
-# for environments with no DNS resolution of the nip.io names.
+# for environments with no DNS resolution of the home.arpa names.
 #
 # Print (or apply) the /etc/hosts entries for the local platform hostnames.
 #
