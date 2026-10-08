@@ -69,3 +69,20 @@ data:
           - source_labels: [__meta_kubernetes_pod_ip]
             target_label: __address__
             replacement: ${1}:9966
+      # Assistant LLM instrumentation (per-stage tokens/timings) on /metrics.
+      - job_name: assistant
+        metrics_path: /metrics
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names:
+                - assistant
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_name]
+            action: keep
+            regex: assistant
+          - source_labels: [__meta_kubernetes_pod_ip]
+            target_label: __address__
+            replacement: ${1}:8080
+          - source_labels: [__meta_kubernetes_pod_node_name]
+            target_label: node

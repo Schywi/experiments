@@ -18,6 +18,7 @@ import time
 import httpx
 
 from k8sutil import audit
+import llm_metrics
 from tools import REGISTRY
 
 MAX_STEPS = int(os.environ.get("AGENT_MAX_STEPS", "4"))
@@ -42,13 +43,16 @@ _SYSTEM = (
 )
 
 
-def _ask(llm_url: str, model: str, messages: list, timeout: float) -> str:
+def _ask(llm_url: str, model: str, messages: list, timeout: float,
+         stage: str = "plan") -> str:
     payload = {"model": model, "messages": messages, "max_tokens": 512,
                "temperature": 0.1}
     with httpx.Client(timeout=timeout) as client:
         resp = client.post(f"{llm_url.rstrip('/')}/v1/chat/completions", json=payload)
         resp.raise_for_status()
-        return resp.json()["choices"][0]["message"]["content"].strip()
+        data = resp.json()
+    llm_metrics.record_payload(stage, model, data)
+    return data["choices"][0]["message"]["content"].strip()
 
 
 def _extract_json(text: str):
@@ -84,7 +88,7 @@ def investigate(message: str, llm_url: str, model: str, timeout: float = 60.0,
 
     for step in range(MAX_STEPS):
         s = time.perf_counter()
-        raw = _ask(llm_url, model, messages, timeout)
+        raw = _ask(llm_url, model, messages, timeout, "plan")
         llm_ms += (time.perf_counter() - s) * 1000
         obj = _extract_json(raw)
         if obj and "answer" in obj:
@@ -121,7 +125,7 @@ def investigate(message: str, llm_url: str, model: str, timeout: float = 60.0,
         'Stop investigating. Answer now with {"answer": ...}, separating '
         "observed facts from hypotheses."})
     s = time.perf_counter()
-    raw = _ask(llm_url, model, messages, timeout)
+    raw = _ask(llm_url, model, messages, timeout, "correlate")
     llm_ms += (time.perf_counter() - s) * 1000
     obj = _extract_json(raw) or {}
     return {"reply": str(obj.get("answer") or raw).strip(), "steps": steps,

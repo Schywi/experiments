@@ -21,6 +21,7 @@ import ui  # M11
 import voice  # M8
 import actions  # M9
 import memory  # M10
+import llm_metrics  # instrumentation
 from tools import REGISTRY, audit, route
 from agent import investigate  # M7
 from starlette.concurrency import run_in_threadpool
@@ -98,11 +99,13 @@ async def _ask_llm(messages: list) -> str:
     return data["choices"][0]["message"]["content"].strip()
 
 
-async def _ask_llm_stream(messages: list) -> tuple:
+async def _ask_llm_stream(messages: list, stage: str = "chat") -> tuple:
     """Stream a reply to measure time-to-first-token; returns (text, ttft_ms, llm_ms)."""
     payload = {"model": LLM_MODEL, "messages": messages,
                "max_tokens": MAX_TOKENS, "temperature": 0.2, "stream": True}
     parts, first, t0 = [], None, time.perf_counter()
+    usage: dict = {}
+    timings: dict = {}
     try:
         async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT) as client:
             async with client.stream("POST", f"{LLM_URL}/v1/chat/completions",
@@ -118,6 +121,10 @@ async def _ask_llm_stream(messages: list) -> tuple:
                         obj = json.loads(data)
                     except ValueError:
                         continue
+                    if obj.get("usage"):
+                        usage = obj["usage"]
+                    if obj.get("timings"):
+                        timings = obj["timings"]
                     delta = (obj.get("choices") or [{}])[0].get("delta", {}).get("content")
                     if delta:
                         if first is None:
@@ -127,6 +134,8 @@ async def _ask_llm_stream(messages: list) -> tuple:
         raise HTTPException(status_code=502, detail=f"LLM upstream error: {exc}") from exc
     total = time.perf_counter() - t0
     ttft = None if first is None else (first - t0) * 1000
+    llm_metrics.record_payload(stage, LLM_MODEL, {"usage": usage, "timings": timings},
+                               total_ms=total * 1000, ttft_ms=ttft)
     return "".join(parts).strip(), ttft, total * 1000
 
 
@@ -235,6 +244,12 @@ def action_confirm_route(req: ActionConfirm) -> dict:
 
 
 # --- M11: htmx chat front-end ----------------------------------------------
+
+@app.get("/metrics")
+def metrics_endpoint() -> Response:
+    """Prometheus exposition (LLM per-stage instrumentation; measurement only)."""
+    return Response(content=llm_metrics.payload(), media_type=llm_metrics.CONTENT_TYPE)
+
 
 @app.get("/", response_class=HTMLResponse)
 def index() -> HTMLResponse:

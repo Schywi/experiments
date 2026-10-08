@@ -66,6 +66,14 @@ spec:
     # Kubernetes API for kubernetes_sd_configs pod discovery.
     - toEntities:
         - kube-apiserver
+    # The assistant's /metrics (per-stage LLM instrumentation).
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: assistant
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP
     # DNS resolution.
     - toEndpoints:
         - matchLabels:
