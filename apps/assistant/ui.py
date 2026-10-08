@@ -33,6 +33,10 @@ INDEX = """<!doctype html>
     .bot.err { border-color: #f85149; color: #ffb4ad; }
     .tool { display: inline-block; margin-left: 8px; padding: 1px 6px;
             border-radius: 6px; background: #21262d; color: #7d8590; font-size: 11px; }
+    .speak { margin-left: 8px; padding: 0 7px; font-size: 13px; line-height: 1.6;
+             border: 1px solid #30363d; background: #0d1117; color: #e6edf3;
+             border-radius: 6px; cursor: pointer; }
+    .speak:disabled { opacity: .5; cursor: default; }
     form { display: flex; gap: 8px; padding: 12px 16px;
            border-top: 1px solid #21262d; }
     select, input, button { font: inherit; border-radius: 8px; border: 1px solid #30363d;
@@ -73,6 +77,25 @@ INDEX = """<!doctype html>
       document.getElementById("thread").scrollIntoView();
     })();
   </script>
+  <script>
+    // Speak a reply: POST its text to /speak (Kokoro TTS) and play the WAV.
+    document.addEventListener("click", function (e) {
+      var b = e.target.closest("button.speak");
+      if (!b) return;
+      var label = b.textContent, text = b.getAttribute("data-text") || "";
+      b.disabled = true; b.textContent = "\u2026";
+      fetch("/speak", { method: "POST", headers: { "content-type": "application/json" },
+                        body: JSON.stringify({ message: text }) })
+        .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.blob(); })
+        .then(function (blob) {
+          var url = URL.createObjectURL(blob);
+          var audio = new Audio(url);
+          audio.onended = function () { URL.revokeObjectURL(url); b.disabled = false; b.textContent = label; };
+          return audio.play();
+        })
+        .catch(function (err) { b.disabled = false; b.textContent = label; b.title = String(err); });
+    });
+  </script>
 </body>
 </html>
 """
@@ -82,7 +105,13 @@ def bubbles(user: str, reply: str, tool: str | None = None, error: bool = False)
     """Render one exchange (user + assistant) as an htmx-swappable fragment."""
     cls = "bot err" if error else "bot"
     badge = f'<span class="tool">{html.escape(tool)}</span>' if tool else ""
+    speak = (
+        ""
+        if error
+        else f'<button class="speak" data-text="{html.escape(reply, quote=True)}"'
+             ' title="Speak this reply">\U0001f50a</button>'
+    )
     return (
         f'<div class="msg user">{html.escape(user)}</div>'
-        f'<div class="msg {cls}">{html.escape(reply)}{badge}</div>'
+        f'<div class="msg {cls}">{html.escape(reply)}{badge}{speak}</div>'
     )
