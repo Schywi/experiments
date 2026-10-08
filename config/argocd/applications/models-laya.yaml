@@ -12,7 +12,7 @@ spec:
   project: default
   source:
     repoURL: https://github.com/Schywi/experiments.git
-    targetRevision: trackc
+    targetRevision: native-k3s-gpu-models
     path: apps/models/laya/chart
     helm:
       releaseName: laya
