@@ -1,0 +1,35 @@
+# Isolated assistant-laya experiment (Option 1: Laya plans, Qwen correlates).
+#
+# Same image as the production `assistant`, but PLANNER_KIND=laya routes ONLY the
+# plan() step through the Laya/Jev decision engine. Correlation, tool execution,
+# and the Qwen model are shared, unchanged code. Deployed into the `assistant`
+# namespace so it reuses the read-only ServiceAccount + ClusterRole; it exposes a
+# ClusterIP only (no LoadBalancer/ingress) so it cannot collide with prod.
+image:
+  repository: 127.0.0.1:5000/assistant
+  tag: laya-exp
+  pullPolicy: Always
+
+planner:
+  kind: laya
+  layaUrl: http://laya.models.svc.cluster.local:8000
+
+llm:
+  url: http://llm.models.svc.cluster.local:8000
+  model: qwen2.5-1.5b-instruct
+  timeoutSeconds: "60"
+
+vm:
+  url: http://victoriametrics.observability.svc.cluster.local:8428
+  queryTimeoutSeconds: "5"
+
+service:
+  port: 8080
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi

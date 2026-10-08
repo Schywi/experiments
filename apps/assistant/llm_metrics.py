@@ -52,10 +52,27 @@ GENERATION_TPS = Histogram(
 TOOL_SECONDS = Histogram(
     "assistant_tool_seconds", "Read-only tool execution time", ["tool"], buckets=_SEC)
 
+# Planner (assistant-laya experiment): Laya is not llama.cpp, so its decision
+# latency and chosen label are recorded here rather than via record_payload.
+PLANNER_SECONDS = Histogram(
+    "assistant_planner_seconds", "Planner decision latency", ["planner"], buckets=_SEC)
+PLANNER_CHOICE = Counter(
+    "assistant_planner_choice_total", "Planner label choices", ["planner", "label"])
+
 
 def record_tool(tool: str, ms: float) -> None:
     try:
         TOOL_SECONDS.labels(tool).observe(ms / 1000)
+    except Exception:
+        pass
+
+
+def record_planner(label: str, ms: float, planner: str = "laya") -> None:
+    """Record one planner decision (label + latency). Best-effort; never raises."""
+    try:
+        PLANNER_SECONDS.labels(planner).observe(ms / 1000)
+        if label:
+            PLANNER_CHOICE.labels(planner, label).inc()
     except Exception:
         pass
 

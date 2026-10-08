@@ -1,0 +1,6 @@
+apiVersion: v2
+name: assistant-laya
+description: Isolated assistant variant that plans with Laya/Jev (Option 1 experiment)
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

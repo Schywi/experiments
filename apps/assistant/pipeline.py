@@ -18,6 +18,7 @@ Same local model for plan and correlate; no new LLM. Read-only tools only.
 import concurrent.futures as futures
 import inspect
 import json
+import os
 import time
 
 import httpx
@@ -39,20 +40,33 @@ class _LLMError(Exception):
 
 READ_TOOLS = {name: tool for name, tool in REGISTRY.items() if tool.level <= 1}
 
-# Deterministic intent bundles: a known question -> a canned read-only batch.
-# Matched questions skip the plan LLM call entirely.
-_BUNDLES = (
-    (("unhealthy", "wrong", "broken", "down", "failing", "health", "problem"),
+# Labeled plan catalog. Each entry: (label, criteria-for-Laya, keywords, batch).
+# The label is the unit both planners are scored on (bundle-selection accuracy);
+# keywords drive the deterministic fast path, criteria drive the Laya decision.
+_PLAN_CATALOG = (
+    ("unhealthy",
+     "pods down, crashes, restarts, unhealthy or failing workloads",
+     ("unhealthy", "wrong", "broken", "down", "failing", "health", "problem"),
      [("get_pods", {}), ("get_events", {}),
       ("query_prometheus", {"query": "sum(rate(hubble_drop_total[5m])) by (reason)"})]),
-    (("traffic", "network", "flow", "throughput", "latency", "slow"),
+    ("traffic",
+     "network flow, throughput, latency, slow requests",
+     ("traffic", "network", "flow", "throughput", "latency", "slow"),
      [("query_prometheus", {"query": "sum(rate(hubble_flows_processed_total[5m])) by (verdict)"}),
       ("get_pods", {})]),
-    (("drop", "dropped", "dns"),
+    ("drop",
+     "dropped packets, packet loss, DNS failures",
+     ("drop", "dropped", "dns"),
      [("query_prometheus", {"query": "sum(rate(hubble_drop_total[5m])) by (reason)"}),
       ("get_events", {})]),
 )
+_DEFAULT_LABEL = "default"
 _DEFAULT_BUNDLE = [("get_pods", {}), ("get_events", {})]
+# label -> tool batch, and label -> Laya criteria (including the default label).
+_PLANS = {label: batch for label, _crit, _kw, batch in _PLAN_CATALOG}
+_PLANS[_DEFAULT_LABEL] = _DEFAULT_BUNDLE
+_CRITERIA = {label: crit for label, crit, _kw, _batch in _PLAN_CATALOG}
+_CRITERIA[_DEFAULT_LABEL] = "anything else / a general cluster question"
 
 _PLAN_SYS = (
     "You choose read-only tools to answer a question about a Kubernetes cluster. "
@@ -105,9 +119,9 @@ def _llm(llm_url, model, messages, timeout, stage, max_tokens=512):
 
 def _bundle_for(question: str):
     lowered = question.lower()
-    for keywords, batch in _BUNDLES:
+    for label, _crit, keywords, batch in _PLAN_CATALOG:
         if any(k in lowered for k in keywords):
-            return batch
+            return label, batch
     return None
 
 
@@ -116,10 +130,30 @@ def _catalog() -> str:
 
 
 def plan(question, llm_url, model, timeout, history=None):
-    """Return (batch, source, plan_ms). Bundle first; else ONE LLM call."""
+    """Return (batch, source, plan_ms).
+
+    `source` is label-qualified ("bundle:<label>", "laya:<label>") so the chosen
+    plan is observable for scoring; "llm"/"llm-failed" is the free-form Qwen path.
+
+    PLANNER_KIND=laya routes ONLY this step through the Laya/Jev decision engine
+    (the isolated assistant-laya experiment). Every other stage is unchanged.
+    """
+    if os.environ.get("PLANNER_KIND", "qwen").lower() == "laya":
+        import laya_planner
+        try:
+            label, ms = laya_planner.classify(question, _CRITERIA)
+        except Exception:                        # Laya down -> deterministic fallback
+            label, ms = None, 0.0
+        if label in _PLANS:
+            return _PLANS[label], f"laya:{label}", ms
+        bundle = _bundle_for(question)
+        if bundle is not None:
+            return bundle[1], f"laya-fallback:{bundle[0]}", ms
+        return _DEFAULT_BUNDLE, "laya-fallback:default", ms
+
     bundle = _bundle_for(question)
     if bundle is not None:
-        return bundle, "bundle", 0.0
+        return bundle[1], f"bundle:{bundle[0]}", 0.0
     messages = [{"role": "system", "content": _PLAN_SYS + _catalog()},
                 *(history or []),
                 {"role": "user", "content": question}]

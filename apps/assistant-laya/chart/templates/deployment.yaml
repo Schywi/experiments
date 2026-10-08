@@ -1,0 +1,78 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: assistant-laya
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: assistant-laya
+    app.kubernetes.io/part-of: assistant
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: assistant-laya
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: assistant-laya
+    spec:
+      # Reuse the production assistant's read-only ServiceAccount + ClusterRole.
+      serviceAccountName: assistant
+      automountServiceAccountToken: true
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: assistant-laya
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.service.port }}
+          env:
+            - name: PLANNER_KIND
+              value: {{ .Values.planner.kind | quote }}
+            - name: LAYA_URL
+              value: {{ .Values.planner.layaUrl | quote }}
+            - name: LLM_URL
+              value: {{ .Values.llm.url | quote }}
+            - name: LLM_MODEL
+              value: {{ .Values.llm.model | quote }}
+            - name: REQUEST_TIMEOUT
+              value: {{ .Values.llm.timeoutSeconds | quote }}
+            - name: VM_URL
+              value: {{ .Values.vm.url | quote }}
+            - name: VM_QUERY_TIMEOUT
+              value: {{ .Values.vm.queryTimeoutSeconds | quote }}
+            - name: AUDIT_LOG
+              value: /tmp/assistant/audit.jsonl
+            - name: MEMORY_DIR
+              value: /tmp/memory
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          startupProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 2
+            failureThreshold: 30
+          readinessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 20
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}

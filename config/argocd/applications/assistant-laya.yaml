@@ -1,0 +1,27 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: assistant-laya
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: assistant-lab
+    app.kubernetes.io/managed-by: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/Schywi/experiments.git
+    targetRevision: native-k3s-gpu-models
+    path: apps/assistant-laya/chart
+    helm:
+      releaseName: assistant-laya
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: assistant
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
