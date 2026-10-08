@@ -186,8 +186,13 @@ def _fmt_metrics(metrics: dict) -> str:
 
 
 def assistant_bubble(reply: str, tool: str | None = None,
-                     metrics: dict | None = None, error: bool = False) -> str:
-    """Render ONLY the assistant bubble (the user bubble is drawn client-side)."""
+                     metrics: dict | None = None, error: bool = False,
+                     speech: str | None = None) -> str:
+    """Render ONLY the assistant bubble (the user bubble is drawn client-side).
+
+    `reply` is what is shown; `speech` (if given) is what the 🔊 button speaks —
+    the short conversational line from the correlate step.
+    """
     cls = "bot err" if error else "bot"
     tags = [f'<span class="tag">{html.escape(t)}</span>'
             for t in str(tool or "").split(",") if t]
@@ -196,8 +201,9 @@ def assistant_bubble(reply: str, tool: str | None = None,
         if text:
             tags.append(f'<span class="tag">{text}</span>')
     meta = f'<div class="meta">{"".join(tags)}</div>' if tags else ""
+    speak_text = speech or reply
     speak = "" if error else (
-        f'<button class="speak" data-text="{html.escape(reply, quote=True)}"'
+        f'<button class="speak" data-text="{html.escape(speak_text, quote=True)}"'
         ' title="Speak this reply">\U0001f50a</button>'
     )
     return f'<div class="msg {cls}">{html.escape(reply)}{speak}{meta}</div>'

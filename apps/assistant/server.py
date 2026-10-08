@@ -22,8 +22,8 @@ import voice  # M8
 import actions  # M9
 import memory  # M10
 import llm_metrics  # instrumentation
+import pipeline  # plan -> fan-out -> correlate
 from tools import REGISTRY, audit, route
-from agent import investigate  # M7
 from starlette.concurrency import run_in_threadpool
 
 LLM_URL = os.environ.get("LLM_URL", "http://llm.models.svc.cluster.local:8000").rstrip("/")
@@ -52,6 +52,10 @@ class ChatResponse(BaseModel):
     reply: str
     tool: str | None = None
     metrics: dict | None = None
+    # Two-call pipeline outputs (screen text for the eye, speech text for TTS).
+    screen_md: str | None = None
+    speech: str | None = None
+    facts: list | None = None
 
 
 def _build_messages(message: str) -> tuple[list, str | None]:
@@ -157,21 +161,24 @@ async def chat(req: ChatRequest) -> ChatResponse:
     if req.session:
         memory.append_turn(req.session, "user", req.message)
         memory.append_turn(req.session, "assistant", reply)
-    return ChatResponse(reply=reply, tool=used_tool, metrics=metrics)
+    return ChatResponse(reply=reply, tool=used_tool, metrics=metrics,
+                        screen_md=reply, speech=reply)
 
 
 @app.post("/investigate", response_model=ChatResponse)
 async def investigate_route(req: ChatRequest) -> ChatResponse:
-    """Milestone 7: bounded multi-step investigation over the level-1 tools."""
+    """Two-call pipeline: plan -> parallel fan-out -> correlate (screen_md + speech)."""
     history = memory.recent(req.session) if req.session else None
     out = await run_in_threadpool(
-        investigate, req.message, LLM_URL, LLM_MODEL, REQUEST_TIMEOUT, history
+        pipeline.run, req.message, LLM_URL, LLM_MODEL, REQUEST_TIMEOUT, history
     )
-    used = ",".join(step["tool"] for step in out["steps"]) or None
+    used = ",".join(sorted({f["tool"] for f in out["facts"]})) or None
     if req.session:
         memory.append_turn(req.session, "user", req.message)
-        memory.append_turn(req.session, "assistant", out["reply"])
-    return ChatResponse(reply=out["reply"], tool=used, metrics=out.get("metrics"))
+        memory.append_turn(req.session, "assistant", out["screen_md"])
+    return ChatResponse(reply=out["screen_md"], tool=used, metrics=out["metrics"],
+                        screen_md=out["screen_md"], speech=out["speech"],
+                        facts=out["facts"])
 
 
 class VoiceRequest(BaseModel):
@@ -268,26 +275,28 @@ async def ui_message(
     if not msg:
         return HTMLResponse("")
     t0 = time.perf_counter()
+    speech = None
     try:
         if mode == "chat":
             messages, tool = _build_messages(msg)
             if session:
                 messages = [messages[0], *memory.recent(session), *messages[1:]]
             reply, ttft_ms, llm_ms = await _ask_llm_stream(messages)
+            speech = reply
             metrics = {"elapsed_ms": round((time.perf_counter() - t0) * 1000, 1),
                        "llm_ms": round(llm_ms, 1),
                        "ttft_ms": None if ttft_ms is None else round(ttft_ms, 1)}
         else:
             history = memory.recent(session) if session else None
             out = await run_in_threadpool(
-                investigate, msg, LLM_URL, LLM_MODEL, REQUEST_TIMEOUT, history
+                pipeline.run, msg, LLM_URL, LLM_MODEL, REQUEST_TIMEOUT, history
             )
-            reply = out["reply"]
-            tool = ",".join(step["tool"] for step in out["steps"]) or None
-            metrics = out.get("metrics")
+            reply, speech = out["screen_md"], out["speech"]
+            tool = ",".join(sorted({f["tool"] for f in out["facts"]})) or None
+            metrics = out["metrics"]
     except HTTPException as exc:
         return HTMLResponse(ui.assistant_bubble(str(exc.detail), error=True))
     if session:
         memory.append_turn(session, "user", msg)
         memory.append_turn(session, "assistant", reply)
-    return HTMLResponse(ui.assistant_bubble(reply, tool=tool, metrics=metrics))
+    return HTMLResponse(ui.assistant_bubble(reply, speech=speech, tool=tool, metrics=metrics))

@@ -49,6 +49,15 @@ PREFILL_TPS = Histogram(
 GENERATION_TPS = Histogram(
     "assistant_llm_generation_tokens_per_second", "Generation tokens/second",
     ["stage"], buckets=_TPS)
+TOOL_SECONDS = Histogram(
+    "assistant_tool_seconds", "Read-only tool execution time", ["tool"], buckets=_SEC)
+
+
+def record_tool(tool: str, ms: float) -> None:
+    try:
+        TOOL_SECONDS.labels(tool).observe(ms / 1000)
+    except Exception:
+        pass
 
 
 def record(stage: str, model: str, *, input_tokens=None, output_tokens=None,
