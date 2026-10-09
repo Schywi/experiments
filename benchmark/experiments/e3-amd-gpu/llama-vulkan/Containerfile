@@ -5,7 +5,7 @@
 # RADV driver (mesa-vulkan-drivers) + the loader; the kernel side (amdgpu) is the
 # host's. The Pod joins the render group and mounts /dev/dri (see the manifest).
 FROM fedora:44 AS build
-RUN dnf -y install cmake ninja-build gcc-c++ git make glslc vulkan-loader-devel vulkan-headers \
+RUN dnf -y install cmake ninja-build gcc-c++ git make glslc spirv-headers-devel vulkan-loader-devel vulkan-headers \
  && dnf clean all
 RUN git clone --depth 1 https://github.com/ggml-org/llama.cpp /src
 WORKDIR /src

@@ -67,8 +67,8 @@ YAML
 
 kubectl -n "${ns}" delete job "${name}" --ignore-not-found >/dev/null
 kubectl apply -f "${job}"
-echo "==> waiting for ${name} (up to 10m)"
-if ! kubectl -n "${ns}" wait --for=condition=complete "job/${name}" --timeout=600s; then
+echo "==> waiting for ${name} (up to ${KANIKO_TIMEOUT:-600s})"
+if ! kubectl -n "${ns}" wait --for=condition=complete "job/${name}" --timeout="${KANIKO_TIMEOUT:-600s}"; then
   echo "==> build failed; last logs:" >&2
   kubectl -n "${ns}" logs "job/${name}" --tail=60 >&2 || true
   exit 1
