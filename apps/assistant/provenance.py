@@ -15,6 +15,7 @@ http://192.168.0.245 (Grafana) and http://192.168.0.241 (Hubble UI).
 
 import json
 import os
+import re
 import shlex
 import urllib.parse
 from datetime import datetime, timezone
@@ -92,14 +93,18 @@ def enrich(fact: dict) -> dict:
 
     # The Cartography snapshot reports its own ingest time -- its real age.
     if tool == "get_topology_snapshot":
-        try:
-            ev = json.loads(out.get("evidence") or "{}")
-        except (ValueError, TypeError):
-            ev = {}
-        if ev.get("ingest_time"):
-            out["snapshot_ingest_time"] = ev["ingest_time"]
-        if ev.get("cypher"):
-            out["reproduce"] = {"cypher": ev["cypher"]}
+        # The pipeline truncates each fact's evidence, so parse leniently with a
+        # regex rather than json.loads (which fails on a truncated object).
+        ev = out.get("evidence") or ""
+        cm = re.search(r'"cypher"\s*:\s*"((?:[^"\\]|\\.)*)"', ev)
+        if cm:
+            try:
+                out["reproduce"] = {"cypher": json.loads(f'"{cm.group(1)}"')}
+            except ValueError:
+                out["reproduce"] = {"cypher": cm.group(1)}
+        im = re.search(r'"ingest_time"\s*:\s*"([^"]+)"', ev)
+        if im:
+            out["snapshot_ingest_time"] = im.group(1)
         if NEO4J_UI:
             out["links"] = {"neo4j": f"{NEO4J_UI}/"}
         return out

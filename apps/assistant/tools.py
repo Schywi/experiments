@@ -231,8 +231,10 @@ def get_topology_snapshot(question: str = "") -> dict:
             rows = [rec.data() for rec in session.run(cypher)][:100]
     finally:
         driver.close()
-    return {"cypher": cypher, "rows": rows,
-            "ingest_time": _cartography_ingest_time(), "database": NEO4J_DATABASE}
+    # cypher + ingest_time FIRST: the pipeline truncates each fact's evidence,
+    # and the snapshot's age must survive that truncation.
+    return {"cypher": cypher, "ingest_time": _cartography_ingest_time(),
+            "rows": rows, "database": NEO4J_DATABASE}
 
 
 from actions import request as request_action  # M9
