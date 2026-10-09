@@ -6,6 +6,7 @@ and how each capability works. One file per feature.
 | Feature | File | Summary |
 |---|---|---|
 | Evidence provenance & deep links | [`evidence-provenance.md`](evidence-provenance.md) | Every answer exposes the tool, args, time, source, a copyable command/PromQL, and a Grafana/Hubble deep link where supported. |
+| `get_topology` / `get_topology_snapshot` | [`get-topology.md`](get-topology.md) | **Proposed (frozen).** Cluster topology in three layers — live structure (k8s API), network (Cilium/Hubble), snapshot (Cartography ≤6h). |
 
 ## Known edge cases
 
