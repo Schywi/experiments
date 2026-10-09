@@ -57,6 +57,14 @@ spec:
         - ports:
             - port: "7687"
               protocol: TCP
+    # In-cluster read-only client: the assistant's get_topology_snapshot.
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: assistant
+      toPorts:
+        - ports:
+            - port: "7687"
+              protocol: TCP
     # External access: the Cilium Ingress (Browser on 7474) and the
     # LoadBalancer (bolt 7687 / Browser 7474) for out-of-cluster clients.
     - fromEntities:
