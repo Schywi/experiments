@@ -1,0 +1,28 @@
+# llama.cpp with the VULKAN backend — E3 GPU spike.
+#
+# Target: AMD RX 570 (Polaris gfx803) via Mesa RADV. There is NO ROCm/CUDA on
+# this card, so Vulkan is the only possible GPU path. Runtime needs the userspace
+# RADV driver (mesa-vulkan-drivers) + the loader; the kernel side (amdgpu) is the
+# host's. The Pod joins the render group and mounts /dev/dri (see the manifest).
+FROM fedora:44 AS build
+RUN dnf -y install cmake ninja-build gcc-c++ git make glslc vulkan-loader-devel vulkan-headers \
+ && dnf clean all
+RUN git clone --depth 1 https://github.com/ggml-org/llama.cpp /src
+WORKDIR /src
+RUN cmake -S . -B build -G Ninja \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DBUILD_SHARED_LIBS=OFF \
+      -DGGML_VULKAN=ON \
+      -DLLAMA_CURL=OFF \
+      -DLLAMA_BUILD_TESTS=OFF \
+      -DLLAMA_BUILD_EXAMPLES=OFF \
+      -DLLAMA_BUILD_SERVER=ON \
+ && cmake --build build --parallel 6 --target llama-server
+
+FROM fedora:44
+RUN dnf -y install libgomp libcurl vulkan-loader mesa-vulkan-drivers vulkan-tools \
+ && dnf clean all
+COPY --from=build /src/build/bin/llama-server /usr/local/bin/llama-server
+ENV MODEL_DIR=/models
+EXPOSE 8000
+ENTRYPOINT ["/usr/local/bin/llama-server"]
