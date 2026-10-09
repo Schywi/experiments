@@ -45,3 +45,5 @@ EDGE_URL=http://192.168.0.243 python3 scripts/assistant-edge-tests.py
 | E10 | provenance | deep links die without `home.arpa` DNS / matching datasource UID | documented limit |
 | E11 | tooling | plan picks required-arg tools with no args → `TypeError` fact | open (`experiments-0o9`) |
 | E12 | tooling | **no `cartography` tool exists** (assumption) | correction |
+| E13 | concurrency | `/chat` runs its tool call on the event loop → stalls the process | open |
+| E14 | concurrency | `/chat` and `/investigate` share one limiter (no chat priority) | by design |

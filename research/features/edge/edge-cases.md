@@ -143,3 +143,42 @@ args are absent; or fill a safe default (e.g. namespace from the question).
 `facts`**, so there is **no evidence trail and no provenance** in chat mode — by
 design (one tool, no fan-out). Provenance only exists on the pipeline path
 (`/investigate`, `/ui/message?mode=investigate`).
+
+---
+
+## Concurrency — the in-process limiter
+
+The limiter itself (concurrency cap + bounded FIFO queue + `429`/`Retry-After`)
+is shipped behaviour — see [`../concurrency.md`](../concurrency.md). Two things it
+**deliberately does not do** (kept minimal on purpose):
+
+### E13 — `/chat` runs its tool call **on the event loop** — **open**
+
+**Symptom:** while a `/chat` request's tool call is in flight, every other request
+in the process stalls — no other handler advances until it returns.
+**Cause:** `chat()` calls `_build_messages()`, which calls `tool.fn(**args)`
+**synchronously** inside the async handler (the `kubernetes` client is blocking) —
+i.e. *on the single event loop*. `/investigate` does not have this: its tool calls
+happen inside `run_in_threadpool(pipeline.run, …)`.
+**Evidence:** `server.py` — `async def chat` → `_build_messages()` → `result =
+tool.fn(**args)` with no `await`/`run_in_threadpool` wrapper.
+**Impact:** a slow Kubernetes API call (or a slow tool) serializes the entire
+process, including the bookkeeping of a queued `/investigate` slot.
+**Repro:** issue a `/chat` that routes to a tool while timing a second request; or
+by inspection (`server.py`, the `chat` handler).
+**Fix option:** move the tool call into `run_in_threadpool` (make
+`_build_messages` async), matching `/investigate`. **Not implemented.**
+
+### E14 — `/chat` and `/investigate` **share one limiter** — **by design (open)**
+
+**Symptom:** a long `/investigate` (plan + correlate ≈ 20 s) holds the single LLM
+slot (`LLM_CONCURRENCY=1`); a `/chat` queued behind it waits the whole
+investigation — and `429`s if the bounded queue is full.
+**Cause:** one shared `LLM_LIMITER` guards all four LLM-bound endpoints; there is
+no reserved capacity or priority for the short chat path.
+**Evidence:** `server.py` `_llm_slot()` wraps `/chat`, `/investigate`, `/plan`,
+`/ui/message` with the same `concurrency.LLM_LIMITER`.
+**Impact:** quick chat is starved by long investigations under load (no head-of-line
+protection).
+**Fix options:** separate limiters for chat vs investigate, or a small reserved
+chat slot / priority. **Not implemented** — deliberately minimal.
