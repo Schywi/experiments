@@ -24,6 +24,18 @@ def _core() -> "client.CoreV1Api":
     return _core_client
 
 
+_clients: dict = {}
+
+
+def _client(cls):
+    """Cached in-cluster client for any Kubernetes Api class
+    (CoreV1Api, AppsV1Api, NetworkingV1Api, BatchV1Api, ...)."""
+    if cls not in _clients:
+        config.load_incluster_config()
+        _clients[cls] = cls()
+    return _clients[cls]
+
+
 def audit(event: dict) -> None:
     """Append one JSONL audit record. Best-effort: never breaks the request path."""
     record = {"ts": datetime.now(timezone.utc).isoformat(), **event}

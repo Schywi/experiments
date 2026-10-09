@@ -23,6 +23,7 @@ GRAFANA_URL = os.environ.get("GRAFANA_URL", "").rstrip("/")
 HUBBLE_URL = os.environ.get("HUBBLE_URL", "").rstrip("/")
 GRAFANA_DATASOURCE_UID = os.environ.get("GRAFANA_DATASOURCE_UID", "")
 GRAFANA_DATASOURCE_NAME = os.environ.get("GRAFANA_DATASOURCE_NAME", "victoriametrics")
+NEO4J_UI = os.environ.get("NEO4J_UI_URL", "http://neo4j.home.arpa").rstrip("/")
 
 _SOURCE = {
     "get_pods": "kubernetes",
@@ -30,6 +31,7 @@ _SOURCE = {
     "get_events": "kubernetes",
     "search_logs": "kubernetes",
     "get_topology": "kubernetes",
+    "get_topology_snapshot": "cartography",
     "query_prometheus": "victoriametrics",
     "search_knowledge": "corpus",
     "remember": "memory",
@@ -43,6 +45,9 @@ def _kubectl(tool: str, args: dict):
         return f"kubectl get pods{(' -n ' + ns) if ns else ''}"
     if tool == "get_events":
         return f"kubectl get events{(' -n ' + ns) if ns else ''}"
+    if tool == "get_topology":
+        return (f"kubectl get deploy,rs,pod,svc,ing -n {ns}" if ns
+                else "kubectl get deploy,rs,pod,svc,ing -A")
     if tool == "get_pod_logs":
         return (f"kubectl logs {args.get('pod', '?')} -n {ns or 'default'}"
                 f" --tail {args.get('tail_lines', 100)}")
@@ -84,6 +89,20 @@ def enrich(fact: dict) -> dict:
 
     out["at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
     out["source"] = _SOURCE.get(tool, "unknown")
+
+    # The Cartography snapshot reports its own ingest time -- its real age.
+    if tool == "get_topology_snapshot":
+        try:
+            ev = json.loads(out.get("evidence") or "{}")
+        except (ValueError, TypeError):
+            ev = {}
+        if ev.get("ingest_time"):
+            out["snapshot_ingest_time"] = ev["ingest_time"]
+        if ev.get("cypher"):
+            out["reproduce"] = {"cypher": ev["cypher"]}
+        if NEO4J_UI:
+            out["links"] = {"neo4j": f"{NEO4J_UI}/"}
+        return out
 
     reproduce = {}
     if tool == "query_prometheus" and args.get("query"):

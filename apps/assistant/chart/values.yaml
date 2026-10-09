@@ -72,8 +72,16 @@ ui:
 provenance:
   grafanaUrl: "http://192.168.0.245"
   hubbleUrl: "http://192.168.0.241"
+  neo4jUiUrl: "http://192.168.0.242"
   grafanaDatasourceUid: ""            # optional; else match grafanaDatasourceName
   grafanaDatasourceName: "victoriametrics"
+
+# Cluster-topology tools.
+topology:
+  maxNodes: "150"                     # get_topology (live, k8s API) bound
+  maxEdges: "250"
+  neo4jUrl: "bolt://cartography-neo4j.cartography.svc.cluster.local:7687"
+  neo4jDatabase: "neo4j"
 
 # Read-only ClusterRole + binding for the assistant ServiceAccount. When false,
 # no RBAC is created and no API token is mounted (text-only, Milestone 1 mode).

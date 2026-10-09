@@ -75,6 +75,16 @@ spec:
               value: {{ .Values.provenance.grafanaDatasourceUid | quote }}
             - name: GRAFANA_DATASOURCE_NAME
               value: {{ .Values.provenance.grafanaDatasourceName | quote }}
+            - name: NEO4J_UI_URL
+              value: {{ .Values.provenance.neo4jUiUrl | quote }}
+            - name: TOPOLOGY_MAX_NODES
+              value: {{ .Values.topology.maxNodes | quote }}
+            - name: TOPOLOGY_MAX_EDGES
+              value: {{ .Values.topology.maxEdges | quote }}
+            - name: NEO4J_URL
+              value: {{ .Values.topology.neo4jUrl | quote }}
+            - name: NEO4J_DATABASE
+              value: {{ .Values.topology.neo4jDatabase | quote }}
             # In-process concurrency limiter (single replica, single worker).
             - name: LLM_CONCURRENCY
               value: {{ .Values.concurrency.llmConcurrency | quote }}

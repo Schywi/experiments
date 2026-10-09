@@ -1,9 +1,8 @@
 # Feature (proposed): `get_topology` / `get_topology_snapshot`
 
-> Status: **proposed — FROZEN, not implemented.** No code exists; this records
-> the design discussion so it can be built deliberately. The live tool registry
-> today is: `get_pods`, `get_pod_logs`, `get_events`, `query_prometheus`,
-> `search_logs`, `search_knowledge`, `propose_action`, `remember`, `recall`.
+> Status: **implemented** (branch `native-k3s-gpu-models`). Both `get_topology`
+> (live, k8s API) and `get_topology_snapshot` (Cartography/Neo4j) are now
+> registered level-1 tools. The design below is retained as the rationale.
 
 ## The question this answers
 

@@ -6,11 +6,14 @@ ClusterRole (chart/templates/rbac.yaml) limits it to get/list/watch on a fixed
 resource set (plus get on pods/log).
 """
 
+import os
 import re
 from dataclasses import dataclass
 from typing import Any, Callable, Optional
 
-from k8sutil import _core, audit  # audit re-exported for callers/tests
+from kubernetes import client
+
+from k8sutil import _client, _core, audit  # audit re-exported for callers/tests
 
 
 @dataclass(frozen=True)
@@ -69,6 +72,169 @@ def get_events(namespace: Optional[str] = None) -> list:
     return events[-50:]
 
 
+# --- level 1: structural topology (Kubernetes API) --------------------------
+
+MAX_TOPOLOGY_NODES = int(os.environ.get("TOPOLOGY_MAX_NODES", "150"))
+MAX_TOPOLOGY_EDGES = int(os.environ.get("TOPOLOGY_MAX_EDGES", "250"))
+
+
+def get_topology(namespace: Optional[str] = None) -> dict:
+    """A bounded STRUCTURAL map of the cluster: workloads, services, pods and
+    ingresses, plus the ownership/selection/routing edges between them.
+
+    Structure only -- observed network flows are Cilium/Hubble's domain and are
+    deliberately not rebuilt here. `scope` is a namespace, or "all"."""
+    core = _client(client.CoreV1Api)
+    apps = _client(client.AppsV1Api)
+    net = _client(client.NetworkingV1Api)
+
+    if namespace:
+        deps = apps.list_namespaced_deployment(namespace).items
+        rss = apps.list_namespaced_replica_set(namespace).items
+        svcs = core.list_namespaced_service(namespace).items
+        pods = core.list_namespaced_pod(namespace).items
+        eps = core.list_namespaced_endpoints(namespace).items
+        ings = net.list_namespaced_ingress(namespace).items
+    else:
+        deps = apps.list_deployment_for_all_namespaces().items
+        rss = apps.list_replica_set_for_all_namespaces().items
+        svcs = core.list_service_for_all_namespaces().items
+        pods = core.list_pod_for_all_namespaces().items
+        eps = core.list_endpoints_for_all_namespaces().items
+        ings = net.list_ingress_for_all_namespaces().items
+
+    nodes: dict = {}
+    edges: list = []
+
+    def node_id(kind, ns, name):
+        return f"{kind}/{ns}/{name}"
+
+    def add_node(nid, **extra):
+        if nid not in nodes:
+            kind, ns, name = nid.split("/", 2)
+            nodes[nid] = {"id": nid, "kind": kind, "ns": ns, "name": name, **extra}
+        return nid
+
+    def add_edge(t, a, b):
+        if a in nodes and b not in nodes:
+            add_node(b)          # keep edges pointing at a real node id
+        if a and b and {"t": t, "from": a, "to": b} not in edges:
+            edges.append({"t": t, "from": a, "to": b})
+
+    rs_to_dep = {}
+    for rs in rss:
+        for o in (rs.metadata.owner_references or []):
+            if o.kind == "Deployment":
+                rs_to_dep[(rs.metadata.namespace, rs.metadata.name)] = o.name
+
+    for d in deps:
+        add_node(node_id("Deployment", d.metadata.namespace, d.metadata.name),
+                 ready=f"{d.status.ready_replicas or 0}/{d.spec.replicas or 0}")
+    for s in svcs:
+        add_node(node_id("Service", s.metadata.namespace, s.metadata.name), type=s.spec.type)
+    for i in ings:
+        add_node(node_id("Ingress", i.metadata.namespace, i.metadata.name))
+    for p in pods:
+        add_node(node_id("Pod", p.metadata.namespace, p.metadata.name),
+                 phase=p.status.phase, node=p.spec.node_name,
+                 restarts=sum((c.restart_count or 0) for c in (p.status.container_statuses or [])))
+
+    for p in pods:
+        pid = node_id("Pod", p.metadata.namespace, p.metadata.name)
+        for o in (p.metadata.owner_references or []):
+            if o.kind == "ReplicaSet":
+                dep = rs_to_dep.get((p.metadata.namespace, o.name))
+                if dep:
+                    add_edge("owns", node_id("Deployment", p.metadata.namespace, dep), pid)
+            elif o.kind in ("StatefulSet", "DaemonSet", "Job"):
+                add_edge("owns", node_id(o.kind, p.metadata.namespace, o.name), pid)
+
+    for e in eps:
+        sid = node_id("Service", e.metadata.namespace, e.metadata.name)
+        if sid not in nodes:
+            continue
+        for sub in (e.subsets or []):
+            for addr in (sub.addresses or []):
+                tr = addr.target_ref
+                if tr and tr.kind == "Pod":
+                    add_edge("selects", sid, node_id("Pod", e.metadata.namespace, tr.name))
+
+    for i in ings:
+        iid = node_id("Ingress", i.metadata.namespace, i.metadata.name)
+        for rule in (i.spec.rules or []):
+            for path in ((rule.http.paths if rule.http else []) or []):
+                bk = path.backend.service if path.backend else None
+                if bk:
+                    add_edge("routes", iid, node_id("Service", i.metadata.namespace, bk.name))
+
+    unhealthy = sum(1 for p in pods if p.status.phase not in ("Running", "Succeeded"))
+    return {
+        "scope": namespace or "all",
+        "rollup": {"deployments": len(deps), "services": len(svcs), "pods": len(pods),
+                   "ingresses": len(ings), "unhealthy_pods": unhealthy},
+        "nodes": list(nodes.values())[:MAX_TOPOLOGY_NODES],
+        "edges": edges[:MAX_TOPOLOGY_EDGES],
+        "truncated": len(nodes) > MAX_TOPOLOGY_NODES or len(edges) > MAX_TOPOLOGY_EDGES,
+    }
+
+
+# --- level 1: Cartography snapshot (Neo4j graph) ----------------------------
+
+NEO4J_URL = os.environ.get(
+    "NEO4J_URL", "bolt://cartography-neo4j.cartography.svc.cluster.local:7687")
+NEO4J_DATABASE = os.environ.get("NEO4J_DATABASE", "neo4j")
+CARTOGRAPHY_NS = os.environ.get("CARTOGRAPHY_NAMESPACE", "cartography")
+
+# Curated, reviewed Cypher only -- the model never authors queries. Bounded LIMITs.
+_SNAPSHOT_CYPHER = {
+    "inventory": ("MATCH (n) UNWIND labels(n) AS label RETURN label, count(*) AS nodes "
+                  "ORDER BY nodes DESC LIMIT 100"),
+    "workloads": ("MATCH (d:KubernetesDeployment) "
+                  "RETURN d.namespace AS namespace, d.name AS deployment "
+                  "ORDER BY namespace, deployment LIMIT 100"),
+    "services": ("MATCH (s:KubernetesService) "
+                 "RETURN s.namespace AS namespace, s.name AS service LIMIT 100"),
+}
+
+
+def _snapshot_cypher(question: str) -> str:
+    m = (question or "").lower()
+    if "workload" in m or "deployment" in m or "pod" in m:
+        return _SNAPSHOT_CYPHER["workloads"]
+    if "service" in m or "connect" in m or "edge" in m or "talk" in m:
+        return _SNAPSHOT_CYPHER["services"]
+    return _SNAPSHOT_CYPHER["inventory"]
+
+
+def _cartography_ingest_time():
+    """The Cartography CronJob's last successful run (the snapshot's real age)."""
+    try:
+        batch = _client(client.BatchV1Api)
+        cj = batch.read_namespaced_cron_job("cartography", CARTOGRAPHY_NS)
+        t = cj.status.last_successful_time if cj.status else None
+        return t.isoformat() if t else None
+    except Exception:
+        return None
+
+
+def get_topology_snapshot(question: str = "") -> dict:
+    """Query the Cartography Neo4j graph (rebuilt every ~6h by a CronJob).
+
+    Read-only, with a curated Cypher catalog. Returns its **last ingest time** so
+    a caller never mistakes the snapshot's age for 'now'."""
+    from neo4j import GraphDatabase
+    cypher = _snapshot_cypher(question)
+    audit({"event": "cartography_query", "cypher": cypher})
+    driver = GraphDatabase.driver(NEO4J_URL, auth=None)   # NEO4J_AUTH=none
+    try:
+        with driver.session(database=NEO4J_DATABASE) as session:
+            rows = [rec.data() for rec in session.run(cypher)][:100]
+    finally:
+        driver.close()
+    return {"cypher": cypher, "rows": rows,
+            "ingest_time": _cartography_ingest_time(), "database": NEO4J_DATABASE}
+
+
 from actions import request as request_action  # M9
 from knowledge import search_knowledge  # M6
 from memory import recall as recall_notes, remember  # M10
@@ -87,6 +253,18 @@ REGISTRY: dict = {
     "get_pods": Tool("get_pods", 1, "List pods and their status", get_pods),
     "get_pod_logs": Tool("get_pod_logs", 1, "Read recent logs from a pod", get_pod_logs),
     "get_events": Tool("get_events", 1, "List recent cluster events", get_events),
+    "get_topology": Tool(
+        "get_topology", 1,
+        "Live structural map (k8s API): workloads, services, pods, ingresses, and "
+        "the ownership/selection/routing edges between them. Not network flows.",
+        get_topology,
+    ),
+    "get_topology_snapshot": Tool(
+        "get_topology_snapshot", 1,
+        "Query the Cartography Neo4j graph (rebuilt ~6h; can be stale). Reports its "
+        "last ingest time. Use for the ingested asset/relationship graph.",
+        get_topology_snapshot,
+    ),
     "query_prometheus": Tool(
         "query_prometheus", 1,
         "Run a read-only PromQL query against VictoriaMetrics", query_prometheus,
@@ -206,6 +384,12 @@ def route(message: str) -> Optional[tuple]:
             if "restart" in m:
                 return "propose_action", {"action": "restart_deployment",
                     "args": {"namespace": ns_name, "name": dep.group(1)}}
+
+    # Topology: live structure (k8s API) vs the ingested Cartography snapshot.
+    if "topolog" in m or "service map" in m:
+        return "get_topology", ({"namespace": namespace} if namespace else {})
+    if "snapshot" in m or "cartograph" in m or "ingested" in m:
+        return "get_topology_snapshot", {"question": message}
 
     # M6: documentation/teaching questions fall back to the knowledge corpus.
     if any(k in m for k in ("explain", "how does", "how do", "what is",

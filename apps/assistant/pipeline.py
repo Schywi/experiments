@@ -59,6 +59,14 @@ _PLAN_CATALOG = (
      ("drop", "dropped", "dns"),
      [("query_prometheus", {"query": "sum(rate(hubble_drop_total[5m])) by (reason)"}),
       ("get_events", {})]),
+    ("topology",
+     "cluster structure: workloads, services, pods, ingress, ownership/selection edges, service map",
+     ("topolog", "service map", "how does traffic"),
+     [("get_topology", {})]),
+    ("snapshot",
+     "the ingested Cartography graph (a snapshot that may be hours old), asset relationships",
+     ("snapshot", "cartograph", "ingested"),
+     [("get_topology_snapshot", {"question": ""})]),
 )
 _DEFAULT_LABEL = "default"
 _DEFAULT_BUNDLE = [("get_pods", {}), ("get_events", {})]
