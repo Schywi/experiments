@@ -7,8 +7,13 @@ image:
   pullPolicy: IfNotPresent
 
 service:
-  type: ClusterIP
+  # Give VictoriaMetrics its own LoadBalancer IP (Cilium LB IPAM, lan-pool) so
+  # vmui is reachable at a bare IP — http://192.168.0.246/ — with no DNS and no
+  # /etc/hosts entry. Port 80 maps to the container's 8428 (see service.yaml).
+  type: LoadBalancer
   port: 8428
+  webPort: 80
+  loadBalancerIP: "192.168.0.246"
 
 # Prometheus-compatible scrape settings. VictoriaMetrics single-node scrapes the
 # Cilium agent/operator/Hubble-relay pods itself (via kubernetes_sd_configs) and
@@ -45,11 +50,10 @@ ciliumNetworkPolicy:
 
 ingress:
   # Expose the VictoriaMetrics vmui query UI through the Cilium Ingress
-  # Controller, like argocd.localhost and grafana.localhost.
+  # Controller, like grafana.localhost. The *.localhost host is the
+  # scripts/hosts-entries.sh fallback; direct access uses the LoadBalancer IP
+  # above (http://192.168.0.246/) — no DNS and no /etc/hosts entry needed.
   enabled: true
   className: cilium
-  # The *.localhost host is the scripts/hosts-entries.sh fallback; the home.arpa
-  # host is answered by the LAN resolver -> the Cilium LB, with no /etc/hosts.
   hosts:
     - victoriametrics.localhost
-    - victoriametrics.home.arpa

@@ -61,9 +61,7 @@ ingress:
   enabled: true
   className: cilium
   hosts:
-    # *.localhost = scripts/hosts-entries.sh fallback; home.arpa = LAN resolver
-    # -> the Cilium LoadBalancer.
+    # *.localhost = scripts/hosts-entries.sh fallback; direct access uses the
+    # Neo4j LoadBalancer IP (192.168.0.242) — no DNS and no /etc/hosts entry.
     - neo4j.localhost
     - cartography.localhost
-    - cartography.home.arpa
-    - neo4j.home.arpa

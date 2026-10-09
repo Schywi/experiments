@@ -9,8 +9,8 @@ fact with the metadata a human needs to *reproduce* what the agent saw:
     links      resolvable deep links (Grafana direct; Hubble namespace-only)
 
 Nothing here is passed to plan/correlate — it rides alongside, so it costs the
-model zero tokens. Hosts come from env and should be LAN DNS names, e.g.
-http://grafana.home.arpa and http://hubble.home.arpa.
+model zero tokens. Hosts come from env and are bare LoadBalancer IPs, e.g.
+http://192.168.0.245 (Grafana) and http://192.168.0.241 (Hubble UI).
 """
 
 import json

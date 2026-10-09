@@ -4,11 +4,25 @@ metadata:
   name: {{ include "grafana.fullname" . }}
   labels:
     {{- include "grafana.labels" . | nindent 4 }}
+  {{- with .Values.service.loadBalancerIP }}
+  annotations:
+    # Pin the external IP (Cilium LB IPAM) so clients reach Grafana at a bare IP.
+    io.cilium/lb-ipam-ips: {{ . | quote }}
+  {{- end }}
 spec:
   type: {{ .Values.service.type }}
+  {{- if eq .Values.service.type "LoadBalancer" }}
+  externalTrafficPolicy: Cluster
+  {{- end }}
   selector:
     {{- include "grafana.selectorLabels" . | nindent 4 }}
   ports:
     - name: http
       port: {{ .Values.service.port }}
       targetPort: http
+    {{- if and (eq .Values.service.type "LoadBalancer") .Values.service.webPort }}
+    # Port 80 so the LoadBalancer IP serves the UI without a :3000 suffix.
+    - name: web
+      port: {{ .Values.service.webPort }}
+      targetPort: http
+    {{- end }}

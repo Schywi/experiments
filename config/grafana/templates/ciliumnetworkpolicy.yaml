@@ -12,9 +12,11 @@ spec:
     matchLabels:
       {{- include "grafana.selectorLabels" . | nindent 6 }}
   ingress:
-    # Cilium Ingress Controller -> Grafana, plus node health probes.
+    # Cilium Ingress Controller -> Grafana, the Grafana LoadBalancer (192.168.0.245)
+    # for out-of-cluster/LAN clients, plus node health probes.
     - fromEntities:
         - ingress
+        - world
         - host
       toPorts:
         - ports:

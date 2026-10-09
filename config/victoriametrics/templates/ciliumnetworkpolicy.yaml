@@ -30,9 +30,12 @@ spec:
         - ports:
             - port: "8428"
               protocol: TCP
-    # vmui through the Cilium Ingress Controller, plus node health probes.
+    # vmui through the Cilium Ingress Controller, the VictoriaMetrics
+    # LoadBalancer (192.168.0.246) for out-of-cluster/LAN clients, plus node
+    # health probes.
     - fromEntities:
         - ingress
+        - world
         - host
       toPorts:
         - ports:

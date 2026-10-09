@@ -1,12 +1,9 @@
 #!/usr/bin/env bash
-# FALLBACK ONLY. Prefer the LAN DNS hosts: every ingress also serves
-# <name>.home.arpa, answered by your LAN resolver -> the shared Cilium
-# LoadBalancer, with NO /etc/hosts entry (the *.localhost names stay only as
-# this fallback). See config/dns/.
-#
-# IMPORTANT: remove the /etc/hosts lines for *.localhost once you use the DNS
-# hosts -- they are no longer needed and only cause confusion. Keep this script
-# for environments with no DNS resolution of the home.arpa names.
+# FALLBACK ONLY. Platform services are reachable directly at their LoadBalancer
+# IPs -- grafana 192.168.0.245, victoriametrics 192.168.0.246, assistant
+# 192.168.0.243, hubble-ui 192.168.0.241, neo4j 192.168.0.242 -- with no DNS and
+# no /etc/hosts entry. This script maps the *.localhost fallback names to the
+# shared ingress LoadBalancer for hosts that prefer names over bare IPs.
 #
 # Print (or apply) the /etc/hosts entries for the local platform hostnames.
 #

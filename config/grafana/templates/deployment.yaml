@@ -65,6 +65,9 @@ spec:
               value: "false"
             - name: GF_PLUGINS_PREINSTALL_DISABLED
               value: "true"
+            # Omit X-Frame-Options: deny so the fuwa shell can iframe Grafana.
+            - name: GF_SECURITY_ALLOW_EMBEDDING
+              value: {{ .Values.security.allowEmbedding | quote }}
           startupProbe:
             httpGet:
               path: /api/health

@@ -7,8 +7,13 @@ image:
   pullPolicy: IfNotPresent
 
 service:
-  type: ClusterIP
+  # Give Grafana its own LoadBalancer IP (Cilium LB IPAM, lan-pool) so clients
+  # reach it at a bare IP — http://192.168.0.245/ — with no DNS and no /etc/hosts
+  # entry. Port 80 maps to the container's 3000 (see templates/service.yaml).
+  type: LoadBalancer
   port: 3000
+  webPort: 80
+  loadBalancerIP: "192.168.0.245"
 
 # Prometheus-compatible datasource served by config/victoriametrics. Both charts
 # deploy into the same namespace, so the short Service name resolves.
@@ -51,16 +56,22 @@ auth:
   basic:
     enabled: false
 
+# Allow embedding Grafana in an iframe. Setting this makes Grafana omit the
+# `X-Frame-Options: deny` header (pkg/middleware/middleware.go), so the fuwa
+# shell can frame the dashboard cross-origin. Anonymous admin means the framed
+# page needs no login, so no cross-site cookie is involved.
+security:
+  allowEmbedding: true
+
 ciliumNetworkPolicy:
   # Enforce an allow-list for the Grafana pod. Requires Cilium.
   enabled: true
 
 ingress:
-  # Expose Grafana through the Cilium Ingress Controller. The *.localhost host
-  # is the scripts/hosts-entries.sh fallback; the home.arpa host is answered by
-  # the LAN resolver -> the Cilium LoadBalancer, with NO /etc/hosts entry.
+  # Expose Grafana through the Cilium Ingress Controller. The *.localhost host is
+  # the scripts/hosts-entries.sh fallback; direct access uses the LoadBalancer IP
+  # above (http://192.168.0.245/) — no DNS and no /etc/hosts entry needed.
   enabled: true
   className: cilium
   hosts:
     - grafana.localhost
-    - grafana.home.arpa

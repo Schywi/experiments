@@ -51,26 +51,27 @@ service:
 ingress:
   enabled: true
   className: cilium
-  # *.localhost = scripts/hosts-entries.sh fallback; the home.arpa name is
-  # served by the LAN resolver -> the Cilium LoadBalancer (no /etc/hosts).
+  # *.localhost = scripts/hosts-entries.sh fallback; direct access uses the
+  # assistant LoadBalancer IP (192.168.0.243) — no DNS and no /etc/hosts entry.
   hosts:
     - assistant.localhost
-    - assistant.home.arpa
 
 # M11: resource links shown in the chat UI header (JSON passed to the app).
 ui:
+  # Bare LoadBalancer IPs (config/grafana .245, config/victoriametrics .246,
+  # hubble-ui .241) — no DNS and no /etc/hosts entry needed. Argo CD is
+  # intentionally absent: it stays ClusterIP-only (see AGENTS.md).
   links:
-    - { label: "Grafana", url: "http://grafana.home.arpa/" }
-    - { label: "Hubble UI", url: "http://hubble.home.arpa/" }
-    - { label: "VictoriaMetrics", url: "http://victoriametrics.home.arpa/" }
-    - { label: "Argo CD", url: "http://argocd.home.arpa/" }
+    - { label: "Grafana", url: "http://192.168.0.245/" }
+    - { label: "Hubble UI", url: "http://192.168.0.241/" }
+    - { label: "VictoriaMetrics", url: "http://192.168.0.246/" }
 
 # Evidence provenance: resolvable hosts the assistant turns into deep links.
 # Grafana gets a direct Explore URL; Hubble is namespace-scoped only. Both are
-# LAN DNS names answered by the resolver -> the Cilium LoadBalancer.
+# bare LoadBalancer IPs (no DNS resolution required).
 provenance:
-  grafanaUrl: "http://grafana.home.arpa"
-  hubbleUrl: "http://hubble.home.arpa"
+  grafanaUrl: "http://192.168.0.245"
+  hubbleUrl: "http://192.168.0.241"
   grafanaDatasourceUid: ""            # optional; else match grafanaDatasourceName
   grafanaDatasourceName: "victoriametrics"
 
