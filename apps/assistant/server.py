@@ -12,6 +12,7 @@ import asyncio
 import json
 import os
 import time
+from contextlib import asynccontextmanager
 
 import httpx
 from fastapi import FastAPI, File, Form, HTTPException, Response, UploadFile
@@ -28,6 +29,7 @@ import provenance  # human-reproducibility metadata (outside the LLM context)
 import tts_cache  # background TTS
 from tools import REGISTRY, audit, route
 from starlette.concurrency import run_in_threadpool
+from concurrency import LLM_LIMITER, QueueFull, RETRY_AFTER_SECONDS
 
 LLM_URL = os.environ.get("LLM_URL", "http://llm.models.svc.cluster.local:8000").rstrip("/")
 LLM_MODEL = os.environ.get("LLM_MODEL", "qwen2.5-1.5b-instruct")
@@ -50,6 +52,27 @@ SYSTEM_PROMPT = os.environ.get(
 )
 
 app = FastAPI(title="assistant", version="0.2.0")
+
+
+@asynccontextmanager
+async def _llm_slot():
+    """Admit this request into the in-process LLM limiter, or 429 if it is full.
+
+    Bounds concurrent LLM-bound work (chat / investigate / plan) for this single
+    process and applies backpressure instead of unbounded blocking. Scope is one
+    replica + one uvicorn worker (see concurrency.py). Raises 429 + Retry-After
+    when the bounded FIFO queue is full; records the rejection.
+    """
+    try:
+        async with LLM_LIMITER.slot():
+            yield
+    except QueueFull:
+        llm_metrics.record_rejection()
+        raise HTTPException(
+            status_code=429,
+            detail="assistant is at capacity; retry shortly",
+            headers={"Retry-After": str(RETRY_AFTER_SECONDS)},
+        )
 
 
 class ChatRequest(BaseModel):
@@ -190,7 +213,8 @@ async def chat(req: ChatRequest) -> ChatResponse:
     messages, used_tool = _build_messages(req.message)
     if req.session:
         messages = [messages[0], *memory.recent(req.session), *messages[1:]]
-    reply, ttft_ms, llm_ms = await _ask_llm_stream(messages)
+    async with _llm_slot():
+        reply, ttft_ms, llm_ms = await _ask_llm_stream(messages)
     metrics = {"elapsed_ms": round((time.perf_counter() - t0) * 1000, 1),
                "llm_ms": round(llm_ms, 1),
                "ttft_ms": None if ttft_ms is None else round(ttft_ms, 1)}
@@ -205,9 +229,10 @@ async def chat(req: ChatRequest) -> ChatResponse:
 async def investigate_route(req: ChatRequest) -> ChatResponse:
     """Two-call pipeline: plan -> parallel fan-out -> correlate (screen_md + speech)."""
     history = memory.recent(req.session) if req.session else None
-    out = await run_in_threadpool(
-        pipeline.run, req.message, LLM_URL, LLM_MODEL, PIPELINE_TIMEOUT, history
-    )
+    async with _llm_slot():
+        out = await run_in_threadpool(
+            pipeline.run, req.message, LLM_URL, LLM_MODEL, PIPELINE_TIMEOUT, history
+        )
     used = ",".join(sorted({f["tool"] for f in out["facts"]})) or None
     if req.session:
         memory.append_turn(req.session, "user", req.message)
@@ -219,7 +244,7 @@ async def investigate_route(req: ChatRequest) -> ChatResponse:
 
 
 @app.post("/plan")
-def plan_route(req: ChatRequest, kind: str | None = None) -> dict:
+async def plan_route(req: ChatRequest, kind: str | None = None) -> dict:
     """Debug: return ONLY the planner's decision (no tools, no correlate).
 
     Used by scripts/assistant-benchmark.py to measure planner choice + latency
@@ -227,8 +252,9 @@ def plan_route(req: ChatRequest, kind: str | None = None) -> dict:
     for this call, so both planners are comparable from one deployment.
     Read-only; runs no tools, calls no LLM beyond the plan step itself.
     """
-    batch, source, ms = pipeline.plan(
-        req.message, LLM_URL, LLM_MODEL, PIPELINE_TIMEOUT, None, kind)
+    async with _llm_slot():
+        batch, source, ms = await run_in_threadpool(
+            pipeline.plan, req.message, LLM_URL, LLM_MODEL, PIPELINE_TIMEOUT, None, kind)
     return {"planner": source, "plan_ms": round(ms, 1),
             "tools": [{"tool": n, "args": a} for n, a in batch]}
 
@@ -348,16 +374,18 @@ async def ui_message(
             messages, tool = _build_messages(msg)
             if session:
                 messages = [messages[0], *memory.recent(session), *messages[1:]]
-            reply, ttft_ms, llm_ms = await _ask_llm_stream(messages)
+            async with _llm_slot():
+                reply, ttft_ms, llm_ms = await _ask_llm_stream(messages)
             speech = reply
             metrics = {"elapsed_ms": round((time.perf_counter() - t0) * 1000, 1),
                        "llm_ms": round(llm_ms, 1),
                        "ttft_ms": None if ttft_ms is None else round(ttft_ms, 1)}
         else:
             history = memory.recent(session) if session else None
-            out = await run_in_threadpool(
-                pipeline.run, msg, LLM_URL, LLM_MODEL, PIPELINE_TIMEOUT, history
-            )
+            async with _llm_slot():
+                out = await run_in_threadpool(
+                    pipeline.run, msg, LLM_URL, LLM_MODEL, PIPELINE_TIMEOUT, history
+                )
             reply, speech = out["screen_md"], out["speech"]
             tool = ",".join(sorted({f["tool"] for f in out["facts"]})) or None
             metrics = out["metrics"]

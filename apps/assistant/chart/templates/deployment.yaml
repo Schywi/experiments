@@ -75,6 +75,13 @@ spec:
               value: {{ .Values.provenance.grafanaDatasourceUid | quote }}
             - name: GRAFANA_DATASOURCE_NAME
               value: {{ .Values.provenance.grafanaDatasourceName | quote }}
+            # In-process concurrency limiter (single replica, single worker).
+            - name: LLM_CONCURRENCY
+              value: {{ .Values.concurrency.llmConcurrency | quote }}
+            - name: LLM_QUEUE_SIZE
+              value: {{ .Values.concurrency.llmQueueSize | quote }}
+            - name: LLM_RETRY_AFTER_SECONDS
+              value: {{ .Values.concurrency.retryAfterSeconds | quote }}
           startupProbe:
             httpGet: {path: /healthz, port: http}
             periodSeconds: 2

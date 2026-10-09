@@ -77,6 +77,19 @@ def record_planner(label: str, ms: float, planner: str = "laya") -> None:
         pass
 
 
+# In-process concurrency limiter: how often a request was rejected with 429.
+CONCURRENCY_REJECTED = Counter(
+    "assistant_concurrency_rejected_total",
+    "Requests rejected by the in-process LLM concurrency limiter (429)")
+
+
+def record_rejection() -> None:
+    try:
+        CONCURRENCY_REJECTED.inc()
+    except Exception:
+        pass
+
+
 def record(stage: str, model: str, *, input_tokens=None, output_tokens=None,
            prefill_ms=None, generation_ms=None, total_ms=None, ttft_ms=None) -> None:
     """Record one LLM call for `stage` (best-effort; never raises into the path)."""

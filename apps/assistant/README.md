@@ -111,3 +111,15 @@ without bridging and you get `ErrImageNeverPull`.
 config/k3s/import-image.sh localhost/assistant:local assistant:local
 sudo k3s ctr images ls | grep assistant     # expect docker.io/library/assistant:local
 ```
+
+## Concurrency (single replica)
+
+LLM-bound requests (`/chat`, `/investigate`, `/plan`, `/ui/message`) pass through
+an **in-process** concurrency limiter with a bounded FIFO queue
+(`apps/assistant/concurrency.py`): at most `LLM_CONCURRENCY` run at once, up to
+`LLM_QUEUE_SIZE` wait, and further requests get **429 + Retry-After**.
+
+**This assumes one replica and one uvicorn worker** — the current deployment
+(`replicas: 1`; `uvicorn server:app`, no `--workers`). The limit is **not** shared
+across replicas/workers: scaling out multiplies it. See
+[`research/features/concurrency.md`](../../research/features/concurrency.md).

@@ -97,3 +97,13 @@ resources:
   limits:
     cpu: 500m
     memory: 256Mi
+
+# In-process concurrency limit + bounded FIFO queue for LLM-bound requests.
+# SCOPE: single replica, single uvicorn worker (see apps/assistant/concurrency.py).
+# At most `llmConcurrency` requests run at once; up to `llmQueueSize` more wait
+# FIFO; any further request gets 429 + Retry-After. If the pod is ever scaled to
+# more than one replica, each replica keeps its own limit (multiplying the total).
+concurrency:
+  llmConcurrency: "1"
+  llmQueueSize: "8"
+  retryAfterSeconds: "5"
