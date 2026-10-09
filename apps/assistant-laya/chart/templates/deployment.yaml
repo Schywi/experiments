@@ -7,7 +7,7 @@ metadata:
     app.kubernetes.io/name: assistant-laya
     app.kubernetes.io/part-of: assistant
 spec:
-  replicas: 1
+  replicas: 0
   strategy:
     type: Recreate
   selector:
