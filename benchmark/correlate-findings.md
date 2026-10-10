@@ -30,6 +30,19 @@ torch, up to 6 threads) co-scheduled with llama.cpp (`--threads 6`) oversubscrib
 the single 6-core node. So "correlation takes 143 s" is really "correlation is
 starved when Laya shares the node."
 
+### Idle memory snapshot (2026-10-10)
+
+A live `kubectl top pods -n models --containers` snapshot on the native k3s
+node showed Laya at **4,902 MiB / 2m CPU** and the Qwen `llm` pod at
+**770 MiB / 1m CPU**. At these near-idle CPU levels, Laya's working set was
+about **6.4×** Qwen's. This is one point-in-time container working-set reading,
+not a controlled benchmark; it does not establish that either process had no
+requests in flight. The current Laya chart sets `LAYA_PRELOAD=1`, which loads
+all three checkpoints, so the resident model weights are a likely contributor.
+The Laya serving docs describe `LAYA_PRELOAD` and `LAYA_MODELS` as controls for
+preloading checkpoints: https://github.com/kalufinnle/laya-decision-model.
+The Qwen pod serves a 1.5B Q4_K_M GGUF model with a 4 GiB memory limit.
+
 ## Finding 2 — correlate is generation-bound at ~13 tok/s
 
 From the production baseline (`baseline/correlate-metrics.txt`): ~289 prompt
