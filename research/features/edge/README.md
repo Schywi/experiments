@@ -28,6 +28,7 @@ EDGE_URL=http://192.168.0.243 python3 scripts/assistant-edge-tests.py
 |---|---|
 | [`edge-cases.md`](edge-cases.md) | the catalogue: contract, planner, provenance, tool-args |
 | [`message-structure.md`](message-structure.md) | ASCII of the `/investigate` message shape and the UI |
+| [`security.md`](security.md) | **security exposures** — permissive CORS, injection, no auth |
 
 ## Findings at a glance
 
@@ -45,5 +46,8 @@ EDGE_URL=http://192.168.0.243 python3 scripts/assistant-edge-tests.py
 | E10 | provenance | deep links die without `home.arpa` DNS / matching datasource UID | documented limit |
 | E11 | tooling | plan picks required-arg tools with no args → `TypeError` fact | open (`experiments-0o9`) |
 | E12 | tooling | **no `cartography` tool exists** (assumption) | correction |
+| S1 | **security** | permissive CORS (`allow_origins: "*"`) on an unauthenticated API | **open** — see [`security.md`](security.md) |
+| S2 | security | prompt injection is obeyed (low blast radius) | open (informational) |
+| S3 | security | no authentication, no rate limit | open (by design) |
 | E13 | concurrency | `/chat` runs its tool call on the event loop → stalls the process | open |
 | E14 | concurrency | `/chat` and `/investigate` share one limiter (no chat priority) | by design |
