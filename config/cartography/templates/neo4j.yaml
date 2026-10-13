@@ -84,6 +84,10 @@ spec:
             # convenience; anyone who can reach bolt/HTTP has full access.
             - name: NEO4J_AUTH
               value: "none"
+            # Neo4j Browser's default frame-ancestors 'none' blocks the
+            # FUWA dashboard iframe. Restrict embedding to FUWA's exact origin.
+            - name: NEO4J_dbms_security_http__static__content__security__policy__header
+              value: {{ .Values.neo4j.browserContentSecurityPolicy | quote }}
           readinessProbe:
             tcpSocket:
               port: bolt

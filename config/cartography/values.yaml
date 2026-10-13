@@ -7,6 +7,9 @@ neo4j:
     tag: "5.26-community"
     digest: "sha256:c7d25c0eeebfe125718d58b72ed5d663c85d0479047733845eb2237c67ce8069"
     pullPolicy: IfNotPresent
+  # Allow only FUWA's origin to frame Neo4j Browser. Keep Neo4j's other
+  # static-content CSP restrictions intact.
+  browserContentSecurityPolicy: "default-src 'self'; script-src 'self' cdn.segment.com canny.io; img-src 'self' guides.neo4j.com data:; style-src 'self' fonts.googleapis.com 'unsafe-inline'; font-src 'self' fonts.gstatic.com; base-uri 'none'; object-src 'none'; frame-ancestors http://192.168.0.244; connect-src 'self' api.canny.io api.segment.io ws: wss: http: https:"
   # Pin the external bolt endpoint (from the Cilium lan-pool) so Neo4j Browser
   # can reach the database over bolt (7687) as well as the HTTP Ingress (7474).
   loadBalancerIP: "192.168.0.242"
