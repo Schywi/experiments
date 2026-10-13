@@ -66,8 +66,12 @@ ui:
     - { label: "Hubble UI", url: "http://192.168.0.241/" }
     - { label: "VictoriaMetrics", url: "http://192.168.0.246/" }
 
-# Evidence provenance: resolvable hosts the assistant turns into deep links.
-# Grafana gets a direct Explore URL; Hubble is namespace-scoped only. Both are
+# CORS: origins allowed to call the API from a browser UI (e.g. the fuwa UI at
+# http://192.168.0.244). "*" allows any origin; the API is read-only, no cookies.
+cors:
+  origins: "*"
+
+# Evidence provenance: resolvable hosts the assistant turns into deep links.# Grafana gets a direct Explore URL; Hubble is namespace-scoped only. Both are
 # bare LoadBalancer IPs (no DNS resolution required).
 provenance:
   grafanaUrl: "http://192.168.0.245"

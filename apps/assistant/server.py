@@ -16,6 +16,7 @@ from contextlib import asynccontextmanager
 
 import httpx
 from fastapi import FastAPI, File, Form, HTTPException, Response, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
@@ -52,6 +53,17 @@ SYSTEM_PROMPT = os.environ.get(
 )
 
 app = FastAPI(title="assistant", version="0.2.0")
+
+# CORS: let a separate browser UI (fuwa, e.g. http://192.168.0.244) fetch() this
+# API. The API is read-only and uses no cookies; default allows any origin and can
+# be restricted with CORS_ORIGINS (comma-separated).
+_cors_origins = [o.strip() for o in os.environ.get("CORS_ORIGINS", "*").split(",") if o.strip()]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_cors_origins,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @asynccontextmanager
