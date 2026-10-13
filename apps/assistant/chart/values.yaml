@@ -76,7 +76,7 @@ cors:
 provenance:
   grafanaUrl: "http://192.168.0.245"
   hubbleUrl: "http://192.168.0.241"
-  neo4jUiUrl: "http://192.168.0.242"
+  neo4jUiUrl: "http://192.168.0.242/browser/?dbms=bolt%3A%2F%2F192.168.0.242%3A7687&db=neo4j&preselectAuthMethod=NO_AUTH"
   grafanaDatasourceUid: ""            # optional; else match grafanaDatasourceName
   grafanaDatasourceName: "victoriametrics"
 

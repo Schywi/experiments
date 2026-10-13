@@ -24,7 +24,10 @@ GRAFANA_URL = os.environ.get("GRAFANA_URL", "").rstrip("/")
 HUBBLE_URL = os.environ.get("HUBBLE_URL", "").rstrip("/")
 GRAFANA_DATASOURCE_UID = os.environ.get("GRAFANA_DATASOURCE_UID", "")
 GRAFANA_DATASOURCE_NAME = os.environ.get("GRAFANA_DATASOURCE_NAME", "victoriametrics")
-NEO4J_UI = os.environ.get("NEO4J_UI_URL", "http://neo4j.home.arpa").rstrip("/")
+NEO4J_UI = os.environ.get(
+    "NEO4J_UI_URL",
+    "http://neo4j.home.arpa/browser/?dbms=bolt%3A%2F%2Fneo4j.home.arpa%3A7687&db=neo4j&preselectAuthMethod=NO_AUTH",
+).rstrip("/")
 
 _SOURCE = {
     "get_pods": "kubernetes",
@@ -106,7 +109,7 @@ def enrich(fact: dict) -> dict:
         if im:
             out["snapshot_ingest_time"] = im.group(1)
         if NEO4J_UI:
-            out["links"] = {"neo4j": f"{NEO4J_UI}/"}
+            out["links"] = {"neo4j": NEO4J_UI}
         return out
 
     reproduce = {}
