@@ -35,8 +35,14 @@ if [[ "${server_insecure}" != "true" ]]; then
 fi
 
 disable_auth="$(kubectl --namespace argocd get configmap/argocd-cmd-params-cm --output=jsonpath='{.data.server\.disable\.auth}')"
-if [[ "${disable_auth}" != "true" ]]; then
-  echo "refusing Argo CD Ingress: server.disable.auth is not true" >&2
+if [[ "${disable_auth}" == "true" ]]; then
+  echo "refusing Argo CD Ingress: server.disable.auth=true grants anonymous ADMIN" >&2
+  exit 1
+fi
+
+anonymous="$(kubectl --namespace argocd get configmap/argocd-cm --output=jsonpath='{.data.users\.anonymous\.enabled}')"
+if [[ "${anonymous}" != "true" ]]; then
+  echo "refusing Argo CD Ingress: users.anonymous.enabled is not true" >&2
   exit 1
 fi
 

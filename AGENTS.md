@@ -17,13 +17,19 @@ configuration, `/docs` is local-only planning material, and `Tiltfile` stays at
 the repository root. Add application code under a future, explicitly approved
 directory rather than recreating platform-specific top-level trees.
 
-## Argo CD Authentication
+## Argo CD Authentication and Exposure
 
-- Authentication is prohibited for the requested private k3d development
-  cluster. Keep Argo CD headless/no-auth with `server.insecure: "true"`,
-  `server.disable.auth: "true"`, and the admin account disabled.
-- Keep Argo CD reachable only through its internal ClusterIP. Never add a
-  public LoadBalancer, ingress, or host-wide port binding for it.
+- Argo CD runs with **anonymous read-only** access: the admin account is
+  disabled, `users.anonymous.enabled: "true"`, and `policy.default:
+  role:readonly` (`g, system:unauthenticated, role:readonly`). Anonymous
+  callers may view Applications, manifests and status trees, but must never be
+  able to sync, update, or delete anything.
+- **NEVER set `server.disable.auth: "true"`.** That grants every anonymous
+  caller the Admin role. It is a hard prohibition, not a preference.
+- Argo CD is exposed at a pinned Cilium LoadBalancer IP (`192.168.0.247`).
+  Any later public exposure must preserve the read-only role.
+- These settings live in `config/argocd/values.yaml` so a Helm reinstall cannot
+  silently downgrade them.
 
 ## Argo CD Applications — Contextual targetRevision
 

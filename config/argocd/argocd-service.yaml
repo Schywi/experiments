@@ -3,6 +3,9 @@ kind: Service
 metadata:
   name: argocd-server
   namespace: argocd
+  annotations:
+    # Pin the external IP (Cilium LB IPAM) so the address is stable.
+    io.cilium/lb-ipam-ips: "192.168.0.247"
 spec:
   type: LoadBalancer
   externalTrafficPolicy: Cluster
