@@ -1,4 +1,4 @@
-# Final resume — master AI infrastructure / platform version
+# Final résumé — AI infrastructure / platform engineering
 
 ```
 LUCAS MIRANDA
@@ -8,76 +8,76 @@ github.com/lucasmirandoliveira · lucasmirandoliveira@gmail.com · [city] / remo
 
 ## SUMMARY
 
-Systems engineer who builds local AI operations tooling and the Kubernetes
-platform beneath it: evidence-backed LLM investigation, Cilium networking,
-least-privilege control paths, and measured system behaviour. Public work with
-frozen benchmarks, source-level traceability, and documented limits.
+Build AI operations systems that turn Kubernetes state into evidence an operator
+can reproduce. Combine local LLM performance engineering, Cilium/Kubernetes
+platform ownership, and least-privilege control design; publish the benchmark,
+negative result, and design limit alongside the implementation.
 
 ## EXPERIENCE
 
-**Independent Systems Engineer — AI Infrastructure & Platform** · *Self-directed public engineering program · Sep 2026 – Oct 2026*
+**Independent Systems Engineer — AI Infrastructure & Platform** · *Sep 2026 – Oct 2026*
 
-Built and measured a native-k3s platform and local LLM infrastructure assistant:
-**184 commits**, **310 tracked files**, frozen benchmark baselines, and a public
+Built and measured a local LLM investigation system on native k3s: **184
+commits**, **310 tracked files**, frozen benchmark baselines, and a public
 failure catalogue.
 
-- **Replaced a per-tool LLM loop with a two-stage investigation pipeline** —
-  measured on a frozen 27-question suite, where deterministic bundles handled
-  **17/27** intents without a planning call and Laya planning reached **454 ms
-  p50** — by separating plan, concurrent tool fan-out, and correlation.
-  *(Normal path is two model stages; retry paths can make additional calls.)*
+- **Collapsed the normal investigation path from a per-tool LLM loop to two
+  model stages** — measured on a frozen 27-question suite where deterministic
+  bundles covered **17/27** intents and Laya planning reached **454 ms p50** —
+  by separating intent planning, parallel evidence collection, and correlation.
+  *(Retries can add calls; one 1.5B local model serves the path.)*
 
-- **Established that a faster planner did not improve end-to-end latency** —
-  measured across three isolated arms (**31.4 s → 19.9 s → 23.9 s**; **18/27**
-  versus **16/27** planner accuracy) — by isolating Qwen and Laya under
-  Guaranteed QoS and recording every stage. *(One frozen run per arm; correlation
-  remained 85–92% of latency.)*
+- **Demonstrated that a faster planner did not merit rollout** — measured across
+  isolated Qwen and Laya arms at **31.4 s, 19.9 s, and 23.9 s** end to end,
+  despite **18/27** versus **16/27** planner accuracy — by instrumenting every
+  stage and showing correlation consumed **85–92%** of latency. *(One frozen run
+  per arm; result is “no measurable end-to-end gain,” not a universal claim.)*
 
-- **Made infrastructure answers independently reproducible** — measured by
-  server-side evidence attached to every tool fact — by returning the exact
-  arguments, timestamp, source, `kubectl`/PromQL reproduction data, and verified
-  Grafana or Hubble navigation outside the model context. *(Flow evidence uses a
-  copyable Hubble command because the deployed UI has no flow-level deep link.)*
+- **Turned LLM answers into reproducible operational evidence** — measured by
+  provenance on every tool fact — by attaching exact arguments, timestamps,
+  source systems, copyable `kubectl`/PromQL reproduction data, and verified
+  Grafana/Hubble navigation outside the model context. *(No flow-level Hubble
+  deep link exists; the assistant supplies a copyable command instead.)*
 
-- **Diagnosed a 143 s correlation outlier as host contention, not model speed**
-  — measured by a **16×** prefill collapse (**1,241 → 79 tok/s**) versus a
-  **2×** generation decline (**13 → 9 tok/s**) — by comparing the co-scheduled
-  Laya and llama.cpp workloads on a six-core node. *(Production correlate mean:
-  8.9 s at about 13 tok/s.)*
+- **Root-caused a 143 s correlation outlier to host contention** — measured by
+  prefill collapsing **16×** from **1,241 to 79 tok/s** while generation dropped
+  only **13 to 9 tok/s** — by comparing co-scheduled Laya and llama.cpp workloads
+  on a six-core host. *(Production correlate mean: 8.9 s at ~13 tok/s.)*
 
-- **Migrated the lab from k3d to native k3s to restore Cilium's eBPF datapath**
-  after the Docker-backed kernel rejected BPF SNAT — by disabling the k3s
-  bundled network components and using Cilium kube-proxy replacement, LB-IPAM,
-  and L2 announcements. *(Single-node Fedora host, not a cloud or HA platform.)*
+- **Recovered Cilium's full eBPF datapath after the k3d host rejected BPF SNAT**
+  — measured by the failed sandboxed path and native-k3s configuration — by
+  migrating to native k3s with kube-proxy replacement, Cilium LB-IPAM, and L2
+  announcements. *(Single-node Fedora platform; no cloud or HA claim.)*
 
-- **Implemented the Kubernetes device-integration layer for an AMD RX 570** —
-  verified in source by registration of `amd.com/render` and DRM-node allocation
-  — by writing a Go kubelet Device Plugin with `ListAndWatch` and `Allocate`.
-  *(Vulkan graphics/video only: no ROCm compute, measured GPU speedup, or
-  per-pod VRAM quota.)*
+- **Built the Kubernetes device-integration layer for an unsupported AMD RX 570**
+  — verified in source through `amd.com/render` registration and DRM allocation
+  — by implementing the Go kubelet Device Plugin API (`ListAndWatch`,
+  `Allocate`). *(Vulkan graphics/video only; no ROCm, measured GPU acceleration,
+  or enforceable per-pod VRAM quota.)*
 
-- **Hardened Argo CD's declarative reinstall path against anonymous admin** —
-  measured by the persisted Helm values and install guard — by disabling the
-  admin account, assigning anonymous callers `role:readonly`, pinning the
-  Cilium LoadBalancer address, and rejecting `server.disable.auth=true`.
+- **Blocked anonymous-admin regression in Argo CD's declarative reinstall path**
+  — measured by the persisted Helm values and an install-time guard — by disabling
+  the admin account, assigning anonymous callers `role:readonly`, pinning the
+  LoadBalancer IP, and rejecting `server.disable.auth=true`.
 
 ## SELECTED PROJECT
 
 **Bounded Replication Protocol** — *Go · Rust · Elixir · Kubernetes CRD*
-Designed a replication-by-intent protocol where unprivileged workers send one
-idempotent request and a Go controller alone scales the Deployment, deduplicates
-intent IDs, and clamps growth to `maxReplicas`. **0.35 MiB RSS**, **467 KB**
-static binary. Bounded replication by intent, not autoscaling or load balancing.
+**Separated a replication request from the authority to scale** — measured by
+idempotent intent handling and a declared replica cap — by letting credentialless
+workers emit one retry-safe intent while a Go controller deduplicates IDs and
+alone patches `deployments/scale`. **0.35 MiB RSS; 467 KB static binary.**
+*(Bounded replication by intent, not autoscaling or load balancing.)*
 
 ## TECHNICAL SKILLS
 
-**AI systems** llama.cpp · Qwen · tool use · structured-output contracts · local
+**AI systems:** llama.cpp · Qwen · tool use · structured-output contracts · local
 inference · latency/token measurement · ONNX · TTS
 
-**Platform** Kubernetes (k3s, k3d) · Cilium/eBPF · Hubble · Helm · Argo CD ·
+**Platform:** Kubernetes (k3s, k3d) · Cilium/eBPF · Hubble · Helm · Argo CD ·
 GitOps · RBAC · CRDs/controllers · Cilium LB-IPAM · Go Device Plugin API
 
-**Observability** Prometheus/PromQL · VictoriaMetrics · Grafana Explore ·
+**Observability:** Prometheus/PromQL · VictoriaMetrics · Grafana Explore ·
 evidence provenance · reproducible benchmarks
 
-**Languages** Python · Go · Rust · Elixir · Bash
+**Languages:** Python · Go · Rust · Elixir · Bash
