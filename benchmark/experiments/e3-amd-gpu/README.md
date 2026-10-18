@@ -1,7 +1,7 @@
 # E3 — AMD GPU vs CPU for Qwen inference (isolated)
 
-- **Status:** in progress (gated on the Vulkan spike)
-- **Tag:** (set on commit) · **Base commit:** (set on commit)
+- **Status:** complete
+- **Tag:** `e3-amd-gpu` · **Base commit:** `__BASE__`
 - **Scope:** new namespace `gpu-exp`. **Production untouched** — no prod model
   replacement, no automatic GPU scheduling changes. Reproducible + reversible.
 
@@ -37,6 +37,9 @@ benchmark second.
 
 ## Files
 
+- [`RESULTS.md`](RESULTS.md) — fixed config, CPU-vs-GPU results, Go-plugin
+  observations, caveats, teardown.
 - `cleanup.md` — pre-experiment scale-down of `assistant-laya` + `worm-lab`.
-- `manifests/` — the isolated spike/benchmark manifests (added as we go).
-- `baseline/` — recorded results.
+- `llama-vulkan/Containerfile` — llama.cpp built with `-DGGML_VULKAN=ON`.
+- `manifests/` — `spike.yaml` (Vulkan probe), `bench-gpu.yaml`, `bench-cpu.yaml`.
+- `baseline/` — reserved for recorded results.
