@@ -1,7 +1,7 @@
 # E3 — AMD GPU vs CPU for Qwen inference (isolated)
 
 - **Status:** complete
-- **Tag:** `e3-amd-gpu` · **Base commit:** `__BASE__`
+- **Tag:** `e3-amd-gpu` · **Base commit:** `b1073c24559ee87a3d6e4cda4812d99ca38d59b8`
 - **Scope:** new namespace `gpu-exp`. **Production untouched** — no prod model
   replacement, no automatic GPU scheduling changes. Reproducible + reversible.
 
