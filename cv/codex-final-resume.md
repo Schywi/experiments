@@ -1,75 +1,83 @@
-# Lucas Miranda
+# Final resume — master AI infrastructure / platform version
 
-**AI Infrastructure & Platform Engineer**<br>
-Local LLM systems · Kubernetes · observability · Cilium · Go<br>
-github.com/lucasmirandoliveira · lucasmirandoliveira@gmail.com · [Location / remote]
+```
+LUCAS MIRANDA
+AI Infrastructure & Platform Engineer
+github.com/lucasmirandoliveira · lucasmirandoliveira@gmail.com · [city] / remote
+```
 
-## Summary
+## SUMMARY
 
-Systems engineer who builds evidence-backed infrastructure tooling and the
-Kubernetes platform beneath it. Developed a local LLM investigation assistant
-with bounded read-only tools, reproducible evidence, and frozen performance
-experiments; also built the native k3s, Cilium, GitOps, and edge-GPU integration
-needed to run it. Public repository: every stated metric traces to source or a
-dated benchmark.
+Systems engineer who builds local AI operations tooling and the Kubernetes
+platform beneath it: evidence-backed LLM investigation, Cilium networking,
+least-privilege control paths, and measured system behaviour. Public work with
+frozen benchmarks, source-level traceability, and documented limits.
 
-## Experience
+## EXPERIENCE
 
-**Independent Systems Engineer — AI Infrastructure & Platform**<br>
-*Self-directed public engineering program · Sep 2026 – Oct 2026*
+**Independent Systems Engineer — AI Infrastructure & Platform** · *Self-directed public engineering program · Sep 2026 – Oct 2026*
 
-- Replaced a sequential per-tool LLM loop with a **plan → concurrent fan-out →
-  correlate** pipeline, making the normal free-form path two model stages; a
-  frozen 27-question set used deterministic zero-plan-call bundles for **17/27**
-  intents, while Laya planning measured **454 ms p50**.
-- Built an evidence-first Kubernetes investigation assistant with **10 read-only
-  tools**, typed risk levels, JSONL audit records, and read RBAC limited to
-  `get/list/watch`; separate confirmation-gated actions use single-use **120 s**
-  tokens and patch-only permissions.
-- Made investigation outputs independently checkable by attaching arguments,
-  timestamp, source, reproducible `kubectl`/PromQL commands, and verified
-  Grafana/Hubble navigation server-side, preserving the model context budget.
-- Treated performance as an experiment: a frozen three-arm comparison found that
-  a planner with **18/27** accuracy versus **16/27** did not improve end-to-end
-  latency because correlation consumed **85–92%** of each run. Published the
-  negative result and its one-run-per-arm caveat.
-- Diagnosed a **143 s** latency outlier as CPU contention rather than model speed:
-  co-scheduling reduced prefill from **1,241 to 79 tok/s** while generation fell
-  from **13 to 9 tok/s**; production correlation averaged **8.9 s** at ~13 tok/s.
-- Migrated from Docker-backed k3d to native k3s after the host rejected Cilium
-  BPF SNAT, restoring the eBPF datapath and rebuilding exposure with Cilium
-  LB-IPAM and L2 announcements.
-- Implemented a Go kubelet **Device Plugin** for an unsupported AMD RX 570:
-  `ListAndWatch` advertises `amd.com/render`, and `Allocate` mounts DRM render
-  nodes. Scoped the claim to Vulkan graphics/video; ROCm compute and per-pod
-  VRAM quotas are unsupported on this hardware.
-- Prevented an Argo CD reinstall from restoring anonymous admin access by
-  persisting anonymous read-only RBAC, disabling the admin account, pinning a
-  Cilium LoadBalancer IP, and adding an install-time guard against
-  `server.disable.auth=true`.
+Built and measured a native-k3s platform and local LLM infrastructure assistant:
+**184 commits**, **310 tracked files**, frozen benchmark baselines, and a public
+failure catalogue.
 
-## Selected Project
+- **Replaced a per-tool LLM loop with a two-stage investigation pipeline** —
+  measured on a frozen 27-question suite, where deterministic bundles handled
+  **17/27** intents without a planning call and Laya planning reached **454 ms
+  p50** — by separating plan, concurrent tool fan-out, and correlation.
+  *(Normal path is two model stages; retry paths can make additional calls.)*
 
-**Bounded Replication Protocol** — *Go · Rust · Elixir · Kubernetes CRD*<br>
-Designed a visible replication-by-intent experiment: workers hold no Kubernetes
-credentials, submit idempotent intents, and a Go controller alone scales the
-Deployment while deduplicating IDs and enforcing `maxReplicas`. Measured worker
-footprint: **0.35 MiB RSS** and a **467 KB** static binary. This is bounded
-replication, not autoscaling or load balancing.
+- **Established that a faster planner did not improve end-to-end latency** —
+  measured across three isolated arms (**31.4 s → 19.9 s → 23.9 s**; **18/27**
+  versus **16/27** planner accuracy) — by isolating Qwen and Laya under
+  Guaranteed QoS and recording every stage. *(One frozen run per arm; correlation
+  remained 85–92% of latency.)*
 
-## Technical Skills
+- **Made infrastructure answers independently reproducible** — measured by
+  server-side evidence attached to every tool fact — by returning the exact
+  arguments, timestamp, source, `kubectl`/PromQL reproduction data, and verified
+  Grafana or Hubble navigation outside the model context. *(Flow evidence uses a
+  copyable Hubble command because the deployed UI has no flow-level deep link.)*
 
-**AI systems:** local inference (llama.cpp/Qwen), tool use, structured-output
-contracts, token/latency measurement, ONNX, TTS<br>
-**Platform:** Kubernetes (k3s, k3d), Cilium/eBPF, Hubble, Helm, Argo CD, GitOps,
-RBAC, CRDs/controllers, Cilium LB-IPAM<br>
-**Observability:** Prometheus/PromQL, VictoriaMetrics, Grafana Explore,
-provenance, reproducible benchmarking<br>
-**Languages:** Python, Go, Rust, Elixir, Bash
+- **Diagnosed a 143 s correlation outlier as host contention, not model speed**
+  — measured by a **16×** prefill collapse (**1,241 → 79 tok/s**) versus a
+  **2×** generation decline (**13 → 9 tok/s**) — by comparing the co-scheduled
+  Laya and llama.cpp workloads on a six-core node. *(Production correlate mean:
+  8.9 s at about 13 tok/s.)*
 
-## Evidence Available in the Public Repository
+- **Migrated the lab from k3d to native k3s to restore Cilium's eBPF datapath**
+  after the Docker-backed kernel rejected BPF SNAT — by disabling the k3s
+  bundled network components and using Cilium kube-proxy replacement, LB-IPAM,
+  and L2 announcements. *(Single-node Fedora host, not a cloud or HA platform.)*
 
-Frozen 27-question benchmarks; negative E2 planner experiment; edge-case
-catalogue; Device Plugin source; Argo CD configuration history; and documented
-limits for single-node operation, unsupported ROCm compute, and model-output
-degradation.
+- **Implemented the Kubernetes device-integration layer for an AMD RX 570** —
+  verified in source by registration of `amd.com/render` and DRM-node allocation
+  — by writing a Go kubelet Device Plugin with `ListAndWatch` and `Allocate`.
+  *(Vulkan graphics/video only: no ROCm compute, measured GPU speedup, or
+  per-pod VRAM quota.)*
+
+- **Hardened Argo CD's declarative reinstall path against anonymous admin** —
+  measured by the persisted Helm values and install guard — by disabling the
+  admin account, assigning anonymous callers `role:readonly`, pinning the
+  Cilium LoadBalancer address, and rejecting `server.disable.auth=true`.
+
+## SELECTED PROJECT
+
+**Bounded Replication Protocol** — *Go · Rust · Elixir · Kubernetes CRD*
+Designed a replication-by-intent protocol where unprivileged workers send one
+idempotent request and a Go controller alone scales the Deployment, deduplicates
+intent IDs, and clamps growth to `maxReplicas`. **0.35 MiB RSS**, **467 KB**
+static binary. Bounded replication by intent, not autoscaling or load balancing.
+
+## TECHNICAL SKILLS
+
+**AI systems** llama.cpp · Qwen · tool use · structured-output contracts · local
+inference · latency/token measurement · ONNX · TTS
+
+**Platform** Kubernetes (k3s, k3d) · Cilium/eBPF · Hubble · Helm · Argo CD ·
+GitOps · RBAC · CRDs/controllers · Cilium LB-IPAM · Go Device Plugin API
+
+**Observability** Prometheus/PromQL · VictoriaMetrics · Grafana Explore ·
+evidence provenance · reproducible benchmarks
+
+**Languages** Python · Go · Rust · Elixir · Bash
