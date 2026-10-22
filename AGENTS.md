@@ -85,6 +85,22 @@ bash config/ci/validate.sh                    # Helm charts + kubeconform for co
 
 Do not claim a test run passed unless you actually ran it in this session.
 
+## Writing Style
+
+Documentation, commit messages and replies are written in plain engineering
+prose. Banned constructions:
+
+- Antithesis framing: "not X, but Y", "It is / It is not" tables, "this is a lab
+  not a product", "Y is where it gets interesting".
+- Honesty theatre: "stated, not hidden", "the honest version", "reality check",
+  "what it proved".
+- Restating a section in a closing sentence, and rhetorical parallelism between
+  two components ("X reads; Y exercises").
+
+State what the thing is, what it does, what breaks, and the command or path that
+proves it. Numbers, addresses, commit ids and file paths over adjectives. Bold
+and tables only where they carry facts.
+
 ## Argo CD Authentication and Exposure
 
 - Argo CD runs with **anonymous read-only** access: the admin account is
