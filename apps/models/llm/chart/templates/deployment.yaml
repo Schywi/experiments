@@ -20,7 +20,6 @@ spec:
       automountServiceAccountToken: false
       terminationGracePeriodSeconds: 20
       securityContext:
-        runAsNonRoot: true
         seccompProfile:
           type: RuntimeDefault
       initContainers:
