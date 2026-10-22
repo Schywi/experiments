@@ -6,6 +6,7 @@
 
 # Local planning and machine-specific configuration
 docs/
+/cv/
 .env
 .env.*
 !.env.example
