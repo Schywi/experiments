@@ -236,6 +236,11 @@ Grouped from `bd ready`; run `bd ready` for the live list.
    as intentionally manual).
 9. VPS/public showcase profile (`config/vps/` + Cloudflare Tunnel) remains a
    plan, not code. The Fedora LAN profile stays private.
+10. Cloud hosting on GKE/GCE: Cilium LB IPAM and L2 announcements **cannot work
+    there** (routed VPC; Cilium is managed on GKE). The full inventory, exposure
+    matrix and migration checklist live in
+    [`research/production-hosting-gke-gce.md`](research/production-hosting-gke-gce.md);
+    no code exists yet (`bd experiments-9q0`).
 
 **Assistant**
 10. `experiments-yc4` (permissive CORS on an unauthenticated API),
@@ -262,6 +267,10 @@ Grouped from `bd ready`; run `bd ready` for the live list.
   `stable/` bundle and Tilt-driven Worm resources are mutually exclusive.
 - **Benchmarks are single-host measurements.** E2/E3 record a baseline commit
   hash for a reason: the numbers are only valid for that revision.
+- **The exposure design is LAN-only.** It relies on a real L2 segment for
+  `192.168.0.240-250`; a routed cloud VPC (GKE/GCE) cannot announce those
+  addresses, so hosting there means reconfiguring exposure first — see
+  [`research/production-hosting-gke-gce.md`](research/production-hosting-gke-gce.md).
 
 ---
 
