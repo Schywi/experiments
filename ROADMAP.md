@@ -21,6 +21,7 @@ Ground rules that shaped it (from [`AGENTS.md`](AGENTS.md)):
 
 | | |
 |---|---|
+| Execution model | **Bare metal on the physical Fedora 44 host** — not a VM, Vagrant, QEMU/libvirt, or container (`systemd-detect-virt` → `none`). The GPU is the host's display card; a passthrough bind would remove it from the host. |
 | Running profile | **Native k3s** on one Fedora 44 host (node `192.168.0.28`), not `k3d` |
 | Networking | **Cilium only** — eBPF, kube-proxy replacement, Cilium Ingress, Cilium LB-IPAM + L2 announcements on the LAN (`192.168.0.240-250`). MetalLB is **k3d-era only**. |
 | GitOps | Argo CD `10.8.0`, 12 Applications `Synced/Healthy`, **anonymous read-only**, pinned at `192.168.0.247` |
@@ -221,9 +222,10 @@ Grouped from `bd ready`; run `bd ready` for the live list.
    fails on `kubeProxyReplacement`; CI does not validate the k3s profile.
 4. `experiments-c6f` — wire the model and GPU charts into CI and Argo CD
    (`gpu-device-plugin.yaml` exists but is not registered in the cluster).
-5. `AGENTS.md` still describes the k3d era ("headless/no-auth local GitOps",
-   `ClusterIP` only) and labels the Argo CD rule as absolute while the cluster
-   now pins a `LoadBalancer` IP. Reconcile it before relying on it.
+5. `AGENTS.md` refreshed for the native profile (`experiments-47n`): bare-metal
+   execution model with the GPU prohibition, real repository layout, current
+   `targetRevision` examples, testing commands. Remaining drift there is only
+   the generated Beads/Codex blocks, which are owned by `bd setup codex`.
 6. `README.md`-era leftover: `start.sh`, `Tiltfile` and `scripts/deploy-worm.sh`
    only work against `k3d-cilium-lab`. They are Phase-1 artifacts; either gate
    them behind an explicit "k3d profile" banner or retire them.
@@ -251,6 +253,9 @@ Grouped from `bd ready`; run `bd ready` for the live list.
 - **GPU is Vulkan-only.** No ROCm, no CUDA, no VRAM enforcement. Any claim of
   "GPU compute" on this repo means *graphics/Vulkan inference on an unsupported
   Polaris card*.
+- **The GPU is also the desktop's display card.** It is shared with the host
+  session, so there is no headless-only GPU here and no VM boundary to hide
+  behind: a passthrough bind would take the card off the desktop entirely.
 - **Memory-bound.** The models fit only with the browser closed; swap is
   enabled as a cushion (`memorySwap.swapBehavior`), not as capacity.
 - **Two reconcilers are never allowed on one resource.** That is why the pinned

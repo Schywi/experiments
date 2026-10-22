@@ -34,6 +34,25 @@ they cost real debugging time and look like application bugs:
 - **`fail-swap-on=false`** is required on a zram host, separate from the pod
   swap decision (`memorySwap.swapBehavior`).
 
+## Why not a VM — the GPU argument
+
+A VM was the obvious middle path: keep the k3d conveniences, get systemd and a
+real kernel, and stay sandboxed. It was rejected, and the reason is GPU
+*ownership* rather than performance.
+
+`/dev/dri/renderD128` is bound to the host's `amdgpu` driver and is the node the
+Track C device plugin hands to pods. A VM with GPU passthrough rebinds that
+device to `vfio-pci` **on the host**, which removes it from the host session:
+no display, no Vulkan, and it does not come back until the binding is undone and
+the machine reboots. On a single-GPU desktop — where `card1` at PCI
+`0000:01:00.0` is the card driving the monitors — that is indistinguishable from
+losing the hardware, for the sake of an experiment that needs the card anyway.
+
+So the pivot went **past** the VM, straight to the host: `k3s` as a systemd
+service, cluster networking on the real kernel, and the GPU still owned by the
+desktop. `AGENTS.md` turns this into a hard prohibition so no future agent
+re-introduces a VM "just to test".
+
 ## Platform services added in this phase
 
 - **Argo CD** with one Application per workload, each reading the branch its

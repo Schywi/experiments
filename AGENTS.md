@@ -1,5 +1,42 @@
 # Agent Instructions
 
+## Host Execution Model — Bare Metal, Never a VM
+
+The cluster in this repository runs **directly on the physical Fedora host**.
+It is not in a VM, not in Vagrant, not in QEMU/KVM/libvirt, not in VirtualBox or
+VMware, and not in a nested/`k3d` container. This is a hard architectural
+constraint, not a preference.
+
+Verified on this host: `systemd-detect-virt` → `none`; `amdgpu` is loaded and
+drives `card1` at PCI `0000:01:00.0` with DP/DVI connectors attached.
+
+Two reasons, both expensive to rediscover:
+
+1. **Cilium's eBPF datapath needs the host kernel.** The earlier Docker-backed
+   `k3d` profile could not run it and fell back to iptables masquerading and
+   host-legacy routing (`bb93f8e`), which is exactly why that phase ended.
+2. **The GPU belongs to the host, and the host is using it.** The Track C
+   device plugin hands pods `/dev/dri/renderD128`, a node bound to the host's
+   `amdgpu` driver. A VM with GPU passthrough rebinds that card to `vfio-pci`
+   **on the host**, removing it from the host session: no display, no Vulkan,
+   and it stays gone until the binding is undone and the machine reboots. On a
+   single-GPU desktop this is indistinguishable from losing the card.
+
+**Agents MUST NOT**, for or around this cluster:
+
+- Create, start, boot, or configure a VM, Vagrant box, QEMU/KVM domain, VirtualBox
+  or VMware machine, or any nested virtualization — including "just to test" or
+  as a workaround for permissions, sandbox limits, or a missing capability.
+- Add `vfio-pci` ids to the kernel command line, `modprobe`/`blacklist` GPU
+  drivers, `virsh nodedev-detach`, or otherwise unbind `amdgpu` from a device.
+- Run the cluster in a container runtime (Docker/Podman) or re-enable the `k3d`
+  profile as the live platform. `config/k3d/` is archived Phase-1 history.
+
+**Agents MAY** inspect, read-only: `systemd-detect-virt`, `lsmod`, `ls -l
+/dev/dri`, `ls /sys/class/drm/`, `kubectl`, and the manifests. If a task appears
+to require anything in the prohibited list, stop and ask the user — the answer is
+usually a different design, not a VM.
+
 ## Public Repository and Commit Safety
 
 - This is a public repository. Never commit credentials, tokens, private keys,
@@ -12,10 +49,30 @@
 
 ## Repository Layout
 
-Keep the top level intentionally small: `/config` contains deployable platform
-configuration, `/docs` is local-only planning material, and `Tiltfile` stays at
-the repository root. Add application code under a future, explicitly approved
-directory rather than recreating platform-specific top-level trees.
+The top level stays intentionally small and its meaning is fixed:
+
+- `/config` — deployable platform configuration. `config/k3d/` is the archived
+  Phase-1 profile; `config/k3s/` is the live one.
+- `/apps` — executable software (assistant, models, Worm lab, GPU device plugin).
+- `/research` and `/evolution` — **tracked** design notes; `evolution/` holds the
+  per-phase narrative and commit evidence.
+- `/benchmark` — measured experiments with recorded baseline commits.
+- `/blog` — long-form write-ups.
+- `/scripts` — host-side helpers.
+- `/docs` and `/cv` — **gitignored**, machine-specific and personal material.
+- `ROADMAP.md`, `README.md`, `Tiltfile*` and `start.sh` at the root.
+
+Add new material to an existing directory above rather than creating a new
+top-level tree. Never commit anything from `/docs` or `/cv`.
+
+## Testing
+
+```bash
+cd apps/assistant && python3 -m pytest -q     # unit tests, no cluster or model needed
+bash config/ci/validate.sh                    # Helm charts + kubeconform for config/ and apps/
+```
+
+Do not claim a test run passed unless you actually ran it in this session.
 
 ## Argo CD Authentication and Exposure
 
@@ -33,11 +90,14 @@ directory rather than recreating platform-specific top-level trees.
 
 ## Argo CD Applications — Contextual targetRevision
 
-- Argo CD Applications must **NEVER target `main`**. An Application reads the
-  branch its work actually lives on (e.g. `native-k3s-gpu-models`, `trackc`) or
-  a pinned commit — never `main`. Argo is contextual.
+- Argo CD Applications must **NEVER target `main`**. `main` is frozen Phase-1
+  history. An Application reads the branch its work actually lives on —
+  currently `cluster-evolution` (the unified branch) or a pinned full commit —
+  never a shared default. Argo is contextual.
 - When adding an Application, set `targetRevision:` to the current working
-  branch, not a shared default.
+  branch. Promoting the existing set from `native-k3s-gpu-models` / `trackc` to
+  `cluster-evolution` is a deliberate, reviewed step (see `ROADMAP.md` §4), not
+  something an agent flips on its own initiative.
 
 ## Tilt Runtime Control
 
