@@ -40,11 +40,22 @@ Two reasons, and the second one can cost you the graphics card:
    away until the binding is undone and the machine reboots. On a single-GPU
    desktop, "wrongly used" here means the card looks gone.
 
-So: don't `virsh`/Vagrant/QEMU the cluster, don't pass the GPU to a guest, don't
-edit `vfio-pci` ids into the kernel command line, don't blacklist or unbind
-`amdgpu`, and don't run the cluster in Docker/Podman. `AGENTS.md` makes all of
-that a hard prohibition for agents, with the read-only probes that remain
-allowed. Nested `k3d` is Phase-1 history, not an alternative profile.
+So: don't pass the GPU to a guest, don't edit `vfio-pci` ids into the kernel
+command line, don't blacklist or unbind `amdgpu`, and don't run the cluster in
+Docker/Podman. `AGENTS.md` makes all of that a hard prohibition for agents, with
+the read-only probes that remain allowed.
+
+**But if you need no GPU access, a VM is fine.** The rule exists *because of the
+card*, not as a principle: wrap the cluster in Vagrant or QEMU/KVM and nothing
+breaks, as long as you don't attach the GPU to the guest and don't touch the
+host's driver bindings. That is the intended way to try this platform on a
+machine without an AMD card — or to develop the GKE/GCE path described in
+[`research/production-hosting-gke-gce.md`](research/production-hosting-gke-gce.md).
+One question decides it: *does the work need `/dev/dri/renderD128`?* No → VM is
+fine. Yes, or unsure → bare metal.
+
+Nested `k3d` is still Phase-1 history, not an alternative profile: it fakes the
+datapath, so its results describe the shim.
 
 ## What this is, and what it is not
 
@@ -337,6 +348,9 @@ end to end, and `config/ci/validate.sh` still pins a Cilium chart that predates
 - The GPU is Vulkan-only: no ROCm, no CUDA, no VRAM enforcement.
 - The models fit only with browsers closed; zram swap is a cushion, not capacity.
 - Benchmarks are single-host measurements tied to a recorded baseline commit.
+- Exposure is LAN-only: it relies on a real L2 segment for `192.168.0.240-250`,
+  so a routed cloud VPC (GKE/GCE) needs a different exposure path —
+  [`research/production-hosting-gke-gce.md`](research/production-hosting-gke-gce.md).
 - A public/VPS profile (Cloudflare Tunnel, deny-all firewall, `role:readonly`
   everywhere) is planned, not implemented, and lives in gitignored `docs/`.
 

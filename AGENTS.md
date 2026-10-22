@@ -1,11 +1,11 @@
 # Agent Instructions
 
-## Host Execution Model — Bare Metal, Never a VM
+## Host Execution Model — Bare Metal, and When a VM Is Allowed
 
-The cluster in this repository runs **directly on the physical Fedora host**.
-It is not in a VM, not in Vagrant, not in QEMU/KVM/libvirt, not in VirtualBox or
-VMware, and not in a nested/`k3d` container. This is a hard architectural
-constraint, not a preference.
+The live cluster in this repository runs **directly on the physical Fedora
+host**. It is not in a VM, not in Vagrant, not in QEMU/KVM/libvirt, not in
+VirtualBox or VMware, and not in a nested/`k3d` container. That is a deliberate
+architectural choice with one exception, described below.
 
 Verified on this host: `systemd-detect-virt` → `none`; `amdgpu` is loaded and
 drives `card1` at PCI `0000:01:00.0` with DP/DVI connectors attached.
@@ -24,18 +24,29 @@ Two reasons, both expensive to rediscover:
 
 **Agents MUST NOT**, for or around this cluster:
 
-- Create, start, boot, or configure a VM, Vagrant box, QEMU/KVM domain, VirtualBox
-  or VMware machine, or any nested virtualization — including "just to test" or
-  as a workaround for permissions, sandbox limits, or a missing capability.
-- Add `vfio-pci` ids to the kernel command line, `modprobe`/`blacklist` GPU
-  drivers, `virsh nodedev-detach`, or otherwise unbind `amdgpu` from a device.
+- Pass the GPU to a guest, add `vfio-pci` ids to the kernel command line,
+  `modprobe`/`blacklist` GPU drivers, `virsh nodedev-detach`, or otherwise unbind
+  `amdgpu` from a device. **This one has no exception**: it is the action that
+  takes the card off the desktop.
 - Run the cluster in a container runtime (Docker/Podman) or re-enable the `k3d`
   profile as the live platform. `config/k3d/` is archived Phase-1 history.
 
+**Exception — a VM is fine when no GPU access is needed.** The constraint above
+exists *because of the GPU*, not as a principle. If a task does not touch
+`/dev/dri`, the GPU device plugin, Vulkan, or the models' GPU path, then wrapping
+the cluster in a VM (Vagrant, QEMU/KVM, a cloud VM) is an acceptable
+environment — that is how the platform can be tried on a machine without an AMD
+card, and how the GCE/GKE hosting path is developed.
+
+Decide with one question: **does this work require `/dev/dri/renderD128`?**
+
+- **No** → a VM is fine. Do not attach a GPU to it, and do not touch the host's
+  driver bindings.
+- **Yes, or you are unsure** → bare metal, and ask the user before doing
+  anything else.
+
 **Agents MAY** inspect, read-only: `systemd-detect-virt`, `lsmod`, `ls -l
-/dev/dri`, `ls /sys/class/drm/`, `kubectl`, and the manifests. If a task appears
-to require anything in the prohibited list, stop and ask the user — the answer is
-usually a different design, not a VM.
+/dev/dri`, `ls /sys/class/drm/`, `kubectl`, and the manifests.
 
 ## Public Repository and Commit Safety
 
