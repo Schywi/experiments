@@ -1,302 +1,353 @@
-# Bounded Worm replication experiment
+# A single-host cluster that grew up: k3d → native k3s → GPU → AI Ops
 
-This repository is a reproducible, local Kubernetes research lab for bounded,
-observable self-replicating workers. A Go controller turns idempotent
-replication intents into capped Deployment scaling; Rust workers emit
-telemetry to Vector; and an Elixir regression service analyzes the resulting
-stream. Cilium and Hubble expose the network behavior while k3d, Helm, and
-local image delivery keep the experiment repeatable.
+This repository is one research lab that changed shape four times. It began as a
+bounded **self-replication** experiment on a throwaway `k3d` cluster, became a
+**native `k3s`** platform on a real Fedora host when the container kernel could
+not carry Cilium's datapath, added an **AMD GPU** and local **CPU models**, and
+finally grew an **AI operations assistant** that explains the running cluster
+with evidence an operator can check.
 
-The experiment is intentionally local. It is not a production Kubernetes
-distribution, an Internet-facing service, or a generic application template.
+Everything below runs on **one host** (`192.168.0.28`, Fedora 44, kernel 6.19,
+i5-9400F, 15 GiB RAM with zram, AMD RX 570). It is a lab, not a product.
 
-## What runs
+> **Where to start:** [`ROADMAP.md`](ROADMAP.md) for current state and open work
+> → [`evolution/`](evolution/README.md) for why each layer exists, with commits →
+> [`research/`](research/) for design notes → [`benchmark/`](benchmark/README.md)
+> for the measurements.
 
-```text
-                             127.0.0.1:8080
-                                    |
-                            Cilium shared Ingress
-                               |             |
-                        localhost        argocd.localhost
-                               |             |
-                          Hubble UI      Argo CD UI
+## What this is, and what it is not
 
-Worm worker Pods --> stdout --> Vector --> Regression service
-       |                                      ^
-       `-- replication intent --> Worm controller
-                                      |
-                                      `-- scales worker Deployment
+| It is | It is not |
+|---|---|
+| A reproducible single-host Kubernetes lab where every claim is traceable to a commit or a measurement | A production distribution, an HA cluster, or a template to copy |
+| A worked example of Cilium eBPF, LB-IPAM, GitOps, device plugins, and local inference on modest hardware | An Internet-facing service — it is LAN-only and mostly unauthenticated |
+| A record of five pivots, including the ones that failed and why | A polished product with stable APIs |
+
+## Architecture at a glance
+
+```mermaid
+flowchart TB
+  classDef ui fill:#eef,stroke:#557
+  classDef svc fill:#efe,stroke:#575
+  classDef obsr fill:#ffd,stroke:#975
+  classDef lab fill:#fee,stroke:#955
+  classDef gpu fill:#eef7ff,stroke:#579
+
+  Browser["Browser / CLI on the LAN"]:::ui
+
+  subgraph node["Native k3s on one Fedora host — Cilium owns the datapath"]
+    direction TB
+    LB["Cilium Ingress · LB-IPAM 192.168.0.240-250 · L2 announcements"]
+
+    subgraph ai["AI operations assistant (apps/assistant)"]
+      direction LR
+      P["PLAN<br/>deterministic bundle<br/>or 1 LLM call"] --> F["FAN-OUT<br/>threadpool · args validated<br/>evidence capped"] --> C["CORRELATE<br/>1 LLM call →<br/>{screen_md, speech}"]
+    end
+
+    subgraph models["Local models"]
+      direction LR
+      M1["Qwen2.5-1.5B<br/>llama.cpp · CPU"]:::svc
+      M2["Kokoro TTS<br/>onnx · CPU"]:::svc
+      M3["Laya<br/>scaled to 0"]:::svc
+    end
+
+    subgraph sources["Read-only tools (level 1)"]
+      direction LR
+      S1["Kubernetes API"]:::svc
+      S2["VictoriaMetrics<br/>PromQL"]:::svc
+      S3["Neo4j<br/>Cartography ≤6h"]:::svc
+      S4["Docs corpus"]:::svc
+    end
+
+    subgraph obs["Observability and GitOps"]
+      direction LR
+      G1["Grafana"]:::obsr
+      G2["Hubble UI"]:::obsr
+      G3["Argo CD<br/>anonymous read-only"]:::obsr
+    end
+
+    subgraph gpu["GPU (Vulkan only)"]
+      direction LR
+      K1["amd.com/render<br/>Go device plugin"]:::gpu --> K2["/dev/dri/renderD128<br/>RX 570 · RADV"]:::gpu
+    end
+
+    subgraph worm["Bounded Worm lab (Phase 1, preserved, scaled to 0)"]
+      direction LR
+      W1["Rust worker<br/>intent + samples"]:::lab --> W2["Go controller<br/>cap = maxReplicas"]:::lab
+      W1 --> W3["Vector"]:::lab --> W4["Elixir regression"]:::lab
+    end
+  end
+
+  Browser --> LB
+  LB --> ai
+  LB --> obs
+  C --> M1
+  C --> M2
+  F --> sources
+  F --> K1
+  ai -. "provenance: at · source · reproduce · links" .-> Browser
+  obs --> observed["Prometheus metrics,<br/>flows, dashboards"]:::obsr
 ```
 
-| Component | Role |
-| --- | --- |
-| k3d/k3s | One Docker-backed k3s server, no agents, hard-capped at 2 GiB. |
-| Cilium | CNI, kube-proxy replacement, Cilium Ingress, Envoy, Hubble Relay, and Hubble UI. |
-| MetalLB | Layer-2 LoadBalancer addresses on the local Docker bridge. |
-| Argo CD | Headless/no-auth local GitOps control plane. |
-| Worm controller | Go controller that reconciles the `Worm` CRD and owns worker scale changes. |
-| Worm worker | Native Rust Pod that emits samples and one retry-safe replication intent. |
-| Vector | Reads the workers' node log files and sends samples to Regression. |
-| Regression | Elixir HTTP service that maintains a bounded rolling linear regression. |
+Two systems share one cluster: the **assistant** reads infrastructure and
+explains it; the **Worm lab** exercises bounded self-replication. Neither holds
+write credentials on its read path.
 
-The workload is deliberately bounded. The controller limits scaling with the
-`Worm` resource's `spec.maxReplicas`; the worker chart also has a namespace
-memory quota. A desired worker count above the available quota is expected to
-remain pending rather than bypassing the cap.
+## The five phases
 
-## Quick start
+Full narrative and commit evidence: [`evolution/`](evolution/README.md).
 
-Prerequisites on the Docker host:
+| Phase | When | What it settled |
+|---|---|---|
+| **1 — Bounded Worm on k3d** | 2026-09-05 → 09-07, `main` | Replication can be capped and proven: the controller owns scale, `spec.maxReplicas` holds, and an over-cap request stays pending instead of bypassing the cap. Ended because the k3d kernel could not run Cilium's eBPF datapath. |
+| **2 — Native k3s (Track A)** | 2026-10-06 | The same components on a real kernel: Cilium LB-IPAM replaces MetalLB, a cluster-owned `resolv-conf` replaces host DNS, and images arrive through an in-cluster registry with no root. |
+| **3 — CPU models (Track B)** | 2026-10-06 | A local model is an ordinary workload. Policy: every model starts on CPU because RAM (~9 GiB free), not CPU or GPU, is the binding constraint. |
+| **4 — AMD GPU (Track C)** | 2026-10-06 → 10-18 | A protocol with an early stop: `/dev/dri` **yes**, Vulkan **yes**, ROCm/CUDA **no** on gfx803. The device plugin schedules and mounts the GPU; it cannot enforce per-pod VRAM. |
+| **5 — AI Ops (Track D)** | 2026-10-06 → 10-12 | An LLM can explain a cluster *if the evidence is attached server-side and the output fails closed*. Two inference calls per answer, read-only RBAC, one human-confirmed action path. |
 
-- Docker, with the daemon running
-- k3d
-- Helm
-- kubectl
-- curl
-- flock
+Historical branches are kept, not rewritten: `main` is frozen at Phase 1,
+`trackc` holds the worm-lab line, and **`cluster-evolution`** merges both lines
+on top of `native-k3s-gpu-models` (merge commit `9b449fe`).
 
-Run the complete local pipeline:
+## What is running right now
+
+Argo CD reconciles 12 Applications, all `Synced / Healthy`. Exposure is by bare
+Cilium LoadBalancer IP on the LAN — no DNS, no ingress hostnames, no `/etc/hosts`.
+
+| UI / API | Address | Notes |
+|---|---|---|
+| Argo CD | <http://192.168.0.247/> | anonymous **read-only** (`policy.default: role:readonly`), admin disabled, never `server.disable.auth` |
+| Grafana | <http://192.168.0.245/> | Cilium/Hubble dashboards, no login |
+| VictoriaMetrics | <http://192.168.0.246/> | PromQL store scraped by Grafana |
+| Hubble UI | <http://192.168.0.241/> | flow visibility for every namespace |
+| Assistant API | <http://192.168.0.243/> | `POST /chat`, plus an evidence panel and a chat UI |
+| Neo4j Browser | <http://192.168.0.242/> | Cartography graph, `NEO4J_AUTH=none`, re-synced every 6 h |
+| Cilium Ingress | `192.168.0.240` | shared ingress, class `cilium` |
+
+Workloads by namespace:
+
+| Namespace | Running | Scaled to 0 |
+|---|---|---|
+| `assistant` | `assistant`, `assistant-e4-gpu` | `assistant-laya`, `assistant-e4-cpu` |
+| `models` | `llm` (Qwen2.5-1.5B), `kokoro` | `laya` |
+| `observability` | `grafana`, `victoriametrics` | — |
+| `cartography` | `cartography-neo4j` + 6-hourly sync | — |
+| `fuwa` | `fuwa`, `loki`, `otel-collector`, `tempo` | — |
+| `worm-lab` | — | `worm-controller`, `worm-worker`, `vector`, `regression` |
+
+`fuwa` and the E4 A/B assistant are deployed by hand and are **not** Argo
+Applications yet — a reproducibility gap tracked in [`ROADMAP.md`](ROADMAP.md) §4.
+
+## The AI operations assistant
+
+`apps/assistant/` answers infrastructure questions *with the evidence attached*,
+so the operator can check the answer instead of trusting it.
+
+```mermaid
+flowchart LR
+  Q["Question"] --> R{"Known intent?"}
+  R -->|yes| B["Deterministic bundle<br/>0 LLM calls"]
+  R -->|no| L["PLAN<br/>1 LLM call"]
+  B --> F["FAN-OUT<br/>threadpool"]
+  L --> F
+  F --> T1["k8s API"]
+  F --> T2["PromQL"]
+  F --> T3["Neo4j snapshot"]
+  F --> T4["docs corpus"]
+  T1 --> E["Facts<br/>capped per fact and in total"]
+  T2 --> E
+  T3 --> E
+  T4 --> E
+  E --> CO["CORRELATE<br/>1 LLM call"]
+  CO --> OUT["{screen_md, speech}"]
+  E --> PV["provenance (server-side)"]
+  PV --> EV["Evidence panel<br/>at · source · reproduce · links"]
+  OUT --> EV
+  EV --> U["Answer + copyable command<br/>+ Grafana/Hubble deep link"]
+```
+
+- **Two LLM calls, not one per tool.** A small labeled plan catalog
+  (`_PLAN_CATALOG` in `apps/assistant/pipeline.py`: unhealthy, traffic, drop,
+  topology, snapshot, default) answers common questions with zero inference, and
+  the fallback is one plan call plus one correlate call that emits the screen
+  text and the spoken line together.
+- **The model never sees the provenance.** `at`, `source`, `reproduce` and
+  `links` are attached server-side after the tools return. They cost zero tokens
+  and the model cannot fabricate a link.
+- **Fail closed.** A malformed reply is never returned as the answer: the
+  `{screen_md, speech}` shape is validated, retried once, and degrades to a clean
+  digest of the evidence actually gathered.
+- **Read-only by construction.** 11 tools, 10 of them read-only (`get`/`list`/
+  `watch` on a fixed resource set plus `get` on `pods/log`). The only mutating
+  one, `propose_action`, mints a single-use 120-second confirmation token;
+  execution needs a human `POST /actions/confirm` **and** `rbac.allowActions`.
+- **Bounded concurrency.** An in-process limit plus a bounded FIFO queue in
+  front of the LLM, so a burst of chat turns cannot stampede a 1.5B model running
+  on six CPU threads.
+
+Unit tests run without a cluster or a model (pytest is a dev dependency, not
+baked into the image):
+
+```bash
+pip install pytest
+cd apps/assistant && python3 -m pytest -q test_concurrency.py test_knowledge.py test_memory.py test_observability.py
+```
+
+Design notes, failure catalogue and benchmarks:
+[`research/features/`](research/features/README.md),
+[`research/assistant-response-pipeline.md`](research/assistant-response-pipeline.md),
+[`benchmark/`](benchmark/README.md).
+
+## The GPU verdict, in one table
+
+| Node | Backs | On RX 570 (Polaris, gfx803) |
+|---|---|---|
+| `/dev/dri/renderD128` | graphics, **Vulkan**, video (Mesa RADV / VA-API) | ✅ mounted into pods, Vulkan inference works |
+| `/dev/kfd` | AMD **compute** (ROCm) | ❌ outside ROCm's support matrix — never mounted |
+
+`apps/gpu-device-plugin/` advertises `amd.com/render`, so the GPU is a
+**schedulable, counted resource** with automatic device mounting instead of a
+raw `hostPath`. It does **not** provide per-pod VRAM quotas: a slice model
+(`amd.com/vram-gb`) makes admission *advisory* only, because raw
+`amdgpu`/Vulkan on gfx803 exposes no per-process memory limit. Anything in this
+repository called "GPU work" means Vulkan on an unsupported Polaris card.
+
+## The bounded Worm lab (Phase 1, preserved)
+
+The original experiment still builds and still runs on a Docker host; it is
+scaled to 0 in the live cluster because the phase is complete.
+
+1. Each worker starts with its Pod UID as `WORM_ID` and sends a single
+   idempotent replication intent, retrying at most five times.
+2. The controller records distinct intent IDs and owns every scale change,
+   never exceeding `spec.maxReplicas`.
+3. Workers write JSON samples to stdout; Vector reads the pod logs off the node
+   and posts them to the Elixir regression service.
+4. Regression de-duplicates `{worm_id, sequence}` in a 60-second window and
+   serves the rolling linear regression.
+
+Workers hold no Kubernetes credentials and cannot scale themselves. The
+namespace `ResourceQuota` (`worm-worker-cap`) makes an over-cap request stay
+pending rather than find another way in. Write-ups: [`blog/`](blog/).
+
+## How to run it
+
+There are three entrypoints, and they target **different** clusters. Read the
+one you want before running anything.
+
+**Native k3s (the live profile).** Needs a Fedora-class host with systemd and
+eBPF. `config/k3s/` installs k3s, Cilium, LB-IPAM and the exposure stack; the
+Applications are registered afterwards — see
+[`config/k3s/README.md`](config/k3s/README.md) and
+[`config/argocd/README.md`](config/argocd/README.md) first.
+
+```bash
+bash config/k3s/bootstrap.sh                       # k3s + Cilium + LB-IPAM + observability
+kubectl apply -f config/argocd/applications/       # register the Applications
+```
+
+**k3d (Phase 1 profile, archived but runnable).** Destructive: deletes and
+recreates the cluster named `cilium-lab`, then installs Cilium, Hubble, Argo CD,
+MetalLB and the Worm workloads.
 
 ```bash
 bash start.sh
 ```
 
-`start.sh` is intentionally destructive for the named local cluster. It takes
-an exclusive lock, deletes `cilium-lab` if it exists, then creates a clean
-cluster and runs these stages in order:
+**Tilt (k3d only, human-operated).** The root `Tiltfile` targets the
+`k3d-cilium-lab` context; it does not create the cluster and does not apply to
+the native k3s profile.
 
-1. Create k3d and its local registry.
-2. Configure DNS in the k3d node.
-3. Import required platform images.
-4. Install Cilium and Hubble.
-5. Install Argo CD.
-6. Build/import MetalLB images and install/configure MetalLB.
-7. Enable Cilium's MetalLB-backed ingress and apply Argo CD ingress.
-8. Validate the platform.
-9. Build/import/deploy Controller, Regression, Vector, and Worker.
+> **Tilt is human-only.** Agents and automation must not run `tilt up`,
+> `tilt down`, or otherwise control a Tilt process — see [`AGENTS.md`](AGENTS.md).
 
-The application image builds use `docker build --pull --no-cache`; a host
-Docker cache is not relied upon for Worm images. Each built image is imported
-into the k3d runtime and deployed with `imagePullPolicy: Never`.
+## GitOps rules that are not negotiable
 
-To use a different cluster name, set it for the command:
+- Argo CD Applications **read the branch their work lives on** — never `main`.
+  Today: 7 read `native-k3s-gpu-models`, 6 read `trackc`, and 4 pinned
+  Applications under `config/argocd/applications/stable/` read a full commit with
+  manual sync only. Promotion to `cluster-evolution` is the next step, not an
+  accident (see [`ROADMAP.md`](ROADMAP.md) §4).
+- **Two reconcilers never own one resource.** The pinned `stable/` bundle and the
+  Tilt-driven Worm resources describe the same objects; registering both is a
+  bug.
+- **`server.disable.auth: "true"` is forbidden.** It grants the Admin role to
+  every anonymous caller. Read-only comes from
+  `users.anonymous.enabled` + `policy.default: role:readonly` in
+  `config/argocd/values.yaml`, so a Helm reinstall cannot downgrade it silently.
 
-```bash
-K3D_CLUSTER_NAME=my-lab bash start.sh
-```
+## Configuration knobs worth knowing
 
-The default cluster is `cilium-lab`; its kubectl context is
-`k3d-cilium-lab`.
+| Concern | Where | Why it matters |
+|---|---|---|
+| k3s server flags | `config/k3s/config.yaml` | Flannel/kube-proxy/Traefik/ServiceLB disabled so Cilium owns networking; `bind-address` must stay **unset** or pods lose the API and DNS |
+| LB pool | `config/k3s/cilium-lb-ipam.yaml` | `192.168.0.240-250` on the LAN; adjust `blocks` only |
+| Argo CD posture | `config/argocd/values.yaml` | anonymous read-only, admin disabled |
+| Cilium values | `config/helm/cilium/values.yaml` | k3d-specific masquerading/routing has no place in the native profile |
+| Image delivery | `config/registry/`, `config/k3s/import-image.sh` | rootless build → in-cluster registry → k3s pull |
+| Memory budget | `apps/models/*/chart/values.yaml` | Laya needs 6 GiB; on a 15 GiB host that is the whole budget |
 
-## Local URLs
-
-The k3d load balancer exposes the shared Cilium ingress only on
-`127.0.0.1:8080`.
-
-| Service | URL | Exposure |
-| --- | --- | --- |
-| Hubble UI | <http://localhost:8080/> | Local Docker host only. |
-| Argo CD | <http://argocd.localhost:8080/> | Local Docker host only. |
-| Kubernetes API | `https://127.0.0.1:6445` | Local Docker host only. |
-
-The host names select routes on the same listener. They are not different
-public IP addresses. `.localhost` resolves to the local host in normal browser
-and OS resolver implementations.
-
-Argo CD is configured for this private development cluster with no login:
-`server.insecure=true`, `server.disable.auth=true`, and the admin account
-disabled. Do not reuse that configuration outside this local experiment.
-
-## Observing the experiment
-
-Open Hubble UI, select `worm-lab`, and generate or wait for worker traffic.
-Hubble is event-driven; an idle namespace has no graph to draw. The Cilium
-configuration keeps trace aggregation at `none` so short-lived local service
-traffic is retained for this lab.
-
-Useful checks from a separate terminal:
+## Verification
 
 ```bash
-kubectl get pods -n worm-lab -o wide
-kubectl get worm -n worm-lab
-kubectl get deployment -n worm-lab worm-worker
-kubectl logs -n worm-lab deployment/regression --tail=50
-cilium status --namespace kube-system
-hubble version
+bash config/ci/validate.sh                            # Helm charts + kubeconform for config/ and apps/
+cd apps/assistant && python3 -m pytest -q             # assistant unit tests, no cluster needed
+kubectl get applications -n argocd                    # what GitOps thinks is true
+kubectl get svc -A | grep LoadBalancer                # what the LAN can actually reach
 ```
 
-The local `hubble` CLI is expected to match the Cilium release when possible.
-Relay can be checked without publishing an additional host port:
+CI (`.github/workflows/validate.yaml`) runs `config/ci/validate.sh` on pushes to
+`main` and on pull requests. It does **not** yet validate the native k3s profile
+end to end, and `config/ci/validate.sh` still pins a Cilium chart that predates
+`kubeProxyReplacement` — both tracked in [`ROADMAP.md`](ROADMAP.md) §4.
 
-```bash
-hubble status --port-forward
-hubble observe --port-forward --namespace worm-lab --follow
-```
+## Known limits — stated, not hidden
 
-The Regression service accepts `POST /ingest` and exposes its rolling result at
-`GET /result`. It is internal to the cluster; inspect it through a port-forward
-or from a Pod rather than adding a public service.
+- One host, one node, no HA, no TLS, no auth on Neo4j, Grafana deliberately
+  login-free. Anonymous read-only is a **lab** posture, not a public-IP design.
+- The GPU is Vulkan-only: no ROCm, no CUDA, no VRAM enforcement.
+- The models fit only with browsers closed; zram swap is a cushion, not capacity.
+- Benchmarks are single-host measurements tied to a recorded baseline commit.
+- A public/VPS profile (Cloudflare Tunnel, deny-all firewall, `role:readonly`
+  everywhere) is planned, not implemented, and lives in gitignored `docs/`.
 
-## Platform design
-
-### k3d
-
-`config/k3d/create.sh` creates exactly one server and zero agents with:
-
-- k3s `v1.30.6-k3s1`
-- 2 GiB server memory cap
-- Docker subnet `172.20.0.0/16`
-- local registry `cilium-lab-registry.localhost:5000`
-- Flannel, kube-proxy, Traefik, ServiceLB, and k3s network policy disabled
-- NodePort `30080` mapped to `127.0.0.1:8080`
-
-Cilium therefore owns cluster networking and ingress. MetalLB assigns
-addresses from `172.20.0.240-172.20.0.250` on that Docker bridge; those
-addresses are private to the host/bridge environment, not Internet-routable.
-
-### Cilium and Hubble
-
-Cilium is pinned by the installer to `1.20.1`. The shared public values live in
-[`config/helm/cilium/values.yaml`](config/helm/cilium/values.yaml).
-
-- kube-proxy replacement is enabled.
-- The k3d host uses supported iptables masquerading because its kernel rejects
-  Cilium 1.20's BPF SNAT program.
-- Host legacy routing remains enabled for the local Envoy/ingress path.
-- Hubble Relay and UI are enabled.
-- Hubble UI frontend/backend use reviewed digest-pinned `quay.io/cilium` images.
-
-The Cilium images are the explicit exception to the repository's normal
-Docker-Hub-only external image policy. Repository-built application images are
-served from the in-cluster registry at `127.0.0.1:5000/worm-controller:tilt`,
-`127.0.0.1:5000/worm-regression:tilt`, and `127.0.0.1:5000/worm-worker:tilt`
-(built in-cluster by Kaniko; see `config/registry/`), never `docker.io/...`
-references.
-
-For an existing cluster that predates Cilium 1.20, use the reviewed consecutive
-minor upgrade script instead of skipping releases:
-
-```bash
-bash config/k3d/upgrade-cilium.sh
-```
-
-It temporarily disables Hubble UI during bridge releases and restores it at the
-final version. A fresh `bash start.sh` does not need this migration script.
-
-### MetalLB
-
-MetalLB `v0.14.9` is built locally from its pinned source and imported into the
-k3d node. Its speaker is configured with the node-local Kubernetes API endpoint
-because this is a kube-proxy-free, single-node cluster. See
-[`config/metallb/README.md`](config/metallb/README.md) for bridge and ARP
-details.
-
-### Argo CD
-
-Argo CD chart `10.8.0` is installed in namespace `argocd`. Its application
-manifests live under [`config/argocd/applications`](config/argocd/applications).
-The Vector application can reconcile from the public repository; the stable
-Worm handoff applications pin a Git revision and require deliberate manual
-ownership decisions.
-
-Do not register the stable Worm applications while Tilt or the local deployment
-scripts own the same resources. Two reconcilers managing one Deployment creates
-unreliable results.
-
-### Observability (Cilium/Hubble metrics)
-
-Cilium and Hubble export Prometheus metrics (enabled in the Cilium values
-files). `config/victoriametrics/` runs a single-node VictoriaMetrics store that
-scrapes the Cilium agent, operator, Hubble agent, and Hubble relay endpoints,
-and `config/grafana/` serves the official Cilium/Hubble dashboards from a
-provisioned datasource pointing at that store. Argo CD owns both through
-`config/argocd/applications/{victoriametrics,grafana}.yaml` in the
-`observability` namespace. Open `http://grafana.localhost/`. See
-[`config/grafana/README.md`](config/grafana/README.md) and
-[`config/victoriametrics/README.md`](config/victoriametrics/README.md).
-
-## Worm data and control paths
-
-1. Each Worker starts with its Pod UID as `WORM_ID`.
-2. It sends a single idempotent replication intent to the Controller, retrying
-   at most five times with bounded backoff.
-3. The Controller records distinct intent IDs in the `Worm` status and updates
-   the Worker Deployment scale, never exceeding `spec.maxReplicas`.
-4. Every Worker writes JSON samples to stdout at a minimum one-second interval.
-5. Vector reads only matching worker Pod logs from the single node and posts
-   samples to Regression.
-6. Regression de-duplicates `{worm_id, sequence}` in a 60-second, 1,200-sample
-   in-memory window and serves the rolling linear regression.
-
-This keeps control-plane replication, data-plane delivery, and network
-observation separate. Workers do not hold Kubernetes credentials and do not
-scale themselves.
-
-## Tilt
-
-Tilt is optional. The normal one-command bootstrap is `bash start.sh`; it does
-not require Tilt. If you use Tilt after that reset, the root `Tiltfile` exposes
-separate sidebar resources for cluster, DNS, platform images, Cilium, Argo CD,
-MetalLB, ingress, validation, and each Worm workload. It does not delete the
-cluster itself.
-
-Do not run `tilt up` from an automation agent. Tilt runtime control belongs to
-the developer operating the experiment.
-
-## Configuration knobs
-
-| Variable | Default | Purpose |
-| --- | --- | --- |
-| `K3D_CLUSTER_NAME` | `cilium-lab` | k3d cluster name. |
-| `K3D_DNS_SERVERS` | Cloudflare IPv4 resolvers | Comma-separated node DNS resolvers. |
-| `K3D_API_PORT` | `6445` | Local Kubernetes API port. |
-| `HELM_TIMEOUT` | `10m` | Helm/rollout timeout used by installation scripts. |
-| `KUBECTL_TIMEOUT` | `5m` | Kubernetes validation timeout. |
-| `WORM_NAMESPACE` | `worm-lab` | Namespace used by the deployment script. |
-| `WORM_NAME` | `worm-lab` | `Worm` custom resource reconciled by the controller. |
-| `WORM_RECONCILE_TIMEOUT_SECONDS` | `120` | Time allowed for initial Worm reconciliation. |
-| `WORM_SAMPLE_INTERVAL_MS` | `1000` | Worker sample interval; values below 1000 are rejected. |
-
-Keep credentials, kubeconfigs, certificates, `.env` files, and tokens outside
-the repository. This is a public repository.
-
-## Troubleshooting
-
-| Symptom | First check | Likely cause / action |
-| --- | --- | --- |
-| `start.sh` removes a cluster | This is by design. | It always resets the named local k3d cluster. Back up anything important first. |
-| `ErrImageNeverPull` | `k3d image import` output and node runtime images. | A local `imagePullPolicy: Never` image was not imported. Re-run the owning build/import stage. |
-| `k3d runtime does not contain imported image` | `scripts/build-and-import-image.sh`. | The host-only image tag does not exactly match the deployed image. |
-| `x509: certificate signed by unknown authority` after Tilt | Whether the cluster was recreated while Tilt was running. | Stop using the old Tilt session; recreate/reset before starting Tilt so its Kubernetes client uses the current cluster CA. |
-| MetalLB speaker does not start | `kubectl get pods -n metallb-system`. | Confirm locally built MetalLB images were imported and its node-local API environment is present. |
-| Hubble UI has no graph | Hubble namespace selector and live traffic. | Select `worm-lab` and generate traffic; then check `cilium status` and `hubble status --port-forward`. |
-| Worker replicas stay pending | `kubectl describe pod -n worm-lab <pod>`. | The `worm-worker-cap` ResourceQuota is enforcing the experiment's memory cap. |
-| Argo route fails after a fresh bootstrap | `config/argocd/values.yaml`, `install-ingress.sh`, and `validate.sh`. | See the current known mismatch below. |
-
-### Current known mismatch
-
-The intended Argo CD model is a `ClusterIP` server reached only through the
-local Cilium ingress. That is what `config/argocd/values.yaml` declares.
-However, `config/argocd/install-ingress.sh` and `config/k3d/validate.sh` still
-assert that `argocd-server` is a `LoadBalancer`. This contradiction can stop a
-fresh `bash start.sh` after Argo CD installation. Resolve that script/values
-mismatch before treating a fresh bootstrap as fully validated.
+Security-relevant exposure in this lab, explicitly accepted for LAN use: Grafana
+without login, Neo4j with `NEO4J_AUTH=none`, and permissive CORS on the
+unauthenticated assistant API so the external `fuwa` UI can call it
+(`bd experiments-yc4`).
 
 ## Repository map
 
 ```text
-apps/                    Go controller, Rust worker, Elixir regression charts
-config/                  Deployable k3d, Cilium, MetalLB, Argo CD, and Vector config
-scripts/                 Image build/import and direct Worm deployment scripts
-Tiltfile*                Optional, resource-oriented Tilt entrypoints
-start.sh                 Destructive one-command local bootstrap
-blog/ and research/      Design notes and local research material
-research/ai-workflow.md  How the local AI assistant is built, shipped, and run
-research/reasoner-and-topology.md  Reasoning-model + topology-tool investigation
-research/evidence-provenance.md     Evidence provenance, deep links, and cartography plan
-research/features/                  Shipped feature docs (evidence provenance & deep links)
+ROADMAP.md               current state, phases, open work, limits
+evolution/               per-phase narrative + commit evidence index
+research/                tracked design notes and shipped feature docs
+blog/                    Phase-1 write-ups (k3d, Worm, Tilt)
+benchmark/               measured experiments: E2 planner A/B, E3 AMD GPU, E4 in progress
+apps/
+  assistant/             AI Ops assistant (pipeline, tools, provenance, voice, memory)
+  assistant-laya/        isolated A/B variant (scaled to 0)
+  models/{llm,kokoro,laya}  local models as Deployment + Service + Containerfile
+  gpu-device-plugin/     Go device plugin advertising amd.com/render
+  controller/ worker/ regression/   the bounded Worm lab
+config/
+  k3s/                   live profile: k3s, Cilium, LB-IPAM, exposure, validation
+  k3d/                   Phase-1 profile (archived, still runnable)
+  argocd/                Argo CD values + Applications (contextual targetRevision)
+  cartography/ grafana/ victoriametrics/ vector/   platform services
+  gpu/                   Vulkan smoke-test image + pods
+  registry/ sealed-secrets/ metallb/ helm/ dns/ ci/
+scripts/                 host-side helpers (image build/import, corpus, verification)
+Tiltfile*  start.sh      Phase-1 entrypoints (k3d only, human-operated)
+docs/                    gitignored, machine-specific runbooks
 ```
 
-Read [`AGENTS.md`](AGENTS.md) before automating changes. It contains the
-repository safety rules, image policy, commit requirements, and the prohibition
-on agents controlling Tilt.
+## Repository safety rules
+
+This is a **public** repository. Never commit credentials, tokens, private keys,
+kubeconfigs, certificates, or `.env` files. Commits are atomic and cite their
+`bd` issue. Agents must not control Tilt, must not create or move git worktrees,
+and must never point an Argo CD Application at `main`.
+
+Read [`AGENTS.md`](AGENTS.md) before automating anything here. Note that it still
+carries k3d-era wording in places (see [`ROADMAP.md`](ROADMAP.md) §4).
