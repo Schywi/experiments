@@ -15,6 +15,37 @@ i5-9400F, 15 GiB RAM with zram, AMD RX 570). It is a lab, not a product.
 > [`research/`](research/) for design notes → [`benchmark/`](benchmark/README.md)
 > for the measurements.
 
+## Bare metal only — never a VM, never Vagrant
+
+**Read this before running anything.** The cluster runs on the physical machine,
+not in a VM, Vagrant box, QEMU/KVM domain, VirtualBox/VMware guest, or a
+container. On this host that is verifiable:
+
+```bash
+systemd-detect-virt     # -> none        (you are on bare metal)
+lsmod | grep amdgpu     # -> amdgpu, in use
+ls -l /sys/class/drm/   # -> card1 on 0000:01:00.0, with DP/DVI connectors
+```
+
+Two reasons, and the second one can cost you the graphics card:
+
+1. **Cilium's eBPF datapath needs the host kernel.** The Phase-1 `k3d` profile
+   ran inside Docker and could not use it — it fell back to iptables
+   masquerading and host-legacy routing (`bb93f8e`), which is precisely why that
+   phase ended.
+2. **The GPU is the host's display GPU.** `/dev/dri/renderD128` is bound to the
+   host `amdgpu` driver — that is the device the Track C plugin hands to pods.
+   A VM with GPU passthrough rebinds the card to `vfio-pci` **on the host**,
+   which takes it away from your session: no display, no Vulkan, and it stays
+   away until the binding is undone and the machine reboots. On a single-GPU
+   desktop, "wrongly used" here means the card looks gone.
+
+So: don't `virsh`/Vagrant/QEMU the cluster, don't pass the GPU to a guest, don't
+edit `vfio-pci` ids into the kernel command line, don't blacklist or unbind
+`amdgpu`, and don't run the cluster in Docker/Podman. `AGENTS.md` makes all of
+that a hard prohibition for agents, with the read-only probes that remain
+allowed. Nested `k3d` is Phase-1 history, not an alternative profile.
+
 ## What this is, and what it is not
 
 | It is | It is not |
@@ -185,12 +216,10 @@ flowchart LR
   front of the LLM, so a burst of chat turns cannot stampede a 1.5B model running
   on six CPU threads.
 
-Unit tests run without a cluster or a model (pytest is a dev dependency, not
-baked into the image):
+Unit tests run without a cluster or a model:
 
 ```bash
-pip install pytest
-cd apps/assistant && python3 -m pytest -q test_concurrency.py test_knowledge.py test_memory.py test_observability.py
+cd apps/assistant && python3 -m pytest -q
 ```
 
 Design notes, failure catalogue and benchmarks:
@@ -349,5 +378,7 @@ kubeconfigs, certificates, or `.env` files. Commits are atomic and cite their
 `bd` issue. Agents must not control Tilt, must not create or move git worktrees,
 and must never point an Argo CD Application at `main`.
 
-Read [`AGENTS.md`](AGENTS.md) before automating anything here. Note that it still
-carries k3d-era wording in places (see [`ROADMAP.md`](ROADMAP.md) §4).
+Read [`AGENTS.md`](AGENTS.md) before automating anything here. It opens with the
+hardest rule in the repository: this cluster is **bare metal on the physical
+host** — never a VM, Vagrant box, or container — because the GPU is the host's
+own display card and a passthrough bind would take it away.
