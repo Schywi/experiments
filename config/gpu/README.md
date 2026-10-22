@@ -51,3 +51,37 @@ requesting Pods. Note the limits of that approach — see
 `research/native-k3s-gpu-models-plan.md` §7: a device plugin gives scheduling and
 automatic mounting, **not** per-Pod VRAM quotas (this card exposes no such
 limit).
+
+## Result (verified live on the reference host)
+
+`vulkaninfo --summary` inside a Pod reports the real GPU:
+
+```
+GPU0:
+    deviceName = AMD Radeon RX 570 Series (RADV POLARIS10)
+    driverName = radv          driverInfo = Mesa 26.2.3
+    vendorID   = 0x1002        deviceID   = 0x67df
+    deviceType = PHYSICAL_DEVICE_TYPE_DISCRETE_GPU
+```
+
+`config/gpu/vulkan-test-pod.yaml` is the no-build version (public `fedora:44`
+image, `dnf install` at start, `ndots:1` to dodge the host search-domain bug).
+
+## The catch: `/dev/dri` needs the **device cgroup** opened
+
+Mounting `/dev/dri` by `hostPath` only makes the node *visible* (`ls`/`stat`
+work). The container's **device cgroup** still denies `open()` on the render
+node, so every Vulkan driver fails with `EPERM`:
+
+```
+WARNING: radv: Could not open device /dev/dri/renderD128: Operation not permitted
+```
+
+Two ways to grant access:
+
+- `privileged: true` -- what the smoke test uses. Broad; not recommended.
+- a **device plugin** (`apps/gpu-device-plugin`) -- grants the device in the
+  cgroup on `Allocate`, so the workload stays non-privileged. That is exactly
+  why the plugin exists.
+
+**Visibility = `hostPath`. Access = device cgroup = `privileged` OR device plugin.**
