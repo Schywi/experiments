@@ -56,10 +56,16 @@ browser -> kargo-gateway:80 -> POST /v1beta1/login  Authorization: Bearer <passw
                             -> kargo-api.kargo.svc:443
 ```
 
-`kargo-gateway` is a ~120-line Python proxy (`gateway/proxy.py`) run from a
+`kargo-gateway` is a ~140-line Python proxy (`gateway/proxy.py`) run from a
 ConfigMap on `python:3.13-alpine` — no image to build. It logs in once at
 startup, injects the token into every request, and re-logs in on a 401. The
 admin token TTL is `8760h`, so the UI does not bounce to a login form.
+
+The UI decides to show a login form by looking for `auth_token` in
+`localStorage`, not by asking the API, so the gateway also rewrites the served
+HTML with a bootstrap script that sets `auth_token` and `refresh_token` before
+the bundle runs. Hard-reload once after a gateway change: the old page holds no
+token and the bundle is cached.
 
 Consequences worth stating: anyone who can reach `192.168.0.249` gets admin on
 Kargo, which can commit and push to this repository through the credential in
