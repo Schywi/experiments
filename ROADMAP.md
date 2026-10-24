@@ -8,7 +8,8 @@ operations assistant. This file records **why** the tree looks the way it does,
 
 Ground rules that shaped it (from [`AGENTS.md`](AGENTS.md)):
 
-- Argo CD Applications never target `main`; they read the branch their work
+- Argo CD Applications never target `main`: it is the public face of the
+  repository, not a deploy source. They read the working branch their work
   lives on.
 - The top level stays small. Deployable configuration is `config/`, executable
   software is `apps/`, and tracked narrative material is `research/` +
@@ -29,7 +30,7 @@ Ground rules that shaped it (from [`AGENTS.md`](AGENTS.md)):
 | GPU | AMD RX 570 (`gfx803`) reachable as `amd.com/render` through a Go device plugin; Vulkan path proven, **no ROCm/CUDA, no VRAM enforcement** |
 | AI Ops | `apps/assistant` — 10 read-only tools, 2 LLM calls per answer, evidence attached server-side |
 | Worm lab | Complete on `trackc`, merged here, and **scaled to 0** — it is preserved history, not a live workload |
-| Branches | `main` (frozen k3d era) · `native-k3s-gpu-models` (live Argo target) · `trackc` (worm-lab + registry backports) · **`cluster-evolution` (this branch, unifies all three)** |
+| Branches | `main` (public face, not a deploy source) · `native-k3s-gpu-models` (live Argo target) · `trackc` (worm-lab + registry backports) · **`cluster-evolution` (this branch, unifies all three)** |
 
 ---
 
@@ -40,7 +41,7 @@ Ground rules that shaped it (from [`AGENTS.md`](AGENTS.md)):
    │
    │  Phase 1 — bounded Worm on k3d  (86 commits, blog/ + Tilt + MetalLB)
    ▼
-4ba7b97  docs(experiments-8g7): describe bounded worm lab  2026-09-07  ← main frozen here
+4ba7b97  docs(experiments-8g7): describe bounded worm lab  2026-09-07  ← where main sits until the promotion PR merges
    │
    │  Phase 2-4 — native k3s, CPU models, GPU, AI Ops  (101 commits after main)
    ▼

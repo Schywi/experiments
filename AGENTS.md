@@ -117,10 +117,13 @@ and tables only where they carry facts.
 
 ## Argo CD Applications — Contextual targetRevision
 
-- Argo CD Applications must **NEVER target `main`**. `main` is frozen Phase-1
-  history. An Application reads the branch its work actually lives on —
-  currently `cluster-evolution` (the unified branch) or a pinned full commit —
-  never a shared default. Argo is contextual.
+- Argo CD Applications must **NEVER** target `main`. `main` is the repository's
+  public face: the branch a visitor reads to understand what this platform is.
+  It is kept current by merging the working branches into it, and it is never a
+  deploy source.
+- An Application owns its own `targetRevision`: the working branch its work
+  lives on (`cluster-evolution`, `native-k3s-gpu-models`, `trackc`) or a pinned
+  full commit. Argo is contextual; there is no shared default.
 - When adding an Application, set `targetRevision:` to the current working
   branch. Promoting the existing set from `native-k3s-gpu-models` / `trackc` to
   `cluster-evolution` is a deliberate, reviewed step (see `ROADMAP.md` §4), not

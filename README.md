@@ -71,8 +71,10 @@ Application reads the branch its work lives on:
 | `trackc` | models-llm, worm-controller, worm-regression, worm-vector, worm-worker |
 | commit `592d7f51…` | `applications/stable/` bundle, manual sync only |
 
-`main` holds the Phase-1 history and is not a deploy source. Moving the set
-onto `cluster-evolution` is tracked in `ROADMAP.md` §4.
+`main` is the public face of this repository: it is what a visitor reads to
+understand the platform, and nothing in the cluster deploys from it. The
+Applications read the working branches above. Promoting them onto
+`cluster-evolution` is tracked in `ROADMAP.md` §4.
 
 Argo CD runs anonymous read-only: `users.anonymous.enabled: "true"` with
 `policy.default: role:readonly`, admin disabled, pinned at `192.168.0.247`.
