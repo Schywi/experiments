@@ -43,6 +43,9 @@ HOP_BY_HOP = {
     "host",
     "authorization",
     "content-length",
+    # Ask the API for identity encoding: the HTML is rewritten below, which a
+    # compressed body would break.
+    "accept-encoding",
 }
 
 _lock = threading.Lock()
@@ -73,6 +76,27 @@ def token(refresh: bool = False) -> str:
         if refresh or not _token["value"]:
             _token["value"] = login()
         return _token["value"]
+
+
+TOKEN_BOOTSTRAP = (
+    "<script>try{localStorage.setItem('auth_token',%s);"
+    "localStorage.setItem('refresh_token',%s)}catch(e){}</script>"
+)
+
+
+def _with_token_bootstrap(html: bytes) -> bytes:
+    """Put the current token in localStorage before the UI bundle runs."""
+    current = token()
+    script = (TOKEN_BOOTSTRAP % (json.dumps(current), json.dumps(current))).encode()
+    lowered = html.lower()
+    marker = lowered.find(b"<head>")
+    if marker >= 0:
+        marker += len(b"<head>")
+    else:
+        marker = lowered.find(b"</head>")
+        if marker < 0:
+            return html
+    return html[:marker] + script + html[marker:]
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -116,6 +140,13 @@ class Handler(BaseHTTPRequestHandler):
             payload = response.read()
         finally:
             response.close()
+
+        # The Kargo UI decides whether to show a login form by looking for a
+        # token in localStorage (`auth_token`), not by probing the API. Injecting
+        # the bearer at the proxy is not enough on its own, so the served HTML
+        # carries the token before the bundle boots.
+        if "text/html" in (response.headers.get("Content-Type") or ""):
+            payload = _with_token_bootstrap(payload)
 
         self.send_response(response.status)
         for key, value in response.headers.items():
