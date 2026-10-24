@@ -1,0 +1,99 @@
+# Kargo control plane for the native k3s profile.
+#
+# Two deliberate deviations from the chart defaults:
+#
+# 1. No cert-manager. `gen-certs.sh` signs the API and webhooks certs with a
+#    local CA and loads them as Secrets, so `selfSignedCert` is false and
+#    `install.sh` supplies `webhooksServer.tls.caBundle`.
+# 2. No auth. `adminAccount.enabled: false` and no OIDC provider. The API is
+#    reachable through a ClusterIP Service and port-forward, matching the LAN
+#    posture of the rest of the cluster (Neo4j, Grafana). Anyone who can reach
+#    the API can create Projects and trigger Promotions.
+#
+# Memory is the constraint on this node: limits sit at 89% of a 15.5 GiB box, so
+# every component carries an explicit request and limit and the SCM webhooks
+# server stays off (Warehouses poll instead).
+
+api:
+  enabled: true
+  replicas: 1
+  host: kargo.localhost
+  logLevel: INFO
+  # Projects and their Secrets are applied from Git; the API does not need to
+  # write Secrets.
+  secretManagementEnabled: false
+  # No login of any kind.
+  adminAccount:
+    enabled: false
+  oidc:
+    enabled: false
+  tls:
+    enabled: true
+    selfSignedCert: false
+    secretName: kargo-api-cert
+  service:
+    type: ClusterIP
+  resources:
+    requests:
+      cpu: 50m
+      memory: 192Mi
+    limits:
+      cpu: "1"
+      memory: 512Mi
+
+controller:
+  logLevel: INFO
+  argocd:
+    integrationEnabled: true
+    namespace: argocd
+    watchArgocdNamespaceOnly: true
+  rollouts:
+    integrationEnabled: false
+  gitClient:
+    name: kargo
+    email: kargo@localhost
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: "2"
+      memory: 1Gi
+
+managementController:
+  enabled: true
+  resources:
+    requests:
+      cpu: 25m
+      memory: 96Mi
+    limits:
+      cpu: "1"
+      memory: 256Mi
+
+# Required: the Kubernetes API server needs an HTTPS endpoint for the
+# validation webhooks Kargo registers.
+webhooksServer:
+  enabled: true
+  tls:
+    selfSignedCert: false
+    secretName: kargo-webhooks-server-cert
+    # install.sh overrides this with --set-file from the generated CA.
+    caBundle: ""
+  resources:
+    requests:
+      cpu: 25m
+      memory: 64Mi
+    limits:
+      cpu: 500m
+      memory: 192Mi
+
+# GitHub push/PR webhooks are not wired up; Warehouses poll instead.
+externalWebhooksServer:
+  enabled: false
+
+garbageCollector:
+  enabled: true
+  schedule: "0 3 * * *"
+
+webhooks:
+  register: true
