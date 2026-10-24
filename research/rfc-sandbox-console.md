@@ -90,6 +90,7 @@ From `agent-sandbox/research/experiments/02-capacity-6vcpu-100k.md` and experime
 3. Show, live, that a sandbox cannot reach the cluster.
 4. Surface per-sandbox memory and state without writing a metrics backend.
 5. Be small enough that one person maintains it.
+6. Show Claim vs bare Sandbox side by side, with stage timers and reachability, in one screen.
 
 ## 5. Non-goals
 
@@ -152,6 +153,59 @@ the scale factor. Never resize Chrome mid-demo — the page relayouts and the de
 Focus lives in the browser, not in the UI. Click the field (real `dispatchMouseEvent`), then
 `Input.insertText`. Two calls, no synthetic key events needed for a demo.
 
+### 6.5 Compare mode — Claim vs Bare, split screen, with timers
+
+The single strongest screen in the deck. Two columns, same image, same URL, same moment.
+Left is a Claim from the warm pool. Right is a bare `kind: Sandbox`.
+
+```
+┌─ compare ─────────────── same image · same URL · fired together ─┐
+│  CLAIM (warm pool)          │  BARE SANDBOX                      │
+│  ┌───────────────────────┐  │  ┌───────────────────────────────┐ │
+│  │ [screenshot]          │  │  │ [screenshot]                  │ │
+│  └───────────────────────┘  │  └───────────────────────────────┘ │
+│  ready  ██ 1.55 s  ✓        │  ready  ███████████████████ 43.2 s │
+│  cdp    ██ 1.61 s           │  cdp    █████████████████████ 44.0 │
+│  paint  ██ 1.72 s           │  paint  ██████████████████████ 45.1│
+│                             │                                   │
+│  ● cluster BLOCKED          │  ▲ cluster REACHABLE              │
+│  ● metadata BLOCKED         │  ▲ SA token mounted               │
+│  ● token not mounted        │  ▲ cluster DNS resolves           │
+└───────────────────────────────────────────────────────────────────┘
+```
+
+Two truths side by side. **Time** on the left of each column, **reachability** below it. The
+timing gap is the warm-pool pitch; the reachability gap is the isolation pitch. One screen, both.
+
+#### The four timers
+
+Every creation records four stamps, all in the same clock, all measured server-side:
+
+| Timer | Start | Stop | What it proves |
+|---|---|---|---|
+| `t_sched` | POST `/sandboxes` | pod is `Scheduled` | scheduler and capacity |
+| `t_ready` | POST `/sandboxes` | `Sandbox` condition `Ready=True` | the number the product quotes |
+| `t_cdp` | POST `/sandboxes` | `GET :9222/json/version` answers | the browser is actually up |
+| `t_paint` | POST `/sandboxes` | first screenshot whose bytes > a blank-page floor | a real page rendered |
+
+`t_sched → t_ready` is pod start; `t_ready → t_cdp` is Chromium boot; `t_cdp → t_paint` is
+navigation. That split is what makes the timer useful — a slow number tells you *which* stage.
+
+Bars are drawn to a shared scale across both columns, so the bare sandbox's 43 s makes the claim's
+1.55 s a stub. Do not use separate scales; that hides the point.
+
+#### Method, so the comparison is fair
+
+1. Pre-pull the image on the node first. A cold pull would land inside `t_sched` and poison the
+   comparison by 30–120 s. Warm it with one throwaway sandbox, then run compare.
+2. Fire both creations within the same second. Record wall-clock offsets, not just durations.
+3. Same viewport (1280×600), same target URL, same concurrency.
+4. Run three times; show the last run and the p50 of all three on hover.
+5. Keep the reachability probes out of the timers — they run after `t_paint`.
+
+The bare column needs `--allow-raw-sandbox` enabled (§14.1). Compare mode is the one feature that
+requires it, and the only place a bare Sandbox is ever created.
+
 ## 7. Data model
 
 One JSON object per sandbox, assembled server-side from CRD status (no new storage):
@@ -173,7 +227,20 @@ One JSON object per sandbox, assembled server-side from CRD status (no new stora
   "egress_public_ok": true,
   "ingress_cluster_blocked": true,
   "screenshot_ts": 1761,
-  "shutdown_at": "2026-10-24T17:20:00Z"
+  "shutdown_at": "2026-10-24T17:20:00Z",
+  "created_by": "claim",
+  "timers": {
+    "t_sched_ms": 1520,
+    "t_ready_ms": 1553,
+    "t_cdp_ms": 1610,
+    "t_paint_ms": 1724
+  },
+  "reachability": {
+    "cluster": "blocked",
+    "metadata": "blocked",
+    "sa_token": "absent",
+    "cluster_dns": "unresolvable"
+  }
 }
 ```
 
@@ -185,6 +252,9 @@ One JSON object per sandbox, assembled server-side from CRD status (no new stora
 | `chromium_ready` | `GET /json/version` on `:9222` through the router |
 | `egress_public_ok` | one cached probe per sandbox: TCP to `1.1.1.1:443` |
 | `ingress_cluster_blocked` | one cached probe: TCP to `10.43.0.1:443`, 4 s timeout, expect timeout |
+| `created_by` | `claim` or `sandbox` — set by the create call, drives compare mode |
+| `timers.*` | stamped server-side at four events; see §6.5 |
+| `reachability.*` | same probe set as the badges, run once after `t_paint` |
 
 The two isolation booleans are the sales payload. Probe once on sandbox creation, cache, re-run on
 demand from a button.
@@ -199,6 +269,8 @@ Seven endpoints. htmx fragments, no JavaScript framework.
 | GET | `/sandboxes` | the grid fragment (htmx poll, 3 s) |
 | GET | `/sandboxes/{id}/shot` | PNG, `Page.captureScreenshot` through the router |
 | POST | `/sandboxes/{id}/click` | `{x, y, scale}` → `dispatchMouseEvent` → returns new shot |
+| POST | `/compare` | creates one Claim and one bare Sandbox together, returns both tiles with timers |
+| GET | `/compare` | the split-screen view, last run + p50 of the last three |
 | POST | `/sandboxes` | create a Claim (or a bare Sandbox); returns the new tile |
 | DELETE | `/sandboxes/{id}` | delete the Claim/Sandbox, foreground |
 | POST | `/recipes/{name}` | shell an existing `dev/load-test/test-recipes/` script, stream stdout |
@@ -247,7 +319,7 @@ Build four things. Link three. Build nothing else.
 | Memory, CPU, pool size over time | **link** to Grafana `.245` (VictoriaMetrics already scrapes `agent_sandbox_*`) |
 | Flows, policy verdicts | **link** to Hubble `.241` |
 | What is deployed and why | **link** to Argo `.247` |
-| Traffic split | **do not build** — no such primitive at L4 |
+| Traffic split | **do not build** — the primitives exist (Cilium backend weights, Gateway API weighted `backendRefs`, `CiliumEnvoyConfig`) but at the wrong layer: sandboxes are distinct identities, not interchangeable replicas. Canarying a *browser image* is an allocation decision at claim time, not a network one. See `rfc-traffic-split.md` |
 | Auth / tenancy | **do not build** — LAN posture, stated in `experiments/README.md` §Limits |
 | Metrics pipeline of our own | **do not build** — reuse VictoriaMetrics |
 
@@ -260,7 +332,8 @@ Build four things. Link three. Build nothing else.
 | M3 | Isolation badge | for a template-derived sandbox, `ingress_cluster_blocked` is `true` and `egress_public_ok` is `true`; both flips are visible in the UI within 4 s, and the badge shows the actual error (`timeout`, not `refused`) |
 | M4 | Lifecycle from the pane | `POST /sandboxes` creates a Claim that reaches Ready; `DELETE` removes the pod; the pod count returns to baseline with no orphan |
 | M5 | Recipe runner | `POST /recipes/capacity-cliff` runs the existing script and streams its output; a second concurrent request is refused |
-| M6 | Demo run | 12 tiles, all live; one tap per tile proves a real browser; `BLOCKED` badge visible; full teardown leaves the cluster at its recorded baseline |
+| M6 | Compare mode | `POST /compare` creates one Claim and one bare Sandbox within 1 s of each other; both record all four timers; the Claim's `t_ready` is under 5 s and the bare one's over 30 s; the reachability panel differs on `cluster` and `sa_token`; bars share one scale |
+| M7 | Demo run | 12 tiles, all live; one tap per tile proves a real browser; `BLOCKED` badge visible; compare mode shown once; full teardown leaves the cluster at its recorded baseline |
 
 ## 13. Risks
 
@@ -282,6 +355,13 @@ Build four things. Link three. Build nothing else.
    demo and costs one of three free addresses.
 3. **Where does the screenshot proxy live?** In the console process (simplest, 30 lines) or a
    sidecar. Recommend in-process; a sidecar doubles the deploy surface for no gain.
+4. **Is compare mode a demo feature or a real diagnostic?** It started as a demo. It is also the
+   cheapest regression test for warm-pool health: if `t_ready` for a Claim climbs toward the bare
+   sandbox's, the pool is drained or the refill gate is stuck. Recommend keeping it as a diagnostic
+   and running it before every demo.
+5. **Does the canary work belong in this RFC?** No. Traffic and allocation splitting is
+   `rfc-traffic-split.md`, kept separate because it is experimental and this console does not need
+   it.
 
 ## Appendix — numbers used, and where they came from
 
