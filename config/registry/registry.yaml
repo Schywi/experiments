@@ -1,0 +1,104 @@
+# Rootless local image registry for the native k3s profile.
+#
+# Why this exists: getting a locally-built (buildah) image into k3s normally
+# needs root, because every import path -- the containerd socket
+# (/run/k3s/containerd/containerd.sock) and the auto-import directory
+# (/var/lib/rancher/k3s/agent/images) -- is root-owned. Running a registry the
+# node can pull from removes the need for any privileged step:
+#
+#   you (rootless)                                 k3s (already runs as root)
+#   buildah bud && buildah push  ───────────►   127.0.0.1:5000/<name>:local  ──pull──► Pod
+#
+# hostNetwork is what makes both halves work without sudo: the registry binds
+# the node's loopback, so the buildah client (your user) and k3s containerd
+# both reach it at 127.0.0.1:5000. containerd speaks plain HTTP to a loopback
+# registry, so no registries.yaml and no TLS certs are required.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: registry
+  labels:
+    app.kubernetes.io/part-of: local-registry
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: local-registry-data
+  namespace: registry
+  labels:
+    app.kubernetes.io/name: local-registry
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: local-registry
+  namespace: registry
+  labels:
+    app.kubernetes.io/name: local-registry
+    app.kubernetes.io/part-of: local-registry
+spec:
+  replicas: 1
+  # Only one pod may bind the node's :5000, so never run two at once.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: local-registry
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: local-registry
+    spec:
+      # Bind the node's network namespace so 127.0.0.1:5000 is reachable by
+      # both the host's buildah client and k3s's containerd.
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: registry
+          image: docker.io/library/registry:2
+          imagePullPolicy: IfNotPresent
+          env:
+            # Allow deleting tags/blobs so re-pushing an image can replace it.
+            - name: REGISTRY_STORAGE_DELETE_ENABLED
+              value: "true"
+          ports:
+            - name: http
+              containerPort: 5000
+          readinessProbe:
+            httpGet:
+              path: /v2/
+              port: http
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /v2/
+              port: http
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: "1"
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/registry
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: local-registry-data

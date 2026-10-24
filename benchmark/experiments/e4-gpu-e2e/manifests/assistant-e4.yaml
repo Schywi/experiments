@@ -1,0 +1,90 @@
+# E4 assistant arms: the SAME instrumented assistant image, one per LLM backend.
+# Deployed in the `assistant` namespace so they reuse the read-only SA/RBAC.
+# PLANNER_KIND is unset -> Qwen planner (this experiment is about the LLM backend).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: assistant-e4-cpu
+  namespace: assistant
+  labels: {app: assistant-e4-cpu}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector: {matchLabels: {app: assistant-e4-cpu}}
+  template:
+    metadata: {labels: {app: assistant-e4-cpu}}
+    spec:
+      serviceAccountName: assistant
+      automountServiceAccountToken: true
+      securityContext: {runAsNonRoot: true, runAsUser: 10001, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: assistant
+          image: 127.0.0.1:5000/assistant:laya-exp
+          imagePullPolicy: Always
+          ports: [{name: http, containerPort: 8080}]
+          env:
+            - {name: LLM_URL, value: "http://llm-cpu.gpu-exp.svc.cluster.local:8000"}
+            - {name: LLM_MODEL, value: qwen2.5-1.5b-instruct}
+            - {name: PIPELINE_TIMEOUT, value: "300"}
+            - {name: VM_URL, value: "http://victoriametrics.observability.svc.cluster.local:8428"}
+            - {name: AUDIT_LOG, value: /tmp/assistant/audit.jsonl}
+            - {name: MEMORY_DIR, value: /tmp/memory}
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: ["ALL"]}}
+          resources:
+            requests: {cpu: 100m, memory: 128Mi}
+            limits: {cpu: 500m, memory: 256Mi}
+          volumeMounts: [{name: tmp, mountPath: /tmp}]
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: assistant-e4-cpu, namespace: assistant}
+spec:
+  selector: {app: assistant-e4-cpu}
+  ports: [{name: http, port: 8080, targetPort: http}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: assistant-e4-gpu
+  namespace: assistant
+  labels: {app: assistant-e4-gpu}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector: {matchLabels: {app: assistant-e4-gpu}}
+  template:
+    metadata: {labels: {app: assistant-e4-gpu}}
+    spec:
+      serviceAccountName: assistant
+      automountServiceAccountToken: true
+      securityContext: {runAsNonRoot: true, runAsUser: 10001, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: assistant
+          image: 127.0.0.1:5000/assistant:laya-exp
+          imagePullPolicy: Always
+          ports: [{name: http, containerPort: 8080}]
+          env:
+            - {name: LLM_URL, value: "http://llm-gpu.gpu-exp.svc.cluster.local:8000"}
+            - {name: LLM_MODEL, value: qwen2.5-1.5b-instruct}
+            - {name: PIPELINE_TIMEOUT, value: "300"}
+            - {name: VM_URL, value: "http://victoriametrics.observability.svc.cluster.local:8428"}
+            - {name: AUDIT_LOG, value: /tmp/assistant/audit.jsonl}
+            - {name: MEMORY_DIR, value: /tmp/memory}
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: ["ALL"]}}
+          resources:
+            requests: {cpu: 100m, memory: 128Mi}
+            limits: {cpu: 500m, memory: 256Mi}
+          volumeMounts: [{name: tmp, mountPath: /tmp}]
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: assistant-e4-gpu, namespace: assistant}
+spec:
+  selector: {app: assistant-e4-gpu}
+  ports: [{name: http, port: 8080, targetPort: http}]

@@ -1,0 +1,24 @@
+{{- if .Values.dashboards.enabled }}
+# Official Cilium/Hubble dashboards, provisioned as files. Provenance and the
+# normalization applied (strip import inputs, bind the datasource UID) are
+# documented in config/grafana/README.md.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "grafana.fullname" . }}-dashboards
+  labels:
+    {{- include "grafana.labels" . | nindent 4 }}
+data:
+  cilium-dashboard.json: |-
+{{ .Files.Get "dashboards/cilium-dashboard.json" | indent 4 }}
+  cilium-operator-dashboard.json: |-
+{{ .Files.Get "dashboards/cilium-operator-dashboard.json" | indent 4 }}
+  hubble-dashboard.json: |-
+{{ .Files.Get "dashboards/hubble-dashboard.json" | indent 4 }}
+  hubble-dns-namespace.json: |-
+{{ .Files.Get "dashboards/hubble-dns-namespace.json" | indent 4 }}
+  hubble-l7-http-metrics-by-workload.json: |-
+{{ .Files.Get "dashboards/hubble-l7-http-metrics-by-workload.json" | indent 4 }}
+  hubble-network-overview-namespace.json: |-
+{{ .Files.Get "dashboards/hubble-network-overview-namespace.json" | indent 4 }}
+{{- end }}

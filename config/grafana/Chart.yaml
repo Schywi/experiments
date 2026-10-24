@@ -1,0 +1,11 @@
+apiVersion: v2
+name: grafana
+description: Grafana with a Provisioned VictoriaMetrics datasource and the official Cilium/Hubble dashboards
+type: application
+version: 0.1.0
+appVersion: "13.2.3"
+keywords:
+  - grafana
+  - observability
+  - cilium
+  - hubble

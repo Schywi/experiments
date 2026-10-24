@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: assistant-laya
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: assistant-laya
+    app.kubernetes.io/part-of: assistant
+spec:
+  # ClusterIP only: the experiment must not claim the prod LoadBalancer IP or
+  # publish an ingress. Reach it via port-forward for the benchmark.
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: assistant-laya
+  ports:
+    - name: http
+      port: {{ .Values.service.port }}
+      targetPort: http

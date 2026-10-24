@@ -1,23 +1,54 @@
 # Public-repository baseline for the official argo-cd Helm chart.
 #
-# This cluster is a private, Docker-backed k3d development cluster. The user
-# explicitly requested headless/no-auth Argo CD; exposure remains ClusterIP
-# only with ingress disabled.
+# Exposure model: ANONYMOUS READ-ONLY at a pinned Cilium LoadBalancer IP.
+# Anonymous callers may view Applications, manifests and status trees so the
+# live infrastructure can be demonstrated with no credential -- but they only
+# get `role:readonly` and cannot sync/update/delete anything.
+#
+# NEVER set `server.disable.auth: "true"`: that makes every anonymous caller an
+# ADMIN. These values are the source of truth so a Helm reinstall cannot
+# silently downgrade to that.
 
 configs:
   cm:
     create: true
+    # No interactive/admin login; anonymous access carries the read-only role.
     admin.enabled: false
+    users.anonymous.enabled: "true"
+    # Stable external URL for the pinned LoadBalancer IP below.
+    url: "http://192.168.0.247"
   params:
     create: true
     server.insecure: "true"
-    server.disable.auth: "true"
+    # MUST stay "false". "true" == anonymous ADMIN.
+    server.disable.auth: "false"
   rbac:
     create: true
-    policy.default: ""
+    # Anonymous (unauthenticated) callers get the built-in read-only role.
+    # To scope this later, set policy.default to "" and add explicit
+    # `p, role:..., applications, get, <project>/*, allow` lines instead.
+    policy.default: "role:readonly"
+    policy.csv: |
+      g, system:unauthenticated, role:readonly
 
 server:
   service:
-    type: ClusterIP
+    # Pinned LoadBalancer IP (Cilium LB IPAM, lan-pool) so the address is stable
+    # across reinstalls. Public exposure later must keep the read-only role.
+    type: LoadBalancer
+    annotations:
+      io.cilium/lb-ipam-ips: "192.168.0.247"
   ingress:
     enabled: false
+
+# The chart default probe timeout is 1s. On this single-node cluster the
+# repo-server health check intermittently exceeds it, so the liveness probe
+# kills the pod and it never becomes Ready (CrashLoopBackOff). Widen the
+# timeouts so the repo-server stays up and can serve manifests.
+repoServer:
+  livenessProbe:
+    timeoutSeconds: 15
+    failureThreshold: 6
+  readinessProbe:
+    timeoutSeconds: 5
+    failureThreshold: 6

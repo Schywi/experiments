@@ -1,9 +1,9 @@
 image:
-  repository: worm-worker
+  repository: 127.0.0.1:5000/worm-worker
   tag: tilt
   pullPolicy: IfNotPresent
 
-replicaCount: 1
+replicaCount: 0
 
 controller:
   url: http://worm-controller.worm-lab.svc.cluster.local:8081
@@ -13,7 +13,7 @@ sampleIntervalMilliseconds: 1000
 resources:
   requests:
     cpu: 25m
-    memory: 32Mi
+    memory: 600Ki
   limits:
     cpu: 100m
-    memory: 32Mi
+    memory: 16Mi

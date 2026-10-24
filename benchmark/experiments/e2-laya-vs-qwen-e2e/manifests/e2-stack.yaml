@@ -1,0 +1,117 @@
+# Experiment E2 isolated stack. NOT GitOps-managed (applied by hand, torn down
+# after the run). Namespace `models` so it can mount the existing model PVCs
+# (llm-models, laya-models) once the prod models are scaled to 0.
+#
+# Guaranteed QoS = requests == limits for every container (incl. initContainers),
+# so CFS reserves the cores and Laya cannot steal from Qwen during correlation.
+# CPU budget: node = 6 cores; platform requests ~1.5; prod models scaled to 0.
+# llm-exp 4 + laya-exp 1 = 5 -> fits. Adjust down if a pod is Pending.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: llm-exp
+  namespace: models
+  labels: {app: llm-exp}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector: {matchLabels: {app: llm-exp}}
+  template:
+    metadata: {labels: {app: llm-exp}}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        # Match prod llm: the fedora:44 llama-server image runs as root.
+        seccompProfile: {type: RuntimeDefault}
+      initContainers:
+        - name: fetch-weights
+          image: 127.0.0.1:5000/llama-server:local
+          imagePullPolicy: IfNotPresent
+          command: ["sh", "-c"]
+          args:
+            - |
+              set -e
+              dest="/models/Qwen2.5-1.5B-Instruct-Q4_K_M.gguf"
+              if [ ! -f "$dest" ]; then
+                curl -fL --retry 3 -o "$dest" "https://huggingface.co/bartowski/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/Qwen2.5-1.5B-Instruct-Q4_K_M.gguf"
+              fi
+          securityContext: {allowPrivilegeEscalation: false, capabilities: {drop: ["ALL"]}}
+          resources:
+            requests: {cpu: 100m, memory: 256Mi}
+            limits: {cpu: 100m, memory: 256Mi}
+          volumeMounts: [{name: models, mountPath: /models}]
+      containers:
+        - name: llm
+          image: 127.0.0.1:5000/llama-server:local
+          imagePullPolicy: IfNotPresent
+          args: ["-m", "/models/Qwen2.5-1.5B-Instruct-Q4_K_M.gguf", "--host", "0.0.0.0",
+                 "--port", "8000", "-c", "4096", "--threads", "3"]
+          ports: [{name: http, containerPort: 8000}]
+          securityContext: {allowPrivilegeEscalation: false, capabilities: {drop: ["ALL"]}}
+          resources:
+            requests: {cpu: "3", memory: 3Gi}
+            limits: {cpu: "3", memory: 3Gi}
+          volumeMounts: [{name: models, mountPath: /models}]
+      volumes:
+        - name: models
+          persistentVolumeClaim: {claimName: llm-models}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: llm-exp, namespace: models}
+spec:
+  selector: {app: llm-exp}
+  ports: [{name: http, port: 8000, targetPort: http}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: laya-exp
+  namespace: models
+  labels: {app: laya-exp}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector: {matchLabels: {app: laya-exp}}
+  template:
+    metadata: {labels: {app: laya-exp}}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: laya
+          image: 127.0.0.1:5000/laya-serve:local
+          imagePullPolicy: IfNotPresent
+          ports: [{name: http, containerPort: 8000}]
+          env:
+            - {name: HF_HOME, value: /models}
+            - {name: HF_HUB_OFFLINE, value: "1"}
+            - {name: LAYA_HOST, value: "0.0.0.0"}
+            - {name: LAYA_PORT, value: "8000"}
+            - {name: LAYA_DEVICE, value: cpu}
+            - {name: LAYA_THREADS, value: "1"}
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: ["ALL"]}}
+          resources:
+            requests: {cpu: "1", memory: 6Gi}
+            limits: {cpu: "1", memory: 6Gi}
+          volumeMounts:
+            - {name: models, mountPath: /models}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: models
+          persistentVolumeClaim: {claimName: laya-models}
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: laya-exp, namespace: models}
+spec:
+  selector: {app: laya-exp}
+  ports: [{name: http, port: 8000, targetPort: http}]

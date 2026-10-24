@@ -1,0 +1,121 @@
+# Built locally (buildah) and pushed to the in-cluster registry (config/registry/).
+image:
+  repository: 127.0.0.1:5000/assistant
+  tag: local
+  # Always: the in-cluster Kaniko build (config/registry/kaniko-build.sh) pushes a
+  # mutable `:local` tag, so a cached image must not be reused.
+  pullPolicy: Always
+
+# Upstream LLM: the in-cluster llama.cpp service (apps/models/llm).
+llm:
+  url: http://llm.models.svc.cluster.local:8000
+  model: qwen2.5-1.5b-instruct
+  timeoutSeconds: "60"
+
+# M5: read-only PromQL source. The in-cluster VictoriaMetrics store
+# (config/victoriametrics, namespace observability).
+vm:
+  url: http://victoriametrics.observability.svc.cluster.local:8428
+  queryTimeoutSeconds: "5"
+
+# M6: optional documentation corpus, mounted read-only at /corpus. Build it with
+# scripts/assistant-corpus.sh. Absent/empty => search_knowledge reports "no
+# corpus" instead of failing.
+corpus:
+  configMapName: assistant-corpus
+
+# M8: voice is a bolt-on. TTS is the in-cluster Kokoro service; STT is optional
+# (point sttUrl at a local OpenAI-compatible transcription service to enable it).
+voice:
+  kokoroUrl: http://kokoro.models.svc.cluster.local:8000
+  kokoroVoice: af_sarah
+  sttUrl: ""
+  # Synthesize speech in the background as soon as it exists (cache the WAV).
+  background: "true"
+
+# M10: durable memory (long-term notes + per-session history) on a small PVC.
+memory:
+  size: 1Gi
+  storageClassName: ""
+
+service:
+  port: 8080
+  # Give the assistant its own LoadBalancer IP (Cilium LB IPAM, lan-pool) so you
+  # can reach it directly at http://192.168.0.243/ with no /etc/hosts entry —
+  # the ingress (assistant.localhost) still works too.
+  type: LoadBalancer
+  loadBalancerIP: "192.168.0.243"
+
+# M11: expose the htmx chat UI through the Cilium Ingress Controller as
+# assistant.localhost (add the host via scripts/hosts-entries.sh).
+ingress:
+  enabled: true
+  className: cilium
+  # *.localhost = scripts/hosts-entries.sh fallback; direct access uses the
+  # assistant LoadBalancer IP (192.168.0.243) — no DNS and no /etc/hosts entry.
+  hosts:
+    - assistant.localhost
+
+# M11: resource links shown in the chat UI header (JSON passed to the app).
+ui:
+  # Bare LoadBalancer IPs (config/grafana .245, config/victoriametrics .246,
+  # hubble-ui .241) — no DNS and no /etc/hosts entry needed. Argo CD is
+  # intentionally absent: it stays ClusterIP-only (see AGENTS.md).
+  links:
+    - { label: "Grafana", url: "http://192.168.0.245/" }
+    - { label: "Hubble UI", url: "http://192.168.0.241/" }
+    - { label: "VictoriaMetrics", url: "http://192.168.0.246/" }
+
+# CORS: origins allowed to call the API from a browser UI (e.g. the fuwa UI at
+# http://192.168.0.244). "*" allows any origin; the API is read-only, no cookies.
+cors:
+  origins: "*"
+
+# Evidence provenance: resolvable hosts the assistant turns into deep links.# Grafana gets a direct Explore URL; Hubble is namespace-scoped only. Both are
+# bare LoadBalancer IPs (no DNS resolution required).
+provenance:
+  grafanaUrl: "http://192.168.0.245"
+  hubbleUrl: "http://192.168.0.241"
+  neo4jUiUrl: "http://192.168.0.242/browser/?dbms=bolt%3A%2F%2F192.168.0.242%3A7687&db=neo4j&preselectAuthMethod=NO_AUTH"
+  grafanaDatasourceUid: ""            # optional; else match grafanaDatasourceName
+  grafanaDatasourceName: "victoriametrics"
+
+# Cluster-topology tools.
+topology:
+  maxNodes: "150"                     # get_topology (live, k8s API) bound
+  maxEdges: "250"
+  neo4jUrl: "bolt://cartography-neo4j.cartography.svc.cluster.local:7687"
+  neo4jDatabase: "neo4j"
+
+# Read-only ClusterRole + binding for the assistant ServiceAccount. When false,
+# no RBAC is created and no API token is mounted (text-only, Milestone 1 mode).
+rbac:
+  create: true
+  # M9: permit level-2 actions (restart/scale) to execute after human
+  # confirmation. Adds the write ClusterRole; off by default (least privilege).
+  allowActions: false
+
+# M9: bounds on level-2 actions.
+actions:
+  # Namespaces actions may target; empty = any namespace.
+  allowNamespaces: ""
+  # Confirmation token lifetime, seconds.
+  ttlSeconds: "120"
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi
+
+# In-process concurrency limit + bounded FIFO queue for LLM-bound requests.
+# SCOPE: single replica, single uvicorn worker (see apps/assistant/concurrency.py).
+# At most `llmConcurrency` requests run at once; up to `llmQueueSize` more wait
+# FIFO; any further request gets 429 + Retry-After. If the pod is ever scaled to
+# more than one replica, each replica keeps its own limit (multiplying the total).
+concurrency:
+  llmConcurrency: "1"
+  llmQueueSize: "8"
+  retryAfterSeconds: "5"

@@ -1,0 +1,138 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: assistant
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "assistant.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "assistant.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "assistant.selectorLabels" . | nindent 8 }}
+    spec:
+      serviceAccountName: assistant
+      # Milestone 2: read the Kubernetes API as this ServiceAccount, bounded by
+      # the read-only ClusterRole in rbac.yaml. No token is mounted when RBAC is
+      # disabled (Milestone 1, text-only).
+      automountServiceAccountToken: {{ .Values.rbac.create }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: assistant
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.service.port }}
+          env:
+            - name: LLM_URL
+              value: {{ .Values.llm.url | quote }}
+            - name: LLM_MODEL
+              value: {{ .Values.llm.model | quote }}
+            - name: REQUEST_TIMEOUT
+              value: {{ .Values.llm.timeoutSeconds | quote }}
+            - name: AUDIT_LOG
+              value: /var/log/assistant/audit.jsonl
+            - name: VM_URL
+              value: {{ .Values.vm.url | quote }}
+            - name: VM_QUERY_TIMEOUT
+              value: {{ .Values.vm.queryTimeoutSeconds | quote }}
+            - name: CORPUS_DIR
+              value: /corpus
+            - name: KOKORO_URL
+              value: {{ .Values.voice.kokoroUrl | quote }}
+            - name: KOKORO_VOICE
+              value: {{ .Values.voice.kokoroVoice | quote }}
+            - name: STT_URL
+              value: {{ .Values.voice.sttUrl | quote }}
+            - name: TTS_BACKGROUND
+              value: {{ .Values.voice.background | quote }}
+            - name: ACTIONS_ENABLED
+              value: {{ .Values.rbac.allowActions | quote }}
+            - name: ACTION_NAMESPACES
+              value: {{ .Values.actions.allowNamespaces | quote }}
+            - name: ACTION_TTL_SECONDS
+              value: {{ .Values.actions.ttlSeconds | quote }}
+            - name: MEMORY_DIR
+              value: /memory
+            - name: UI_LINKS
+              value: {{ .Values.ui.links | toJson | quote }}
+            - name: GRAFANA_URL
+              value: {{ .Values.provenance.grafanaUrl | quote }}
+            - name: HUBBLE_URL
+              value: {{ .Values.provenance.hubbleUrl | quote }}
+            - name: GRAFANA_DATASOURCE_UID
+              value: {{ .Values.provenance.grafanaDatasourceUid | quote }}
+            - name: GRAFANA_DATASOURCE_NAME
+              value: {{ .Values.provenance.grafanaDatasourceName | quote }}
+            - name: CORS_ORIGINS
+              value: {{ .Values.cors.origins | quote }}
+            - name: NEO4J_UI_URL
+              value: {{ .Values.provenance.neo4jUiUrl | quote }}
+            - name: TOPOLOGY_MAX_NODES
+              value: {{ .Values.topology.maxNodes | quote }}
+            - name: TOPOLOGY_MAX_EDGES
+              value: {{ .Values.topology.maxEdges | quote }}
+            - name: NEO4J_URL
+              value: {{ .Values.topology.neo4jUrl | quote }}
+            - name: NEO4J_DATABASE
+              value: {{ .Values.topology.neo4jDatabase | quote }}
+            # In-process concurrency limiter (single replica, single worker).
+            - name: LLM_CONCURRENCY
+              value: {{ .Values.concurrency.llmConcurrency | quote }}
+            - name: LLM_QUEUE_SIZE
+              value: {{ .Values.concurrency.llmQueueSize | quote }}
+            - name: LLM_RETRY_AFTER_SECONDS
+              value: {{ .Values.concurrency.retryAfterSeconds | quote }}
+          startupProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 2
+            failureThreshold: 30
+          readinessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 20
+            failureThreshold: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: audit
+              mountPath: /var/log/assistant
+            - name: tmp
+              mountPath: /tmp
+            - name: corpus
+              mountPath: /corpus
+              readOnly: true
+            - name: memory
+              mountPath: /memory
+      volumes:
+        - name: audit
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
+        # Optional: created out-of-band by scripts/assistant-corpus.sh.
+        - name: corpus
+          configMap:
+            name: {{ .Values.corpus.configMapName }}
+            optional: true
+        - name: memory
+          persistentVolumeClaim:
+            claimName: assistant-memory

@@ -12,7 +12,9 @@ kubeconform_bin="${KUBECONFORM_BIN:-kubeconform}"
 # APIs used by the platform charts.
 kubernetes_schema_version="${KUBERNETES_SCHEMA_VERSION:-v1.31.0}"
 schema_location="https://raw.githubusercontent.com/yannh/kubernetes-json-schema/master/${kubernetes_schema_version}-standalone-strict/{{.ResourceKind}}{{.KindSuffix}}.json"
-charts_root="${repo_root}/config"
+# Validate every chart in the repository: platform charts under config/ and
+# application charts under apps/.
+chart_roots=("${repo_root}/config" "${repo_root}/apps")
 
 echo "Validating local Cilium/Hubble path and Tilt resource bindings"
 "${repo_root}/scripts/validate-local-paths.sh"
@@ -27,10 +29,10 @@ command -v "${kubeconform_bin}" >/dev/null 2>&1 || {
   exit 1
 }
 
-mapfile -d '' charts < <(find "${charts_root}" -type f -name Chart.yaml -print0 | sort -z)
+mapfile -d '' charts < <(find "${chart_roots[@]}" -type f -name Chart.yaml -print0 | sort -z)
 
 if ((${#charts[@]} == 0)); then
-  echo "No Helm charts found below ${charts_root}; validation will run when a chart is added."
+  echo "No Helm charts found; validation will run when a chart is added."
   exit 0
 fi
 

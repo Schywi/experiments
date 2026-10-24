@@ -1,0 +1,80 @@
+{{- if .Values.ciliumNetworkPolicy.enabled }}
+# Allow-list for the Cartography sync pod and the Neo4j pod.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: {{ include "cartography.fullname" . }}-sync
+  labels:
+    {{- include "cartography.labels" . | nindent 4 }}
+spec:
+  endpointSelector:
+    matchLabels:
+      {{- include "cartography.selectorLabels" . | nindent 6 }}
+  egress:
+    # Neo4j (same namespace).
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: {{ .Release.Namespace }}
+            app.kubernetes.io/name: {{ include "cartography.name" . }}-neo4j
+            app.kubernetes.io/instance: {{ .Release.Name }}
+      toPorts:
+        - ports:
+            - port: "7687"
+              protocol: TCP
+    # Kubernetes API server (kube-apiserver entity).
+    - toEntities:
+        - kube-apiserver
+    # DNS resolution.
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: {{ include "cartography.fullname" . }}-neo4j
+  labels:
+    {{- include "cartography.labels" . | nindent 4 }}
+spec:
+  endpointSelector:
+    matchLabels:
+      {{- include "cartography.neo4jSelectorLabels" . | nindent 6 }}
+  ingress:
+    # Cartography sync pod -> bolt.
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: {{ .Release.Namespace }}
+            app.kubernetes.io/name: {{ include "cartography.name" . }}
+            app.kubernetes.io/instance: {{ .Release.Name }}
+      toPorts:
+        - ports:
+            - port: "7687"
+              protocol: TCP
+    # In-cluster read-only client: the assistant's get_topology_snapshot.
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: assistant
+      toPorts:
+        - ports:
+            - port: "7687"
+              protocol: TCP
+    # External access: the Cilium Ingress (Browser on 7474) and the
+    # LoadBalancer (bolt 7687 / Browser 7474) for out-of-cluster clients.
+    - fromEntities:
+        - ingress
+        - world
+        - host
+      toPorts:
+        - ports:
+            - port: "7474"
+              protocol: TCP
+            - port: "7687"
+              protocol: TCP
+{{- end }}

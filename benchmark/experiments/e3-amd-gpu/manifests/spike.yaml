@@ -1,0 +1,85 @@
+# E3 Vulkan spike — does llama.cpp actually run on gfx803 via RADV?
+# Isolated namespace `gpu-exp` with its OWN model PVC (so it does not reach into
+# another namespace's PVC). Non-privileged; joins render gid 105, mounts /dev/dri.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gpu-exp
+  labels:
+    app.kubernetes.io/part-of: gpu-lab
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: gpu-models
+  namespace: gpu-exp
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 4Gi
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: llama-vulkan-spike
+  namespace: gpu-exp
+  labels:
+    app.kubernetes.io/part-of: gpu-lab
+spec:
+  restartPolicy: Never
+  securityContext:
+    supplementalGroups: [105]          # render group (gid 105 on this host)
+  initContainers:
+    - name: fetch-weights
+      image: 127.0.0.1:5000/llama-vulkan:local
+      imagePullPolicy: IfNotPresent
+      command: ["sh", "-c"]
+      args:
+        - |
+          set -e
+          dest=/models/Qwen2.5-1.5B-Instruct-Q4_K_M.gguf
+          if [ ! -f "$dest" ]; then
+            curl -fL --retry 3 -o "$dest" \
+              https://huggingface.co/bartowski/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/Qwen2.5-1.5B-Instruct-Q4_K_M.gguf
+          fi
+          ls -lh "$dest"
+      securityContext: {allowPrivilegeEscalation: false, capabilities: {drop: ["ALL"]}}
+      resources:
+        requests: {cpu: 100m, memory: 256Mi}
+        limits: {cpu: 100m, memory: 256Mi}
+      volumeMounts:
+        - {name: models, mountPath: /models}
+  containers:
+    - name: llama
+      image: 127.0.0.1:5000/llama-vulkan:local
+      imagePullPolicy: IfNotPresent
+      command: ["sh", "-c"]
+      args:
+        - |
+          echo "=== devices ==="; ls -l /dev/dri || true
+          echo "=== vulkaninfo (summary) ==="; vulkaninfo --summary 2>&1 | head -50 || true
+          echo "=== llama-server (Vulkan, -ngl 99) ==="
+          llama-server -m /models/Qwen2.5-1.5B-Instruct-Q4_K_M.gguf \
+            -ngl 99 -c 1024 --host 0.0.0.0 --port 8000 > /tmp/ls.log 2>&1 &
+          sleep 75
+          echo "=== server log (device line) ==="; grep -iE "vulkan|device|backend|error|failed" /tmp/ls.log | head -30 || true
+          echo "=== completion ==="
+          curl -s --max-time 40 http://localhost:8000/v1/chat/completions \
+            -H 'content-type: application/json' \
+            -d '{"messages":[{"role":"user","content":"Say hi in three words."}],"max_tokens":16,"temperature":0}' || true
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities: {drop: ["ALL"]}
+      resources:
+        requests: {cpu: "1", memory: 2Gi}
+        limits: {cpu: "3", memory: 4Gi}
+      volumeMounts:
+        - {name: dri, mountPath: /dev/dri}
+        - {name: models, mountPath: /models}
+  volumes:
+    - name: dri
+      hostPath: {path: /dev/dri, type: Directory}
+    - name: models
+      persistentVolumeClaim: {claimName: gpu-models}

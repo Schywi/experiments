@@ -1,0 +1,32 @@
+# E3 GPU-sharing probe: can TWO pods hold amd.com/render at once?
+# The device plugin advertises exactly one render node (amd.com/render: 1), so
+# only one pod should schedule; the other stays Pending (Insufficient).
+apiVersion: v1
+kind: List
+items:
+  - apiVersion: v1
+    kind: Pod
+    metadata: {name: gpu-share-a, namespace: gpu-exp}
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: hold
+          image: 127.0.0.1:5000/gpu-device-plugin:local
+          imagePullPolicy: IfNotPresent
+          command: ["sleep", "120"]
+          resources:
+            requests: {amd.com/render: 1}
+            limits: {amd.com/render: 1}
+  - apiVersion: v1
+    kind: Pod
+    metadata: {name: gpu-share-b, namespace: gpu-exp}
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: hold
+          image: 127.0.0.1:5000/gpu-device-plugin:local
+          imagePullPolicy: IfNotPresent
+          command: ["sleep", "120"]
+          resources:
+            requests: {amd.com/render: 1}
+            limits: {amd.com/render: 1}

@@ -1,0 +1,44 @@
+# E3 GPU arm: llama.cpp Vulkan, all layers on GPU, holds the device plugin's
+# amd.com/render grant (which adds renderD128 to the container's device cgroup).
+apiVersion: v1
+kind: Pod
+metadata:
+  name: bench-gpu
+  namespace: gpu-exp
+  labels: {app.kubernetes.io/part-of: gpu-lab, arm: gpu}
+spec:
+  restartPolicy: Never
+  containers:
+    - name: bench
+      image: 127.0.0.1:5000/llama-vulkan:local
+      imagePullPolicy: IfNotPresent
+      command: ["sh", "-c"]
+      args:
+        - |
+          echo "=== devices ==="; ls -l /dev/dri || true
+          echo "=== vulkaninfo device ==="; vulkaninfo --summary 2>&1 | grep -iE "GPU|deviceName|driverName|RADV|ERROR|permitted" | head -20 || true
+          llama-server -m /models/Qwen2.5-1.5B-Instruct-Q4_K_M.gguf -ngl 99 -c 1024 \
+            --host 127.0.0.1 --port 8000 > /tmp/srv.log 2>&1 &
+          PID=$!
+          for i in $(seq 1 90); do curl -sf http://127.0.0.1:8000/health >/dev/null 2>&1 && break; sleep 2; done
+          echo "=== ready_after_iters=$i ==="
+          grep -iE "vulkan|offload|device|backend|error|permitted" /tmp/srv.log | head -25 || true
+          grep -E "VmHWM|VmRSS" /proc/$PID/status || true
+          echo "=== gpu sysfs ==="; cat /sys/class/drm/card1/device/gpu_busy_percent 2>/dev/null || echo "no gpu_busy_percent"; cat /sys/class/drm/card1/device/mem_info_vram_used 2>/dev/null || echo "no vram"
+          for P in "Say hi in three words." "What is a Kubernetes pod?" "Explain TCP in one sentence."; do
+            echo "METRIC_BEGIN"
+            curl -s --max-time 180 http://127.0.0.1:8000/v1/chat/completions -H 'content-type: application/json' \
+              -d "{\"messages\":[{\"role\":\"user\",\"content\":\"$P\"}],\"max_tokens\":64,\"temperature\":0}"
+            echo
+            echo "METRIC_END"
+          done
+          kill $PID 2>/dev/null
+      securityContext: {allowPrivilegeEscalation: false, capabilities: {drop: ["ALL"]}}
+      resources:
+        requests: {cpu: "1", memory: 2Gi, amd.com/render: 1}
+        limits: {cpu: "4", memory: 4Gi, amd.com/render: 1}
+      volumeMounts:
+        - {name: models, mountPath: /models, readOnly: true}
+  volumes:
+    - name: models
+      persistentVolumeClaim: {claimName: gpu-models, readOnly: true}

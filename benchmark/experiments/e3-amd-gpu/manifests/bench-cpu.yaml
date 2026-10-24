@@ -1,0 +1,40 @@
+# E3 CPU arm: the SAME image/model/settings, CPU only (-ngl 0), no GPU resource.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: bench-cpu
+  namespace: gpu-exp
+  labels: {app.kubernetes.io/part-of: gpu-lab, arm: cpu}
+spec:
+  restartPolicy: Never
+  containers:
+    - name: bench
+      image: 127.0.0.1:5000/llama-vulkan:local
+      imagePullPolicy: IfNotPresent
+      command: ["sh", "-c"]
+      args:
+        - |
+          llama-server -m /models/Qwen2.5-1.5B-Instruct-Q4_K_M.gguf -ngl 0 -c 1024 --threads 4 \
+            --host 127.0.0.1 --port 8000 > /tmp/srv.log 2>&1 &
+          PID=$!
+          for i in $(seq 1 90); do curl -sf http://127.0.0.1:8000/health >/dev/null 2>&1 && break; sleep 2; done
+          echo "=== ready_after_iters=$i (ngl=0, cpu) ==="
+          grep -iE "vulkan|offload|device|backend|error" /tmp/srv.log | head -15 || true
+          grep -E "VmHWM|VmRSS" /proc/$PID/status || true
+          for P in "Say hi in three words." "What is a Kubernetes pod?" "Explain TCP in one sentence."; do
+            echo "METRIC_BEGIN"
+            curl -s --max-time 300 http://127.0.0.1:8000/v1/chat/completions -H 'content-type: application/json' \
+              -d "{\"messages\":[{\"role\":\"user\",\"content\":\"$P\"}],\"max_tokens\":64,\"temperature\":0}"
+            echo
+            echo "METRIC_END"
+          done
+          kill $PID 2>/dev/null
+      securityContext: {allowPrivilegeEscalation: false, capabilities: {drop: ["ALL"]}}
+      resources:
+        requests: {cpu: "1", memory: 2Gi}
+        limits: {cpu: "4", memory: 4Gi}
+      volumeMounts:
+        - {name: models, mountPath: /models, readOnly: true}
+  volumes:
+    - name: models
+      persistentVolumeClaim: {claimName: gpu-models, readOnly: true}

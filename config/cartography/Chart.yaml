@@ -1,0 +1,11 @@
+apiVersion: v2
+name: cartography
+description: Cartography infrastructure graph (Neo4j + Kubernetes sync) for the Cilium lab
+type: application
+version: 0.1.0
+appVersion: "0.141.0"
+keywords:
+  - cartography
+  - neo4j
+  - graph
+  - security

@@ -1,0 +1,46 @@
+# Native k3s server configuration for the Fedora host.
+#
+# This is the bare-metal counterpart to config/k3d/create.sh. Cilium owns
+# cluster networking in both profiles, so the same k3s components are disabled
+# here; on a real host kernel we simply get working eBPF back (the k3d path had
+# to fall back to iptables masquerading).
+#
+# Install target: /etc/rancher/k3s/config.yaml (see install-k3s.sh).
+
+write-kubeconfig-mode: "0644"
+
+# Do NOT set bind-address to loopback. k3s advertises the "kubernetes" Service
+# endpoint as the node IP, so Pods reach the API through Cilium's kube-proxy
+# replacement at that address. A loopback-only API (bind-address: 127.0.0.1)
+# leaves every Pod unable to reach the API -- and therefore DNS -- even though
+# the node reports Ready. Leave bind-address unset so the API listens on the
+# node's interfaces; restrict port 6443 with firewalld if LAN exposure matters.
+
+# Cilium is the only CNI. Without these, k3s ships Flannel and its own
+# kube-proxy, which conflict with Cilium's eBPF datapath.
+flannel-backend: none
+disable-network-policy: true
+disable-kube-proxy: true
+
+# Match the defaults the k3d profile used, so pod/service addressing is
+# identical across profiles.
+cluster-cidr: 10.42.0.0/16
+service-cidr: 10.43.0.0/16
+
+# Use a cluster-owned resolver file instead of the host's /etc/resolv.conf.
+# The host carries `search mygateway`, which leaks into Pods and makes external
+# name resolution stall (see config/k3s/resolv.conf). This file is installed by
+# install-k3s.sh.
+resolv-conf: /etc/rancher/k3s/resolv.conf
+
+# Traefik and ServiceLB are unused: Cilium provides ingress, and LoadBalancer
+# exposure is deliberately deferred (see README).
+disable:
+  - traefik
+  - servicelb
+
+# The host runs Fedora's zram swap. kubelet must start with swap present so
+# host services keep using it. Pod swap is a further, separate kubelet choice
+# (memorySwap.swapBehavior); see README.
+kubelet-arg:
+  - fail-swap-on=false

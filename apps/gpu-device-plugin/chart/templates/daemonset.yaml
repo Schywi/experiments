@@ -1,0 +1,55 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: gpu-device-plugin
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "gpu-device-plugin.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "gpu-device-plugin.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "gpu-device-plugin.selectorLabels" . | nindent 8 }}
+    spec:
+      # The plugin only talks to kubelet over the device-plugin socket.
+      serviceAccountName: gpu-device-plugin
+      automountServiceAccountToken: false
+      tolerations:
+        - operator: Exists
+      containers:
+        - name: plugin
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - name: RESOURCE_NAME
+              value: {{ .Values.resourceName | quote }}
+            - name: RENDER_PATH
+              value: {{ .Values.renderPath | quote }}
+            - name: DEVICE_PLUGIN_DIR
+              value: {{ .Values.devicePluginDir | quote }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            # Directory the kubelet watches for device-plugin sockets.
+            - name: device-plugins
+              mountPath: {{ .Values.devicePluginDir }}
+            # Read-only view so the plugin can enumerate renderD*.
+            - name: dri
+              mountPath: {{ .Values.renderPath }}
+              readOnly: true
+      volumes:
+        - name: device-plugins
+          hostPath:
+            path: {{ .Values.devicePluginDir }}
+            type: Directory
+        - name: dri
+          hostPath:
+            path: {{ .Values.renderPath }}
+            type: Directory

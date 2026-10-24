@@ -1,0 +1,83 @@
+{{- if .Values.rbac.create }}
+# Read-only cluster access for the Cartography Kubernetes sync. Mirrors the
+# `cartography-viewer` ClusterRole documented by the Cartography project.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "cartography.fullname" . }}-viewer
+  labels:
+    {{- include "cartography.labels" . | nindent 4 }}
+rules:
+  # Namespaces: get for kube-system cluster metadata, list for namespace sync.
+  - apiGroups: [""]
+    resources:
+      - namespaces
+    verbs: ["get", "list"]
+  # Core resources.
+  - apiGroups: [""]
+    resources:
+      - nodes
+      - pods
+      - services
+      - serviceaccounts
+    verbs: ["list"]
+  # Persistent storage.
+  - apiGroups: [""]
+    resources:
+      - persistentvolumes
+      - persistentvolumeclaims
+    verbs: ["list"]
+  - apiGroups: ["storage.k8s.io"]
+    resources:
+      - storageclasses
+    verbs: ["list"]
+  # Workload controllers.
+  - apiGroups: ["apps"]
+    resources:
+      - deployments
+      - replicasets
+      - statefulsets
+      - daemonsets
+    verbs: ["list"]
+  - apiGroups: ["batch"]
+    resources:
+      - jobs
+      - cronjobs
+    verbs: ["list"]
+  # RBAC resources.
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources:
+      - roles
+      - rolebindings
+      - clusterroles
+      - clusterrolebindings
+    verbs: ["list"]
+  # Networking resources.
+  - apiGroups: ["networking.k8s.io"]
+    resources:
+      - ingresses
+      - networkpolicies
+    verbs: ["list"]
+  {{- if .Values.rbac.allowListSecrets }}
+  # Optional: secret metadata (also exposes secret content, see values.yaml).
+  - apiGroups: [""]
+    resources:
+      - secrets
+    verbs: ["list"]
+  {{- end }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "cartography.fullname" . }}-viewer
+  labels:
+    {{- include "cartography.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "cartography.fullname" . }}-viewer
+subjects:
+  - kind: ServiceAccount
+    name: {{ .Values.serviceAccount.name }}
+    namespace: {{ .Release.Namespace }}
+{{- end }}

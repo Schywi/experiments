@@ -1,0 +1,95 @@
+# Experiment E2 arm deployments: the SAME instrumented assistant image, pointed
+# at the isolated llm-exp / laya-exp. Two deployments differ only by PLANNER_KIND,
+# so both arms share an identical Qwen. NOT GitOps-managed; applied by hand.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: assistant-e2-laya
+  namespace: assistant
+  labels: {app: assistant-e2-laya}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector: {matchLabels: {app: assistant-e2-laya}}
+  template:
+    metadata: {labels: {app: assistant-e2-laya}}
+    spec:
+      serviceAccountName: assistant
+      automountServiceAccountToken: true
+      securityContext: {runAsNonRoot: true, runAsUser: 10001, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: assistant
+          image: 127.0.0.1:5000/assistant:laya-exp
+          imagePullPolicy: Always
+          ports: [{name: http, containerPort: 8080}]
+          env:
+            - {name: PLANNER_KIND, value: laya}
+            - {name: LAYA_URL, value: "http://laya-exp.models.svc.cluster.local:8000"}
+            - {name: LLM_URL, value: "http://llm-exp.models.svc.cluster.local:8000"}
+            - {name: LLM_MODEL, value: qwen2.5-1.5b-instruct}
+            - {name: REQUEST_TIMEOUT, value: "60"}
+            - {name: VM_URL, value: "http://victoriametrics.observability.svc.cluster.local:8428"}
+            - {name: AUDIT_LOG, value: /tmp/assistant/audit.jsonl}
+            - {name: MEMORY_DIR, value: /tmp/memory}
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: ["ALL"]}}
+          resources:
+            requests: {cpu: 100m, memory: 128Mi}
+            limits: {cpu: 500m, memory: 256Mi}
+          volumeMounts: [{name: tmp, mountPath: /tmp}]
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: assistant-e2-laya, namespace: assistant}
+spec:
+  selector: {app: assistant-e2-laya}
+  ports: [{name: http, port: 8080, targetPort: http}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: assistant-e2-qwen
+  namespace: assistant
+  labels: {app: assistant-e2-qwen}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector: {matchLabels: {app: assistant-e2-qwen}}
+  template:
+    metadata: {labels: {app: assistant-e2-qwen}}
+    spec:
+      serviceAccountName: assistant
+      automountServiceAccountToken: true
+      securityContext: {runAsNonRoot: true, runAsUser: 10001, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: assistant
+          image: 127.0.0.1:5000/assistant:laya-exp
+          imagePullPolicy: Always
+          ports: [{name: http, containerPort: 8080}]
+          env:
+            - {name: PLANNER_KIND, value: qwen}
+            - {name: LAYA_URL, value: "http://laya-exp.models.svc.cluster.local:8000"}
+            - {name: LLM_URL, value: "http://llm-exp.models.svc.cluster.local:8000"}
+            - {name: LLM_MODEL, value: qwen2.5-1.5b-instruct}
+            - {name: REQUEST_TIMEOUT, value: "60"}
+            - {name: VM_URL, value: "http://victoriametrics.observability.svc.cluster.local:8428"}
+            - {name: AUDIT_LOG, value: /tmp/assistant/audit.jsonl}
+            - {name: MEMORY_DIR, value: /tmp/memory}
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: ["ALL"]}}
+          resources:
+            requests: {cpu: 100m, memory: 128Mi}
+            limits: {cpu: 500m, memory: 256Mi}
+          volumeMounts: [{name: tmp, mountPath: /tmp}]
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: assistant-e2-qwen, namespace: assistant}
+spec:
+  selector: {app: assistant-e2-qwen}
+  ports: [{name: http, port: 8080, targetPort: http}]

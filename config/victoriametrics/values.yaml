@@ -1,0 +1,59 @@
+fullnameOverride: victoriametrics
+
+image:
+  repository: docker.io/victoriametrics/victoria-metrics
+  tag: "v1.153.0"
+  digest: "sha256:5eff7af5341e401471002f58d106d399e614a62f3d240f2dbc21901e49eed5dd"
+  pullPolicy: IfNotPresent
+
+service:
+  # Give VictoriaMetrics its own LoadBalancer IP (Cilium LB IPAM, lan-pool) so
+  # vmui is reachable at a bare IP — http://192.168.0.246/ — with no DNS and no
+  # /etc/hosts entry. Port 80 maps to the container's 8428 (see service.yaml).
+  type: LoadBalancer
+  port: 8428
+  webPort: 80
+  loadBalancerIP: "192.168.0.246"
+
+# Prometheus-compatible scrape settings. VictoriaMetrics single-node scrapes the
+# Cilium agent/operator/Hubble-relay pods itself (via kubernetes_sd_configs) and
+# serves the results to Grafana over its Prometheus query API.
+scrapeInterval: 30s
+# How often VictoriaMetrics reloads the scrape config file.
+scrapeConfigCheckInterval: 30s
+# Metric retention; 30d keeps a month of Cilium/Hubble history.
+retentionPeriod: 30d
+
+storage:
+  size: 5Gi
+  # Empty string uses the cluster default StorageClass.
+  storageClassName: ""
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: "1"
+    memory: 1Gi
+
+serviceAccount:
+  create: true
+  name: victoriametrics
+
+rbac:
+  create: true
+
+ciliumNetworkPolicy:
+  # Enforce an allow-list for the VictoriaMetrics pod. Requires Cilium.
+  enabled: true
+
+ingress:
+  # Expose the VictoriaMetrics vmui query UI through the Cilium Ingress
+  # Controller, like grafana.localhost. The *.localhost host is the
+  # scripts/hosts-entries.sh fallback; direct access uses the LoadBalancer IP
+  # above (http://192.168.0.246/) — no DNS and no /etc/hosts entry needed.
+  enabled: true
+  className: cilium
+  hosts:
+    - victoriametrics.localhost

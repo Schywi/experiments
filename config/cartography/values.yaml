@@ -1,0 +1,70 @@
+fullnameOverride: cartography
+
+# Bundled Neo4j graph database. Cartography writes the infrastructure graph here.
+neo4j:
+  image:
+    repository: docker.io/library/neo4j
+    tag: "5.26-community"
+    digest: "sha256:c7d25c0eeebfe125718d58b72ed5d663c85d0479047733845eb2237c67ce8069"
+    pullPolicy: IfNotPresent
+  # Allow only FUWA's origin to frame Neo4j Browser. Keep Neo4j's other
+  # static-content CSP restrictions intact.
+  browserContentSecurityPolicy: "default-src 'self'; script-src 'self' cdn.segment.com canny.io; img-src 'self' guides.neo4j.com data:; style-src 'self' fonts.googleapis.com 'unsafe-inline'; font-src 'self' fonts.gstatic.com; base-uri 'none'; object-src 'none'; frame-ancestors http://192.168.0.244; connect-src 'self' api.canny.io api.segment.io ws: wss: http: https:"
+  # Pin the external bolt endpoint (from the Cilium lan-pool) so Neo4j Browser
+  # can reach the database over bolt (7687) as well as the HTTP Ingress (7474).
+  loadBalancerIP: "192.168.0.242"
+  storage:
+    size: 2Gi
+    # Empty string uses the cluster default StorageClass.
+    storageClassName: ""
+  resources:
+    requests:
+      cpu: 100m
+      memory: 512Mi
+    limits:
+      cpu: "1"
+      memory: 1536Mi
+
+cartography:
+  image:
+    repository: ghcr.io/cartography-cncf/cartography
+    tag: "0.141.0"
+    digest: "sha256:9267f440e86cb79973f8f509573f658d51db4a36842a27042c741c0a46446c91"
+    pullPolicy: IfNotPresent
+  # Sync schedule (CronJob). Default: every 6 hours.
+  schedule: "0 */6 * * *"
+  # Comma-separated Cartography intel modules. Only the Kubernetes module is
+  # configured here; it syncs the cluster the pod runs in.
+  selectedModules: kubernetes
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+serviceAccount:
+  create: true
+  name: cartography
+
+rbac:
+  create: true
+  # Grant cluster-wide `list secrets` (metadata only; Kubernetes RBAC has no
+  # metadata-only verb, so this also exposes secret content to the sync).
+  allowListSecrets: false
+
+ciliumNetworkPolicy:
+  # Enforce an allow-list for the Neo4j and Cartography pods. Requires Cilium.
+  enabled: true
+
+ingress:
+  # Neo4j Browser via the Cilium Ingress Controller (like argocd.localhost).
+  # Cartography itself has no web UI; both hosts point at Neo4j Browser.
+  enabled: true
+  className: cilium
+  hosts:
+    # *.localhost = scripts/hosts-entries.sh fallback; direct access uses the
+    # Neo4j LoadBalancer IP (192.168.0.242) — no DNS and no /etc/hosts entry.
+    - neo4j.localhost
+    - cartography.localhost

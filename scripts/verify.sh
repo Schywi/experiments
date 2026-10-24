@@ -102,18 +102,21 @@ run_rbac_and_policy_checks() {
     fail 'wildcard RBAC permission found in rendered manifests'
   fi
 
-  # A Cilium policy is allowed to use only the four paths in the local Worm
-  # model. This is deliberately a closed list, so a new network capability
-  # requires an intentional verifier update.
+  # A Cilium policy is allowed to use only an approved set of ports. This is
+  # deliberately a closed list, so a new network capability requires an
+  # intentional verifier update. The observability ports are the Cilium/Hubble
+  # metrics endpoints (9962 agent, 9963 operator, 9965 Hubble agent, 9966 relay)
+  # plus the VictoriaMetrics (8428) and Grafana (3000) HTTP ports; 7474/7687 are
+  # the Cartography Neo4j Browser/bolt ports.
   while IFS= read -r port; do
     case "${port}" in
-      4000|8080|8081|443|53) ;;
+      4000|8080|8081|443|53|3000|7474|7687|8428|9962|9963|9965|9966) ;;
       *) fail "Cilium policy exposes a port outside the approved graph: ${port}" ;;
     esac
   done < <(awk '
     /^kind: CiliumNetworkPolicy$/ { in_policy=1; next }
     /^---$/ { in_policy=0 }
-    in_policy && /^[[:space:]]*port:[[:space:]]*/ {
+    in_policy && /^[[:space:]]*-?[[:space:]]*port:[[:space:]]*/ {
       value=$0
       sub(/.*port:[[:space:]]*/, "", value)
       gsub(/"/, "", value)

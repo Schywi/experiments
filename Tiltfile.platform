@@ -39,6 +39,14 @@ local_resource(
 )
 
 local_resource(
+    "sealed-secrets",
+    cmd=PLATFORM + "/sealed-secrets/install.sh",
+    deps=[PLATFORM + "/sealed-secrets/install.sh", PLATFORM + "/sealed-secrets/values.yaml"],
+    resource_deps=["node-dns"],
+    labels=["platform"],
+)
+
+local_resource(
     "argocd-install",
     cmd=ARGOCD + "/install.sh",
     deps=[ARGOCD + "/install.sh", ARGOCD + "/values.yaml"],

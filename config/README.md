@@ -8,7 +8,12 @@ platform entry points.
 
 ```text
 config/
+├── registry/                # rootless local image registry (native k3s profile)
 ├── metallb/                 # local Docker-bridge LoadBalancer installation and pool
+├── sealed-secrets/          # Sealed Secrets controller for commit-safe secrets
+├── cartography/             # Cartography infrastructure graph (Neo4j + Kubernetes sync)
+├── victoriametrics/         # Cilium/Hubble metrics store (single-node scrape + storage)
+├── grafana/                 # Grafana with the official Cilium/Hubble dashboards
 ├── helm/
 │   └── cilium/values.yaml   # shared Cilium chart defaults
 └── k3d/
@@ -25,6 +30,11 @@ config/
 preparation package for adding the runwasi Wasmtime shim to the existing k3d
 server. It deliberately does not run as part of bootstrap because it mutates
 and restarts the server node; see its README before use.
+
+`config/registry/` runs a small `registry:2` bound to the node's loopback so a
+buildah-built image reaches k3s **without `sudo`**: the node pulls the image
+instead of importing it, because every containerd import path is root-owned.
+See `config/registry/README.md`.
 
 The scripts expect Docker, k3d, Helm, and kubectl. For the normal workflow,
 run the repository entrypoint:
@@ -55,6 +65,18 @@ internal Argo CD server Service. `CILIUM_VERSION` is pinned in the script and
 should only be changed in a reviewed update.
 
 No credentials, kubeconfigs, certificates, tokens, or other secret-bearing
-material belongs in this directory. Keep local overrides outside Git and use
-an approved encryption mechanism such as Sealed Secrets if a future
-declarative secret is required.
+material belongs in this directory. `config/sealed-secrets/` installs the Sealed
+Secrets controller, and secrets are carried as committed `SealedSecret`
+resources that only the in-cluster controller can decrypt; keep the controller's
+private key backed up out of band. `config/cartography/` deploys the Cartography
+infrastructure graph (a bundled Neo4j plus a scheduled Kubernetes sync); its
+Neo4j runs without authentication.
+
+`config/victoriametrics/` and `config/grafana/` are the observability stack for
+the Cilium/Hubble metrics enabled in the Cilium values files. VictoriaMetrics
+single-node scrapes the Cilium agent (9962), operator (9963), Hubble agent
+(9965), and Hubble relay (9966) endpoints and stores the series; Grafana serves
+the official Cilium/Hubble dashboards from a provisioned Prometheus datasource
+pointing at that store. Both run in the `observability` namespace and are owned
+by Argo CD. Grafana runs with anonymous Admin access and no basic-auth login,
+mirroring the headless Argo CD and unauthenticated Neo4j already here.

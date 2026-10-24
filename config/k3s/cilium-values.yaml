@@ -1,0 +1,100 @@
+# Cilium Helm values for the native-k3s profile.
+#
+# This intentionally differs from config/helm/cilium/values.yaml, which targets
+# the Docker-backed k3d host whose kernel rejects Cilium 1.20's BPF SNAT
+# program. On a real Fedora kernel the full eBPF datapath is available:
+#   - bpf.masquerade: true         (BPF SNAT works; no iptables fallback)
+#   - bpf.hostLegacyRouting: false (k3d-only workaround, not needed here)
+#   - bpf.tproxy: true             (full BPF datapath)
+#   - ingressController disabled   (exposure is ClusterIP only in this slice)
+#
+# Official Cilium images use quay.io — the user-approved exception to the
+# repository's Docker Hub-only image policy.
+
+kubeProxyReplacement: true
+
+# Single-node k3s: the API is bound to 127.0.0.1 by config/k3s/config.yaml.
+k8sServiceHost: 127.0.0.1
+k8sServicePort: 6443
+
+bpf:
+  masquerade: true
+  hostLegacyRouting: false
+  tproxy: true
+  # Single-node observability lab: retain every packet trace so Hubble can
+  # render short-lived local service traffic.
+  monitorAggregation: none
+
+socketLB:
+  enabled: true
+
+ipam:
+  mode: kubernetes
+
+operator:
+  replicas: 1
+  prometheus:
+    enabled: true
+    port: 9963
+
+# Datapath metrics for the Cilium agent panels; config/victoriametrics scrapes
+# the agent on port 9962. No Prometheus Operator, so no ServiceMonitor.
+prometheus:
+  enabled: true
+  port: 9962
+
+hubble:
+  enabled: true
+  # Export Hubble flows as Prometheus metrics for the observability stack
+  # (config/victoriametrics + config/grafana). The cilium-agent serves them on
+  # port 9965; no Prometheus Operator is installed, so no ServiceMonitor.
+  metrics:
+    enabled:
+      - dns
+      - drop
+      - tcp
+      - flow
+      - port-distribution
+      - icmp
+      - "httpV2:exemplars=true;labelsContext=source_ip,source_namespace,source_workload,destination_ip,destination_namespace,destination_workload,traffic_direction"
+    port: 9965
+  relay:
+    enabled: true
+    # Hubble relay metrics on port 9966, scraped by config/victoriametrics.
+    prometheus:
+      enabled: true
+      port: 9966
+  ui:
+    enabled: true
+    backend:
+      image:
+        repository: quay.io/cilium/hubble-ui-backend
+        tag: v0.13.5
+        digest: sha256:fac0c300ae119274edca11fd89b1ad23c788792d8bc4ea2ba631c709e8d3c688
+        useDigest: true
+        pullPolicy: IfNotPresent
+    frontend:
+      image:
+        repository: quay.io/cilium/hubble-ui
+        tag: v0.13.5
+        digest: sha256:f7d514fc54d784ed6df9d58cf0e97648b143f92b766dd1780ed3fc845bd4c516
+        useDigest: true
+        pullPolicy: IfNotPresent
+
+# Cilium is the LoadBalancer implementation for this profile: it assigns
+# LoadBalancer IPs itself (LB IPAM) and announces them on the LAN (L2). There is
+# no MetalLB here. The pool and the L2 policy live in cilium-lb-ipam.yaml.
+l2announcements:
+  enabled: true
+externalIPs:
+  enabled: true
+
+# Run Cilium's shared Ingress Controller, exposed as a LoadBalancer backed by
+# Cilium LB IPAM (mirrors the k3d profile, minus MetalLB).
+ingressController:
+  enabled: true
+  loadbalancerMode: shared
+  service:
+    type: LoadBalancer
+    externalTrafficPolicy: Cluster
+    insecureNodePort: 30080

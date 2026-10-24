@@ -7,6 +7,7 @@ from the deployable platform configuration in `config/`.
 ```text
 apps/
 ├── controller/   # Go: Worm CRD, reconciliation, and replication endpoint
+├── models/       # CPU model services (Laya decisions, Kokoro TTS, small LLM)
 ├── regression/   # Elixir: sample ingestion and bounded linear regression
 └── worker/       # Native Rust worker Pod
 ```

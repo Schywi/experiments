@@ -1,0 +1,77 @@
+fullnameOverride: grafana
+
+image:
+  repository: docker.io/grafana/grafana
+  tag: "13.2.3"
+  digest: "sha256:b28bae15e219c998fb0e0424ed724930cc61b1f61fb404d47c862f9a23f9e572"
+  pullPolicy: IfNotPresent
+
+service:
+  # Give Grafana its own LoadBalancer IP (Cilium LB IPAM, lan-pool) so clients
+  # reach it at a bare IP — http://192.168.0.245/ — with no DNS and no /etc/hosts
+  # entry. Port 80 maps to the container's 3000 (see templates/service.yaml).
+  type: LoadBalancer
+  port: 3000
+  webPort: 80
+  loadBalancerIP: "192.168.0.245"
+
+# Prometheus-compatible datasource served by config/victoriametrics. Both charts
+# deploy into the same namespace, so the short Service name resolves.
+datasource:
+  name: VictoriaMetrics
+  uid: victoriametrics
+  url: http://victoriametrics:8428
+  timeInterval: 30s
+
+# Ship the official Cilium/Hubble dashboards (see README for provenance).
+dashboards:
+  enabled: true
+
+# Open Grafana directly on a dashboard instead of the empty home page. The path
+# is inside the mounted dashboards ConfigMap (see the deployment).
+homeDashboard:
+  enabled: true
+  path: /var/lib/grafana/dashboards/hubble-dashboard.json
+
+storage:
+  size: 2Gi
+  # Empty string uses the cluster default StorageClass.
+  storageClassName: ""
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 192Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+# No-auth lab, mirroring Argo CD (server.disable.auth) and Neo4j (NEO4J_AUTH=none).
+# Anonymous viewers receive the Admin role and the basic-auth login form is
+# disabled, so no Grafana credential is committed to this public repository.
+auth:
+  anonymous:
+    enabled: true
+    orgRole: Admin
+  basic:
+    enabled: false
+
+# Allow embedding Grafana in an iframe. Setting this makes Grafana omit the
+# `X-Frame-Options: deny` header (pkg/middleware/middleware.go), so the fuwa
+# shell can frame the dashboard cross-origin. Anonymous admin means the framed
+# page needs no login, so no cross-site cookie is involved.
+security:
+  allowEmbedding: true
+
+ciliumNetworkPolicy:
+  # Enforce an allow-list for the Grafana pod. Requires Cilium.
+  enabled: true
+
+ingress:
+  # Expose Grafana through the Cilium Ingress Controller. The *.localhost host is
+  # the scripts/hosts-entries.sh fallback; direct access uses the LoadBalancer IP
+  # above (http://192.168.0.245/) — no DNS and no /etc/hosts entry needed.
+  enabled: true
+  className: cilium
+  hosts:
+    - grafana.localhost
