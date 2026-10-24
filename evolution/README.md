@@ -17,7 +17,7 @@ read this directory for **why each layer exists**.
 | 1 | 2026-09-05 → 09-07 | `main` @ `4ba7b97` | Bounded self-replication on `k3d`: Go controller, Rust worker, Vector, Elixir regression, Cilium/Hubble | [01-bounded-worm-on-k3d.md](01-bounded-worm-on-k3d.md) |
 | 2 | 2026-10-06 | `native-k3s-gpu-models` @ `a2a7a41` → `cee5c95` | The pivot: native `k3s` on Fedora, Cilium LB-IPAM instead of MetalLB, rootless registry, Cartography, observability | [02-native-k3s-platform.md](02-native-k3s-platform.md) |
 | 3 | 2026-10-06 | `native-k3s-gpu-models` @ `a958eed` → `3baa2bd` | Track B: Laya, Kokoro and Qwen2.5-1.5B running in-cluster on CPU | [03-cpu-models-track-b.md](03-cpu-models-track-b.md) |
-| 4 | 2026-10-06 → 10-18 | `native-k3s-gpu-models` @ `5668f1a` → `ef3c128`, tag `e3-amd-gpu` | Track C: the AMD RX 570 YES/NO test, Go device plugin, Vulkan inference, honest VRAM verdict | [04-amd-gpu-track-c.md](04-amd-gpu-track-c.md) |
+| 4 | 2026-10-06 → 10-18 | `native-k3s-gpu-models` @ `5668f1a` → `ab05883`, tag `e3-amd-gpu` | Track C: the AMD RX 570 YES/NO test, Go device plugin, Vulkan inference, honest VRAM verdict | [04-amd-gpu-track-c.md](04-amd-gpu-track-c.md) |
 | 5 | 2026-10-06 → 10-12 | `native-k3s-gpu-models` @ `aaf6f81` → `b6a6581`, tag `e2-laya-vs-qwen-e2e` | Track D: the AI operations assistant, provenance, benchmarks, and the exposure/security posture | [05-ai-ops-track-d.md](05-ai-ops-track-d.md) |
 | — | every phase | all branches | Commit-level index: bd id, commit, date, phase | [evidence.md](evidence.md) |
 
@@ -43,4 +43,4 @@ cluster but has no Application in `config/argocd/applications/`.
   `blog/` holds the Phase-1 write-ups; `benchmark/` holds measurements.
 - Historical branches are kept, not rewritten: `main` is frozen at Phase 1,
   `trackc` holds the worm-lab line, and `cluster-evolution` is the merge of both
-  lines (`9b449fe`).
+  lines (`e6a4852`).

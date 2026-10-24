@@ -42,29 +42,30 @@ Ground rules that shaped it (from [`AGENTS.md`](AGENTS.md)):
    ▼
 4ba7b97  docs(experiments-8g7): describe bounded worm lab  2026-09-07  ← main frozen here
    │
-   │  Phase 2-4 — native k3s, CPU models, GPU, AI Ops  (191 commits)
+   │  Phase 2-4 — native k3s, CPU models, GPU, AI Ops  (101 commits after main)
    ▼
-ef3c128  docs(experiments-csn): E3 GPU single-pod probe    2026-10-18  ← native-k3s-gpu-models tip
+ab05883  docs(experiments-csn): E3 GPU single-pod probe    2026-10-18  ← native-k3s-gpu-models tip
    │
    ├───────────────┐  at 1ed3b42 (2026-10-06) the worm-lab work forked off to trackc
    │               ▼
    │        89f20f9  chore(experiments-qbf): scale worm-lab workloads to 0  ← trackc tip
    │               │
    ▼               ▼
-9b449fe  merge(experiments-5yi): fold the trackc worm-lab track into cluster-evolution
+e6a4852  merge(experiments-5yi): fold the trackc worm-lab track into cluster-evolution
          └── cluster-evolution (this branch)
 ```
 
-Measured divergence before unification:
+Measured divergence (after the cv purge, which removed 4 commits from this
+branch's history; see `evolution/evidence.md`):
 
 | Pair | Merge base | Left-only | Right-only |
 |---|---|---|---|
-| `main` ↔ `native-k3s-gpu-models` | `4ba7b97` | 0 | 105 |
-| `trackc` ↔ `native-k3s-gpu-models` | `1ed3b42` | 13 | 89 |
+| `main` ↔ `native-k3s-gpu-models` | `4ba7b97` | 0 | 101 |
+| `trackc` ↔ `native-k3s-gpu-models` | `1ed3b42` | 13 | 85 |
 
 `trackc`'s 13 commits are worm-lab/backport work; its assistant files were the
 superseded Milestone 1–3 prototype, which is why the merge resolved all 10
-conflicting files in `native-k3s-gpu-models`' favour (see commit `9b449fe`).
+conflicting files in `native-k3s-gpu-models`' favour (see commit `e6a4852`).
 
 ---
 
@@ -131,8 +132,8 @@ GPU — is the binding constraint on this host (~9 GiB free, ~7-8 GiB of models)
 
 **Anchors:** `5668f1a` (device probe), `4b6dbea` (Go device plugin),
 `c252241`/`0b8a527` on `trackc` (Vulkan smoke test on the RX 570),
-`81c398d`/`5720602` (Vulkan llama.cpp build), tag `e3-amd-gpu` at `30174f6`,
-`b1073c2` + `ef3c128` (E3 CPU-vs-GPU benchmark and contention probe).
+`81c398d`/`5720602` (Vulkan llama.cpp build), tag `e3-amd-gpu` at `9b5554e`,
+`a07bced` + `ab05883` (E3 CPU-vs-GPU benchmark and contention probe).
 **Paths:** `apps/gpu-device-plugin/`, `config/gpu/`, `benchmark/experiments/e3-amd-gpu/`.
 
 The honest result, and the most useful one to keep:

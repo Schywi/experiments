@@ -80,9 +80,9 @@ git rev-list --left-right --count native-k3s-gpu-models...trackc  # 89  13
 | 2026-10-06 | `0b8a527` | feat(experiments-ckq): verify Vulkan on RX 570; document device-cgroup requirement — on `trackc` |
 | 2026-10-09 | `81c398d` | feat(experiments-qbf): E3 Vulkan llama.cpp build + spike manifest |
 | 2026-10-09 | `5720602` | fix(experiments-qbf): add SPIRV-Headers to Vulkan build; make Kaniko wait configurable |
-| 2026-10-18 | `b1073c2` | feat(experiments-qbf): E3 CPU-vs-GPU Qwen benchmark, results + teardown |
-| 2026-10-18 | `30174f6` | docs(experiments-qbf): record E3 base commit hash — **tag `e3-amd-gpu`** |
-| 2026-10-18 | `ef3c128` | docs(experiments-csn): E3 GPU single-pod contention probe — **`native-k3s-gpu-models` tip** |
+| 2026-10-18 | `a07bced` | feat(experiments-qbf): E3 CPU-vs-GPU Qwen benchmark, results + teardown |
+| 2026-10-18 | `9b5554e` | docs(experiments-qbf): record E3 base commit hash — **tag `e3-amd-gpu`** |
+| 2026-10-18 | `ab05883` | docs(experiments-csn): E3 GPU single-pod contention probe — **`native-k3s-gpu-models` tip** |
 
 ## Phase 5 — AI operations assistant, Track D
 
@@ -113,9 +113,29 @@ git rev-list --left-right --count native-k3s-gpu-models...trackc  # 89  13
 
 | Date | Commit | Subject |
 |---|---|---|
-| 2026-10-22 | `9b449fe` | merge(experiments-5yi): fold the trackc worm-lab track into cluster-evolution |
+| 2026-10-22 | `e6a4852` | merge(experiments-5yi): fold the trackc worm-lab track into cluster-evolution |
 
 The merge resolved 10 conflicting files in `native-k3s-gpu-models`' favour
 (`README.md`, eight files under `apps/assistant/`, and
 `config/argocd/applications/assistant.yaml`), because `trackc` last touched
 those at its superseded Milestone 1–3 state.
+
+## History rewrite: cv/ purge (2026-10-24)
+
+`cv/codex-final-resume.md` was committed by mistake and pushed. It was removed
+from the tree in `12b59ae` and then purged from history with an index-filter
+rewrite (`bd experiments-0gv`), which dropped the four commits that touched only
+that path and rewrote everything after them. Commit ids from `d4768ea` onward on
+`native-k3s-gpu-models` and on this branch changed. Anything before `d4768ea` is
+untouched, and `main` and `trackc` never contained the path.
+
+Old ids below no longer resolve — they are listed only so an existing clone or a
+reader of an old message can find its way to the current commit:
+
+| Old | New | Subject |
+|---|---|---|
+| `d4768ea` `4fbb852` `84d01b4` `5d3d24a` | dropped | resume commits (only `cv/`) |
+| `b1073c2` | `a07bced` | E3 CPU-vs-GPU Qwen benchmark |
+| `30174f6` | `9b5554e` | record E3 base commit hash (tag `e3-amd-gpu`) |
+| `ef3c128` | `ab05883` | E3 GPU single-pod contention probe |
+| `9b449fe` | `e6a4852` | the trackc merge |

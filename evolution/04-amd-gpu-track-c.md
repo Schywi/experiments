@@ -2,7 +2,7 @@
 
 **Branch:** `native-k3s-gpu-models` (plus `trackc` for the Vulkan smoke test) ·
 anchors `5668f1a` (probe), `4b6dbea` (device plugin), `81c398d`/`5720602`
-(Vulkan llama.cpp), tag **`e3-amd-gpu`** at `30174f6`, `b1073c2` + `ef3c128`
+(Vulkan llama.cpp), tag **`e3-amd-gpu`** at `9b5554e`, `a07bced` + `ab05883`
 (E3 measurements) · **tracked paths:** [`../apps/gpu-device-plugin/`](../apps/gpu-device-plugin/),
 [`../config/gpu/`](../config/gpu/README.md), [`../benchmark/experiments/e3-amd-gpu/`](../benchmark/experiments/e3-amd-gpu/RESULTS.md)
 
@@ -52,8 +52,8 @@ It does **not** deliver per-pod VRAM quotas, and the plan states why:
 
 [`../benchmark/experiments/e3-amd-gpu/RESULTS.md`](../benchmark/experiments/e3-amd-gpu/RESULTS.md)
 records the CPU-vs-GPU Qwen comparison, plus the follow-up single-pod contention
-probe (`ef3c128`). Baseline commit hashes are recorded next to the numbers
-(`30174f6`) because these are single-host measurements: they are valid for that
+probe (`ab05883`). Baseline commit hashes are recorded next to the numbers
+(`9b5554e`) because these are single-host measurements: they are valid for that
 revision on that card and nothing else.
 
 ## Why this is the most transferable phase

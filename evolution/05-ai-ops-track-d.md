@@ -66,7 +66,7 @@ question ──► known intent? ──yes──► deterministic bundle (0 LLM 
 | M11+ | `get_topology` (live API) + `get_topology_snapshot` (Cartography/Neo4j) | `8be6c07` |
 
 The M1–M3 prototype was written on `trackc`; M5 onward superseded it on
-`native-k3s-gpu-models`. That is why the unification merge (`9b449fe`) resolved
+`native-k3s-gpu-models`. That is why the unification merge (`e6a4852`) resolved
 every `apps/assistant/*` conflict in `native-k3s-gpu-models`' favour.
 
 ## Benchmarks, because "it feels fast" is not a result
