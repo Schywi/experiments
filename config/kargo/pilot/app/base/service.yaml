@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: pilot
+  labels:
+    app.kubernetes.io/name: kargo-pilot
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: kargo-pilot
+  ports:
+    - name: http
+      port: 80
+      targetPort: http

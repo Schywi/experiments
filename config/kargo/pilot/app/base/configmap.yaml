@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pilot-www
+data:
+  index.html: |
+    <!doctype html>
+    <meta charset="utf-8">
+    <title>kargo pilot</title>
+    <h1>kargo pilot</h1>
+    <p>Promoted by Kargo. Image version is the promotion artifact.</p>
