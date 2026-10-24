@@ -105,3 +105,33 @@ kubectl -n kargo-pilot-staging get deploy pilot -o jsonpath='{..image}'
 kubectl -n argocd get app kargo-pilot-staging -o jsonpath='{.spec.source.targetRevision}{"\n"}'
 kubectl -n pilot get promotions
 ```
+
+## What this install did (2026-10-24)
+
+Four pods in `kargo`, ~80 MiB of memory in total (`kubectl top pod -n kargo`:
+api 17Mi, controller 26Mi, management controller 20Mi, webhooks server 17Mi,
+plus a nightly garbage-collector CronJob).
+
+Freight `4c645039bc3a43178be4138cc2ae0ce2d160a0bb` was discovered from
+`docker.io/library/busybox` (SemVer, `>=1.36.0 <1.39.0`, `^1\.[0-9]+\.[0-9]+$`)
+and the branch. Staging auto-promoted, prod needed a manual `Promotion`, and
+both ended as commits in this repository:
+
+```
+5c5d204 chore(kargo): promote busybox 1.37.0 to staging
+ced5f89 chore(kargo): promote busybox 1.37.0 to prod
+```
+
+`kargo-pilot-staging` and `kargo-pilot-prod` are `Synced/Healthy` at those
+commits, `Stage staging` and `Stage prod` report `Freight has been verified`,
+and `config/kargo/pilot` itself is reconciled by the `kargo-pilot-resources`
+Application, so the CRs are GitOps-managed and not hand-applied.
+
+Two things worth knowing before relying on this:
+
+- The first artifact discovery of `docker.io/library/busybox` took minutes, not
+  seconds: the SemVer strategy lists the tag set and reads metadata per
+  candidate. A handful of tags (`^1\.37\.0$`) answered immediately. Narrow
+  `allowTagsRegexes` if discovery latency matters.
+- Argo CD will not resolve a branch that has never been pushed. `targetRevision:
+  feat/kargo` stays `Unknown` until `origin/feat/kargo` exists.
