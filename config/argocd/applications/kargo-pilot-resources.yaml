@@ -1,0 +1,27 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kargo-pilot-resources
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: kargo-pilot
+    app.kubernetes.io/managed-by: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/Schywi/experiments.git
+    targetRevision: feat/kargo
+    path: config/kargo/pilot
+    directory:
+      recurse: false
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: pilot
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
