@@ -1,0 +1,34 @@
+# E4 benchmark as an in-cluster Job (no kubectl port-forward flakiness).
+# Runs the runner against the GPU assistant; the summary is printed to stdout
+# (SUMMARY_JSON …) and read via `kubectl logs`.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: e4-gpu-bench
+  namespace: assistant
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 3600
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: runner
+          image: 127.0.0.1:5000/assistant:laya-exp
+          imagePullPolicy: Always
+          command: ["python3", "/scripts/runner.py"]
+          env:
+            - {name: BASE_URL, value: "http://assistant-e4-gpu:8080"}
+            - {name: QUESTIONS_MODULE, value: "/scripts/assistant-benchmark.py"}
+            - {name: OUT, value: "/out/gpu.json"}
+            - {name: LABEL, value: gpu}
+            - {name: REPS, value: "3"}
+            - {name: WARMUP, value: "1"}
+          volumeMounts:
+            - {name: scripts, mountPath: /scripts, readOnly: true}
+            - {name: out, mountPath: /out}
+      volumes:
+        - name: scripts
+          configMap: {name: e4-runner}
+        - name: out
+          emptyDir: {}

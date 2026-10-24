@@ -1,0 +1,40 @@
+# E4 GPU arm backend: same image/model/settings, all layers on the GPU (Vulkan),
+# holding the device plugin's amd.com/render grant.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: llm-gpu
+  namespace: gpu-exp
+  labels: {app: llm-gpu}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector: {matchLabels: {app: llm-gpu}}
+  template:
+    metadata: {labels: {app: llm-gpu}}
+    spec:
+      securityContext: {seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: llm
+          image: 127.0.0.1:5000/llama-vulkan:local
+          imagePullPolicy: IfNotPresent
+          args: ["-m", "/models/Qwen2.5-1.5B-Instruct-Q4_K_M.gguf", "-ngl", "99",
+                 "-c", "2048", "--threads", "4", "--host", "0.0.0.0", "--port", "8000"]
+          ports: [{name: http, containerPort: 8000}]
+          securityContext: {allowPrivilegeEscalation: false, capabilities: {drop: ["ALL"]}}
+          resources:
+            requests: {cpu: "1", memory: 2Gi, amd.com/render: 1}
+            limits: {cpu: "4", memory: 4Gi, amd.com/render: 1}
+          startupProbe: {tcpSocket: {port: http}, periodSeconds: 3, failureThreshold: 60}
+          readinessProbe: {tcpSocket: {port: http}, periodSeconds: 5, failureThreshold: 3}
+          volumeMounts: [{name: models, mountPath: /models, readOnly: true}]
+      volumes:
+        - name: models
+          persistentVolumeClaim: {claimName: gpu-models, readOnly: true}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: llm-gpu, namespace: gpu-exp}
+spec:
+  selector: {app: llm-gpu}
+  ports: [{name: http, port: 8000, targetPort: http}]
