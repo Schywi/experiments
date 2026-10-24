@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: kargo-gateway
+  namespace: kargo
+  labels:
+    app.kubernetes.io/name: kargo-gateway
+    app.kubernetes.io/part-of: kargo
+  annotations:
+    # Pinned Cilium LB-IPAM address from the lan-pool (192.168.0.240-250).
+    # 240 cilium-ingress, 241 hubble, 242 cartography, 243 assistant, 244 fuwa,
+    # 245 grafana, 246 victoriametrics, 247 argocd, 249 kargo.
+    io.cilium/lb-ipam-ips: "192.168.0.249"
+spec:
+  type: LoadBalancer
+  selector:
+    app.kubernetes.io/name: kargo-gateway
+  ports:
+    - name: http
+      port: 80
+      targetPort: http

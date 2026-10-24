@@ -5,10 +5,12 @@
 # 1. No cert-manager. `gen-certs.sh` signs the API and webhooks certs with a
 #    local CA and loads them as Secrets, so `selfSignedCert` is false and
 #    `install.sh` supplies `webhooksServer.tls.caBundle`.
-# 2. No auth. `adminAccount.enabled: false` and no OIDC provider. The API is
-#    reachable through a ClusterIP Service and port-forward, matching the LAN
-#    posture of the rest of the cluster (Neo4j, Grafana). Anyone who can reach
-#    the API can create Projects and trigger Promotions.
+# 2. One admin account, no human login. `adminAccount.enabled: true` with the
+#    password hash in Secret `kargo-admin-credentials` (gen-admin-secret.sh, out
+#    of band). Nobody types it: `kargo-gateway` logs in with it and injects the
+#    token, so the UI at http://192.168.0.248/ opens without a form. Removing the
+#    gateway means going back to a login prompt, not to an open API — Kargo has
+#    no anonymous mode (see README).
 #
 # Memory is the constraint on this node: limits sit at 89% of a 15.5 GiB box, so
 # every component carries an explicit request and limit and the SCM webhooks
@@ -22,9 +24,14 @@ api:
   # Projects and their Secrets are applied from Git; the API does not need to
   # write Secrets.
   secretManagementEnabled: false
-  # No login of any kind.
+  # Admin credentials come from a Secret that Helm does not manage, so a
+  # reinstall cannot rotate the password out from under the gateway.
+  secret:
+    name: kargo-admin-credentials
   adminAccount:
-    enabled: false
+    enabled: true
+    # Long-lived because the gateway holds one token; it also re-logs in on 401.
+    tokenTTL: 8760h
   oidc:
     enabled: false
   tls:
