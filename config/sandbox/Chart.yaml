@@ -1,0 +1,6 @@
+apiVersion: v2
+name: sandbox
+description: agent-sandbox router, browser SandboxTemplate and warm pool for the sandbox-console
+type: application
+version: 0.1.0
+appVersion: "1.0.7"

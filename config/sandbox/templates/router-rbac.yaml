@@ -1,0 +1,62 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: sandbox-router
+  namespace: {{ .Values.router.namespace }}
+  labels:
+    {{- include "sandbox.labels" . | nindent 4 }}
+{{- if .Values.router.cache.enabled }}
+---
+# Pod read access for the informer cache, narrowed to the sandbox namespace
+# because the router runs with --cache-namespace. Upstream's equivalent is a
+# cluster-wide ClusterRole; that is only needed when sandboxes can land in
+# namespaces you cannot enumerate.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: sandbox-router-cache
+  namespace: {{ .Values.sandboxes.namespace }}
+  labels:
+    {{- include "sandbox.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: sandbox-router-cache
+  namespace: {{ .Values.sandboxes.namespace }}
+  labels:
+    {{- include "sandbox.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: sandbox-router-cache
+subjects:
+  - kind: ServiceAccount
+    name: sandbox-router
+    namespace: {{ .Values.router.namespace }}
+{{- end }}
+{{- if eq .Values.router.authz.mode "tokenreview" }}
+---
+# system:auth-delegator is the stock ClusterRole kubelet and metrics-server use
+# to validate caller-supplied tokens: create on tokenreviews.authentication.k8s.io
+# and subjectaccessreviews.authorization.k8s.io. The TokenReview authorizer
+# fails closed without it, so every request would be 401.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: sandbox-router-auth-delegator
+  labels:
+    {{- include "sandbox.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:auth-delegator
+subjects:
+  - kind: ServiceAccount
+    name: sandbox-router
+    namespace: {{ .Values.router.namespace }}
+{{- end }}

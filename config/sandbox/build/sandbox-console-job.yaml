@@ -1,0 +1,62 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: kaniko-sandbox-console
+  namespace: registry
+  labels:
+    app.kubernetes.io/name: kaniko
+    app.kubernetes.io/part-of: agent-sandbox-lab
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 1800
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: kaniko
+    spec:
+      restartPolicy: Never
+      initContainers:
+        # A ConfigMap volume presents its keys as symlinks into `..data/`, and
+        # kaniko's COPY copies the *link*, not the content: the image built
+        # straight from the mount had /app/*.py as dangling symlinks and uvicorn
+        # reported `Could not import module "server"`. Copy with -L into an
+        # emptyDir first, so the build context is ordinary files.
+        - name: dereference-context
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - cp -rL /ctx/. /workspace/ && ls /workspace
+          volumeMounts:
+            - name: context
+              mountPath: /ctx
+            - name: work
+              mountPath: /workspace
+      containers:
+        - name: kaniko
+          image: gcr.io/kaniko-project/executor:v1.23.2
+          args:
+            # Local directory context: this work is not on a branch yet, so the
+            # repo's kaniko-build.sh git context is not usable.
+            - "--context=dir:///workspace"
+            - "--dockerfile=/workspace/Containerfile"
+            - "--destination=192.168.0.28:5000/sandbox-console:local"
+            - "--insecure"
+            - "--force"
+            - "--verbosity=info"
+          volumeMounts:
+            - name: work
+              mountPath: /workspace
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+      volumes:
+        - name: context
+          configMap:
+            name: ctx-sandbox-console
+        - name: work
+          emptyDir: {}
