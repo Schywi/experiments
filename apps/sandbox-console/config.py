@@ -80,6 +80,11 @@ MAX_TILES = _int("MAX_TILES", 8)
 POLL_SECONDS = _int("POLL_SECONDS", 3)
 SHOT_TTL_SECONDS = _float("SHOT_TTL_SECONDS", 10.0)
 
+# How often the open dialog replaces its frame. Each refresh is a real Chromium
+# capture (~50-150 ms of that sandbox), which is why this is seconds and not
+# milliseconds: it is a slideshow, not a screencast.
+FRAME_REFRESH_MS = _int("FRAME_REFRESH_MS", 2000)
+
 # CDP budgets. A sandbox that was just created answers slowly the first time.
 CDP_CONNECT_TIMEOUT = _float("CDP_CONNECT_TIMEOUT", 5.0)
 CDP_COMMAND_TIMEOUT = _float("CDP_COMMAND_TIMEOUT", 10.0)

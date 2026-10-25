@@ -113,6 +113,7 @@ class Screen:
         self._shots: dict[str, tuple[float, bytes]] = {}
         self._reach: dict[str, dict] = {}
         self._notes: dict[str, str] = {}
+        self._last_shot_source = "live"
         self._urls: dict[str, str] = {}
         self._locks: dict[str, asyncio.Lock] = {}
         self.cdp = cdp.RouterCDP(
@@ -489,7 +490,12 @@ async def shot(sandbox_id: str, fresh: int = 0) -> Response:
     return Response(
         content=payload,
         media_type="image/png",
-        headers={"Cache-Control": f"public, max-age={int(config.SHOT_TTL_SECONDS)}"},
+        headers={
+            "Cache-Control": "no-store" if fresh else f"public, max-age={int(config.SHOT_TTL_SECONDS)}",
+            # No "which path served it" header here: when `fresh` is absent the
+            # handler genuinely does not know whether Screen.shot read the cache,
+            # and a header that guesses is worse than no header.
+        },
     )
 
 
@@ -543,6 +549,38 @@ async def open_url(sandbox_id: str, payload: UrlRequest) -> HTMLResponse:
         raise _http_error(error)
     refreshed, _ = await SCREEN.tile(sandbox_id)
     return HTMLResponse(render.tile(refreshed or tile))
+
+
+@app.post("/sandboxes/{sandbox_id}/scroll", response_class=HTMLResponse)
+async def scroll(sandbox_id: str, payload: ScrollRequest) -> HTMLResponse:
+    """Scroll one sandbox's page and return the refreshed tile.
+
+    `dy` is clamped: one press moves at most MAX_SCROLL pixels, so a bad client
+    cannot fling a page somewhere surprising.
+    """
+    tile, _ = await SCREEN.tile(sandbox_id)
+    if tile is None:
+        raise HTTPException(status_code=404, detail=f"no sandbox {sandbox_id}")
+    dy = max(-MAX_SCROLL, min(MAX_SCROLL, payload.dy))
+    if dy == 0:
+        raise HTTPException(status_code=400, detail="dy is zero, nothing to scroll")
+    try:
+        async with LIMITER.slot():
+            await SCREEN.scroll(sandbox_id, dy)
+    except QueueFull:
+        raise HTTPException(
+            status_code=429,
+            detail="at capacity",
+            headers={"Retry-After": str(config.RETRY_AFTER_SECONDS)},
+        )
+    except Exception as error:  # noqa: BLE001
+        SCREEN.note(sandbox_id, f"scroll failed: {error}")
+        audit.record(config.AUDIT_LOG, "scroll_failed", sandbox=sandbox_id, dy=dy, error=str(error))
+        raise _http_error(error)
+    refreshed, _ = await SCREEN.tile(sandbox_id)
+    return HTMLResponse(render.tile(refreshed or tile))
+
+
 @app.post("/sandboxes/{sandbox_id}/reachability", response_class=HTMLResponse)
 async def reachability(sandbox_id: str) -> HTMLResponse:
     """Live isolation evidence from inside the sandbox's own Chromium."""

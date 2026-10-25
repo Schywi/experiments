@@ -143,6 +143,38 @@ a { color: inherit; text-decoration: none; }
 .badge-warning { color: hsl(var(--warning)); border-color: hsl(var(--warning) / .35); background: hsl(var(--warning) / .12); }
 .badge-outline { background: transparent; }
 
+
+/* Shell, toolbar and stats are styled here, not only by utilities. The utility
+   class names stay in the markup as an optional layer (UnoCSS is vendored, but
+   a runtime that fails to generate must never leave the page unformatted --
+   that regression is why this block exists twice over). */
+.app-header {
+  position: sticky; top: 0; z-index: 10;
+  display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap;
+  padding: var(--space-3) var(--space-6);
+  background: hsl(var(--background) / .88);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid hsl(var(--border));
+}
+.brand { display: flex; align-items: center; gap: var(--space-2); }
+.brand-mark {
+  width: 20px; height: 20px; border-radius: 6px;
+  background: linear-gradient(140deg, hsl(var(--primary)), hsl(262 83% 58%));
+}
+.brand h1 { font-size: var(--text-lg); }
+.meta { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+main { max-width: 1440px; margin: 0 auto; padding: var(--space-6); }
+
+.toolbar { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; padding-bottom: var(--space-4); }
+.separator { width: 1px; height: 20px; background: hsl(var(--border)); margin: 0 var(--space-1); }
+
+.stats { display: flex; flex-wrap: wrap; gap: var(--space-4); margin-bottom: var(--space-4); }
+.stat { display: flex; flex-direction: column; gap: 2px; min-width: 78px; }
+.stat-label {
+  font-size: var(--text-xs); color: hsl(var(--muted-foreground));
+  text-transform: uppercase; letter-spacing: .04em;
+}
+.stat-value { font-size: var(--text-xl); font-weight: 600; font-variant-numeric: tabular-nums; }
 #stream-state { color: hsl(var(--success)); }
 
 .grid { display: grid; gap: var(--space-4); grid-template-columns: repeat(auto-fill, minmax(288px, 1fr)); }
@@ -421,7 +453,7 @@ def action_bar(write_enabled: bool, allow_raw: bool) -> str:
     """The controls that mutate. Every one reports success or failure."""
     if not write_enabled:
         return (
-            '<div class="flex items-center gap-2 pb-4">'
+            '<div class="toolbar">'
             '<span class="badge badge-outline">read-only · WRITE_ENABLED is off</span></div>'
         )
     raw = (
@@ -430,17 +462,17 @@ def action_bar(write_enabled: bool, allow_raw: bool) -> str:
         else ""
     )
     return (
-        '<div class="flex flex-wrap items-center gap-2 pb-4" role="toolbar" aria-label="actions">'
+        '<div class="toolbar" role="toolbar" aria-label="actions">'
         '<button class="btn btn-primary" data-act="create" data-kind="claim">+ claim</button>'
         f"{raw}"
-        '<span class="w-px h-5 bg-border mx-1" role="separator"></span>'
+        '<span class="separator" role="separator"></span>'
         '<button class="btn btn-outline" data-act="demo-fill">fill demo grid</button>'
         '<button class="btn btn-outline" data-act="demo-teardown">teardown</button>'
         '<a class="btn btn-outline" href="/compare">compare</a>'
-        '<span class="w-px h-5 bg-border mx-1" role="separator"></span>'
+        '<span class="separator" role="separator"></span>'
         '<button class="btn btn-ghost" data-act="recipe" data-recipe="claim-burst">claim-burst</button>'
         '<button class="btn btn-ghost" data-act="recipe" data-recipe="capacity-check">capacity</button>'
-        '<span class="ml-auto"></span>'
+        '<span class="spacer"></span>'
         f'<span class="badge badge-outline">ceiling {config.MAX_CONCURRENT_SANDBOXES}</span>'
         f'<span class="badge badge-outline">demo {config.DEMO_TILES}</span>'
         "</div>"
@@ -457,16 +489,17 @@ def stats(report: inventory.Report) -> str:
         ("as of", _clock(report.collected_at)),
     ]
     cells = "".join(
-        f'<div class="flex flex-col gap-0.5 min-w-[78px]" data-stat="{esc(label)}">'
-        f'<span class="text-xs uppercase tracking-wide text-muted-foreground">{esc(label)}</span>'
-        f'<span class="text-xl font-semibold tabular-nums">{esc(value)}</span></div>'
+        f'<div class="stat" data-stat="{esc(label)}">'
+        f'<span class="stat-label">{esc(label)}</span>'
+        f'<span class="stat-value">{esc(value)}</span></div>'
         for label, value in items
     )
     return (
-        f'<div class="flex flex-wrap gap-4 mb-4">{cells}'
-        '<div class="flex flex-col gap-0.5 min-w-[78px]" data-stat="stream">'
-        '<span class="text-xs uppercase tracking-wide text-muted-foreground">stream</span>'
-        '<span class="text-sm font-semibold" id="stream-state">connecting</span></div></div>'
+        f'<div class="stats">{cells}'
+        '<div class="stat" data-stat="stream">'
+        '<span class="stat-label">stream</span>'
+        '<span class="stat-value" id="stream-state" style="font-size:var(--text-base)">connecting</span>'
+        "</div></div>"
     )
 
 
@@ -525,7 +558,8 @@ def expanded(tile_obj: inventory.Tile) -> str:
     extra = f'<p class="note">{esc(tile_obj.note)}</p>' if tile_obj.note else ""
     return f"""<div class="dialog-backdrop" id="dialog">
   <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="dialog-title"
-       data-id="{esc(tile_obj.id)}" data-width="{config.VIEWPORT_WIDTH}">
+       data-id="{esc(tile_obj.id)}" data-width="{config.VIEWPORT_WIDTH}"
+       data-refresh-ms="{config.FRAME_REFRESH_MS}">
     <div class="dialog-head">
       <h2 id="dialog-title" class="mono">{esc(tile_obj.id)}</h2>
       <span class="badge badge-outline">{esc(tile_obj.phase)}</span>
@@ -541,7 +575,7 @@ def expanded(tile_obj: inventory.Tile) -> str:
       <div class="big-placeholder">no frame yet</div>
       {reason}{extra}
       {isolation_badges(tile_obj)}
-      <p class="hint">A click on the frame is dispatched as a real mouse press/release, divided by the display scale. Viewport stays {config.VIEWPORT_WIDTH}×{config.VIEWPORT_HEIGHT}.</p>
+      <p class="hint">The frame refreshes every {config.FRAME_REFRESH_MS // 1000}s while this is open. A click is dispatched as a real mouse press/release, divided by the display scale. Viewport stays {config.VIEWPORT_WIDTH}×{config.VIEWPORT_HEIGHT}.</p>
     </div>
   </div>
 </div>"""
@@ -623,17 +657,13 @@ def compare_page(latest, medians: dict, allow_raw: bool, write_enabled: bool) ->
 <script>{UNO_CONFIG}</script>
 <script src="/static/unocss.js"></script></head>
 <body>
-<header class="sticky top-0 z-10 flex flex-wrap items-center gap-3 px-6 py-3 border-b border-border"
-        style="background:hsl(var(--background)/.88);backdrop-filter:blur(8px)">
-  <div class="flex items-center gap-2">
-    <span class="w-5 h-5 rounded-md" style="background:linear-gradient(140deg,hsl(var(--primary)),hsl(262 83% 58%))"></span>
-    <h1 class="text-base">compare</h1>
-  </div>
+<header class="app-header">
+  <div class="brand"><span class="brand-mark"></span><h1>compare</h1></div>
   <span class="badge badge-outline">same image · same URL · fired together</span>
-  <span class="ml-auto"></span>
+  <span class="spacer"></span>
   {button}<a class="btn btn-ghost" href="/">grid</a>
 </header>
-<main class="max-w-[1440px] mx-auto p-6">{body}{note}<p class="hint mt-4" id="compare-status" role="status"></p></main>
+<main>{body}{note}<p class="hint" style="margin-top:var(--space-4)" id="compare-status" role="status"></p></main>
 <div id="toasts" aria-live="polite"></div>
 <script>{COMPARE_JS}</script>
 </body></html>"""
@@ -885,6 +915,26 @@ PAGE_JS = """
     }
   }
 
+  var frameTimer = null;
+
+  function stopFrameRefresh() {
+    if (frameTimer) { clearInterval(frameTimer); frameTimer = null; }
+  }
+
+  // The picture is a PNG, so "live" means replacing it on a timer. `fresh=1` is
+  // what makes the server capture again instead of handing back its cached frame.
+  function startFrameRefresh(id, everyMs) {
+    stopFrameRefresh();
+    if (!id) return;
+    frameTimer = setInterval(function () {
+      if (document.hidden) return;                       // background tab: do nothing
+      var dialog = document.getElementById("dialog");
+      var image = dialog && dialog.querySelector("img.big");
+      if (!image) { stopFrameRefresh(); return; }
+      image.src = "/sandboxes/" + id + "/shot?fresh=1&v=" + Date.now();
+    }, everyMs || 2000);
+  }
+
   async function compareFromDialog(id, node) {
     var body = document.getElementById("dialog-body");
     if (!body) return;
@@ -915,12 +965,18 @@ PAGE_JS = """
       document.body.appendChild(backdrop);
       var closeButton = backdrop.querySelector("[data-act='close']");
       if (closeButton) closeButton.focus();
+      var dialog = backdrop.querySelector(".dialog");
+      startFrameRefresh(
+        dialog && dialog.dataset.id,
+        dialog ? Number(dialog.dataset.refreshMs) : 2000
+      );
     } catch (error) {
       toast("could not open " + id + ": " + error.message, true);
     }
   }
 
   function closeDialog() {
+    stopFrameRefresh();
     var dialog = document.getElementById("dialog");
     if (dialog) dialog.remove();
   }
@@ -1103,21 +1159,17 @@ PAGE = """<!doctype html>
 <script src="/static/unocss.js"></script>
 </head>
 <body>
-<header class="sticky top-0 z-10 flex flex-wrap items-center gap-3 px-6 py-3 border-b border-border"
-        style="background:hsl(var(--background)/.88);backdrop-filter:blur(8px)">
-  <div class="flex items-center gap-2">
-    <span class="w-5 h-5 rounded-md" style="background:linear-gradient(140deg,hsl(var(--primary)),hsl(262 83% 58%))"></span>
-    <h1 class="text-base">sandbox-console</h1>
-  </div>
-  <div class="flex flex-wrap items-center gap-2">
+<header class="app-header">
+  <div class="brand"><span class="brand-mark"></span><h1>sandbox-console</h1></div>
+  <div class="meta">
     <span class="badge badge-outline">agent-sandbox</span>
     <span class="badge badge-outline">__NAMESPACE__</span>
     <span class="badge badge-outline" title="__ROUTER__">router</span>
   </div>
-  <span class="ml-auto"></span>
+  <span class="spacer"></span>
   <a class="btn btn-ghost" href="/healthz">health</a>
 </header>
-<main class="max-w-[1440px] mx-auto p-6 max-sm:p-4">
+<main>
   <div id="grid">__GRID__</div>
   <section class="stream" id="stream" aria-live="polite">
     <header>recipe output <span class="stream-live">streaming</span></header>
