@@ -402,6 +402,18 @@ def correlate(question, facts, llm_url, model, timeout):
     return out
 
 
+def _intent(facts) -> str:
+    """Which single link kind this answer may use, derived from the facts used."""
+    tools = {f.get("tool") for f in (facts or [])}
+    if "get_topology_snapshot" in tools:
+        return "cartography"
+    if "query_prometheus" in tools:
+        return "prometheus"
+    if tools & {"get_pods", "get_pod_logs", "get_events", "search_logs", "get_topology"}:
+        return "kube"
+    return "general"
+
+
 def run(question, llm_url, model, timeout=60.0, history=None, max_rounds=1):
     """plan -> fan-out -> correlate. Two LLM calls (one, with a bundle)."""
     t0 = time.perf_counter()
@@ -422,4 +434,5 @@ def run(question, llm_url, model, timeout=60.0, history=None, max_rounds=1):
         "rounds": 1, "planner": source, "facts": len(facts),
     }
     return {"screen_md": corr["screen_md"], "speech": corr["speech"],
-            "facts": facts, "metrics": metrics, "stopped": "answer"}
+            "facts": facts, "metrics": metrics, "intent": _intent(facts),
+            "stopped": "answer"}

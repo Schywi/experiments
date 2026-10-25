@@ -86,14 +86,14 @@ spec:
               value: http://192.168.0.245
             - name: HUBBLE_URL
               value: http://192.168.0.241
-            # Argo CD, Kargo and Neo4j browser, by their live LoadBalancer IPs.
-            # Unset means that link kind is omitted (no fallback host in code).
-            - name: ARGOCD_URL
-              value: http://192.168.0.247
-            - name: KARGO_URL
-              value: http://192.168.0.249
+            # Neo4j Browser for the Cartography snapshot. Unset means no link.
             - name: NEO4J_UI_URL
               value: "http://192.168.0.242/browser/?dbms=bolt%3A%2F%2F192.168.0.242%3A7687&db=neo4j&preselectAuthMethod=NO_AUTH"
+            # Parity with the CPU assistant: documentation corpus + header links.
+            - name: CORPUS_DIR
+              value: /corpus
+            - name: UI_LINKS
+              value: '[{"label":"Grafana","url":"http://192.168.0.245/"},{"label":"Hubble UI","url":"http://192.168.0.241/"},{"label":"VictoriaMetrics","url":"http://192.168.0.246/"}]'
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
@@ -109,9 +109,17 @@ spec:
           volumeMounts:
             - name: tmp
               mountPath: /tmp
+            - name: corpus
+              mountPath: /corpus
+              readOnly: true
       volumes:
         - name: tmp
           emptyDir: {}
+        # Documentation corpus for search_knowledge (scripts/assistant-corpus.sh).
+        - name: corpus
+          configMap:
+            name: assistant-corpus
+            optional: true
 ---
 apiVersion: v1
 kind: Service

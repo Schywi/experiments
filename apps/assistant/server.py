@@ -253,7 +253,7 @@ async def investigate_route(req: ChatRequest) -> ChatResponse:
         memory.append_turn(req.session, "assistant", out["screen_md"])
     return ChatResponse(reply=out["screen_md"], tool=used, metrics=out["metrics"],
                         screen_md=out["screen_md"], speech=out["speech"],
-                        facts=provenance.enrich_all(out["facts"]),
+                        facts=provenance.enrich_all(out["facts"], out.get("intent")),
                         audio_id=_start_tts(out["speech"]))
 
 
@@ -405,7 +405,7 @@ async def ui_message(
             reply, speech = out["screen_md"], out["speech"]
             tool = ",".join(sorted({f["tool"] for f in out["facts"]})) or None
             metrics = out["metrics"]
-            facts = provenance.enrich_all(out["facts"])
+            facts = provenance.enrich_all(out["facts"], out.get("intent"))
     except HTTPException as exc:
         return HTMLResponse(ui.assistant_bubble(str(exc.detail), error=True))
     if session:

@@ -1,25 +1,15 @@
-"""Evidence provenance for the UI — deliberately kept OUT of the LLM context.
+"""Evidence provenance for the UI — kept OUT of the LLM context.
 
-Each pipeline fact is `{tool, args, ok, evidence, ms}`. This module enriches a
-fact with what a human needs to *reproduce* and *open* what the agent saw:
+A fact is enriched with what a human needs to reproduce it and, **only when the
+question needs one**, a single deep link. Each link kind fires for exactly one
+intent, so an answer never carries unrelated buttons:
 
-    at         UTC timestamp
-    source     which system answered (kubernetes / victoriametrics / ...)
-    reproduce  a copyable command, PromQL or Cypher
-    links      resolvable deep links
+    intent "prometheus"  -> grafana   (query_prometheus, only if ok == true)
+    intent "kube"        -> hubble    (a fact that carries args.namespace)
+    intent "cartography" -> neo4j     (get_topology_snapshot, only if env is set)
+    anything else        -> no links
 
-Link kinds and their env (an unset env means the link is omitted, never guessed):
-
-    grafana   GRAFANA_URL   Explore deep link for a query_prometheus fact
-    hubble    HUBBLE_URL    "Open in Cilium": the Hubble UI is Cilium's UI
-    argocd    ARGOCD_URL    Applications overview, or an Application when named
-    kargo     KARGO_URL     Projects overview, or a Stage when named
-    neo4j     NEO4J_UI_URL  Neo4j Browser, only for the Cartography snapshot
-
-Hosts are passed by env as bare LoadBalancer IPs (Grafana 192.168.0.245,
-Hubble 192.168.0.241, Argo CD 192.168.0.247, Kargo 192.168.0.249). No host is
-written into this file. Nothing here reaches plan/correlate, so it costs the
-model zero tokens.
+Hosts come from env; an unset env drops that kind. No host is written here.
 """
 
 import json
@@ -31,14 +21,9 @@ from datetime import datetime, timezone
 
 GRAFANA_URL = os.environ.get("GRAFANA_URL", "").rstrip("/")
 HUBBLE_URL = os.environ.get("HUBBLE_URL", "").rstrip("/")
-ARGOCD_URL = os.environ.get("ARGOCD_URL", "").rstrip("/")
-KARGO_URL = os.environ.get("KARGO_URL", "").rstrip("/")
 GRAFANA_DATASOURCE_UID = os.environ.get("GRAFANA_DATASOURCE_UID", "")
 GRAFANA_DATASOURCE_NAME = os.environ.get("GRAFANA_DATASOURCE_NAME", "victoriametrics")
-# No default: an unset NEO4J_UI_URL means no neo4j link. There is no fallback host.
 NEO4J_UI = os.environ.get("NEO4J_UI_URL", "").rstrip("/")
-
-_NAMESPACE_RE = re.compile(r'"namespace"\s*:\s*"([^"]+)"')
 
 _SOURCE = {
     "get_pods": "kubernetes",
@@ -87,53 +72,14 @@ def _grafana_explore(promql: str):
     return f"{GRAFANA_URL}/explore?{query}"
 
 
-def _namespace_for(args: dict, evidence: str):
-    """Namespace from the tool args, else the single namespace in the evidence.
-
-    Keeps the Cilium/Hubble link on more facts without inventing a namespace: if
-    the evidence names several namespaces, it is ambiguous and no link is made.
-    """
-    ns = args.get("namespace")
-    if isinstance(ns, str) and ns:
-        return ns
-    found = set(_NAMESPACE_RE.findall(evidence or ""))
-    return found.pop() if len(found) == 1 else None
-
-
 def _hubble_link(namespace):
-    """Hubble is Cilium's UI; it is namespace-scoped only (no flow-query route)."""
+    """Hubble is Cilium's UI; namespace-scoped only (no flow-query route)."""
     if not (HUBBLE_URL and namespace):
         return None
     return f"{HUBBLE_URL}/?namespace={urllib.parse.quote(str(namespace))}"
 
 
-def _argocd_link(args: dict):
-    """Argo CD root.
-
-    argocd-server on 192.168.0.247 does not serve SPA paths: /applications and
-    /applications/<name> return 404, only / serves the shell. Until the server
-    does SPA fallback, link the verified root rather than a dead path.
-    """
-    if not ARGOCD_URL:
-        return None
-    return ARGOCD_URL
-
-
-def _kargo_link(args: dict):
-    """Projects overview, or a Stage when a fact names project and stage."""
-    if not KARGO_URL:
-        return None
-    project = args.get("kargo_project") or args.get("project")
-    stage = args.get("stage")
-    if isinstance(project, str) and project:
-        if isinstance(stage, str) and stage:
-            return (f"{KARGO_URL}/projects/{urllib.parse.quote(project)}"
-                    f"/stages/{urllib.parse.quote(stage)}")
-        return f"{KARGO_URL}/projects/{urllib.parse.quote(project)}"
-    return f"{KARGO_URL}/projects"
-
-
-def enrich(fact: dict) -> dict:
+def enrich(fact: dict, intent: str = "general") -> dict:
     out = dict(fact or {})
     tool = out.get("tool")
     args = out.get("args") or {}
@@ -144,10 +90,9 @@ def enrich(fact: dict) -> dict:
     out["at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
     out["source"] = _SOURCE.get(tool, "unknown")
 
-    # The Cartography snapshot reports its own ingest time -- its real age.
     if tool == "get_topology_snapshot":
-        # The pipeline truncates each fact's evidence, so parse leniently with a
-        # regex rather than json.loads (which fails on a truncated object).
+        # The snapshot reports its own ingest time -- its real age. Evidence is
+        # truncated, so parse leniently rather than json.loads.
         cm = re.search(r'"cypher"\s*:\s*"((?:[^"\\]|\\.)*)"', evidence)
         if cm:
             try:
@@ -157,17 +102,8 @@ def enrich(fact: dict) -> dict:
         im = re.search(r'"ingest_time"\s*:\s*"([^"]+)"', evidence)
         if im:
             out["snapshot_ingest_time"] = im.group(1)
-        links = {}
-        if NEO4J_UI:
-            links["neo4j"] = NEO4J_UI
-        argocd = _argocd_link(args)
-        if argocd:
-            links["argocd"] = argocd
-        kargo = _kargo_link(args)
-        if kargo:
-            links["kargo"] = kargo
-        if links:
-            out["links"] = links
+        if NEO4J_UI and intent == "cartography":
+            out["links"] = {"neo4j": NEO4J_UI}
         return out
 
     reproduce = {}
@@ -180,25 +116,20 @@ def enrich(fact: dict) -> dict:
         out["reproduce"] = reproduce
 
     links = {}
-    if tool == "query_prometheus" and out.get("ok"):
-        # Only a query that actually executed may produce a Grafana deep link.
+    if tool == "query_prometheus" and out.get("ok") and intent == "prometheus":
         grafana = _grafana_explore(args.get("query", ""))
         if grafana:
             links["grafana"] = grafana
-    hubble = _hubble_link(_namespace_for(args, evidence))
-    if hubble:
-        links["hubble"] = hubble
-    argocd = _argocd_link(args)
-    if argocd:
-        links["argocd"] = argocd
-    kargo = _kargo_link(args)
-    if kargo:
-        links["kargo"] = kargo
+    ns = args.get("namespace")
+    if intent == "kube" and isinstance(ns, str) and ns:
+        hubble = _hubble_link(ns)
+        if hubble:
+            links["hubble"] = hubble
     if links:
         out["links"] = links
 
     return out
 
 
-def enrich_all(facts) -> list:
-    return [enrich(f) for f in (facts or [])]
+def enrich_all(facts, intent: str = "general") -> list:
+    return [enrich(f, intent) for f in (facts or [])]
