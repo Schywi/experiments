@@ -1,0 +1,119 @@
+# GPU-experiment assistant (`assistant-e4-gpu`) — live object, tracked.
+#
+# Second assistant deployment that points at the GPU LLM (`llm-gpu` in namespace
+# `gpu-exp`, see ./llm-gpu.yaml) instead of the CPU one. Same image family as the
+# CPU `assistant`, so the whole pipeline is identical; only the LLM endpoint and
+# the environment differ.
+#
+# CONTEXTUAL, exactly like llm-gpu.yaml:
+#   * It is only usable while `llm-gpu` is Running. That depends on Vulkan/RADV on
+#     the host (amd.com/render from the gpu-device-plugin, -ngl 99). If the GPU
+#     backend is down, /investigate degrades to the evidence digest.
+#   * `imagePullPolicy: Always` + a mutable `:laya-exp` tag means every restart
+#     re-pulls; the tag is built from the working branch with
+#     `config/registry/kaniko-build.sh assistant <branch> laya-exp`.
+#   * `runAsNonRoot` uid 10001 with `readOnlyRootFilesystem`, so the only writable
+#     path is the /tmp emptyDir — audit and memory are therefore EPHEMERAL. The
+#     CPU assistant uses a PVC; this one does not.
+#
+# Environment parity with the CPU `assistant` (as of capture): GRAFANA_URL and
+# HUBBLE_URL are set (needed for provenance deep links). Still MISSING here:
+# UI_LINKS, KOKORO_URL/TTS, CORPUS_DIR (search_knowledge returns "no corpus"),
+# CORS_ORIGINS, NEO4J_URL / NEO4J_UI_URL (provenance falls back to its
+# neo4j.home.arpa default, which may not resolve), LLM_CONCURRENCY/queue, and the
+# actions env (actions stay disabled by the code default). Add them deliberately,
+# not by copying the CPU deployment wholesale.
+#
+# Apply by hand (not Argo-managed):
+#     kubectl apply -f config/gpu-exp/assistant-e4-gpu.yaml
+# Verify:
+#     kubectl -n assistant rollout status deploy/assistant-e4-gpu
+#     curl -s -XPOST <svc>/investigate -H 'content-type: application/json' \
+#       -d '{"message":"are there any dropped packets?"}'   # expect links.grafana
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: assistant-e4-gpu
+  namespace: assistant
+  labels:
+    app: assistant-e4-gpu
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate          # single replica; no rolling overlap needed
+  selector:
+    matchLabels:
+      app: assistant-e4-gpu
+  template:
+    metadata:
+      labels:
+        app: assistant-e4-gpu
+    spec:
+      automountServiceAccountToken: true     # reads the cluster as the `assistant` SA
+      serviceAccountName: assistant
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: assistant
+          image: 127.0.0.1:5000/assistant:laya-exp   # mutable tag, pull always
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: LLM_URL
+              value: http://llm-gpu.gpu-exp.svc.cluster.local:8000
+            - name: LLM_MODEL
+              value: qwen2.5-1.5b-instruct
+            # The GPU backend answers in ~2-4 s, but a cold start or a large
+            # evidence prompt can be slow; keep headroom.
+            - name: PIPELINE_TIMEOUT
+              value: "300"
+            - name: VM_URL
+              value: http://victoriametrics.observability.svc.cluster.local:8428
+            # Ephemeral: no PVC here, so audit/memory do not survive a restart.
+            - name: AUDIT_LOG
+              value: /tmp/assistant/audit.jsonl
+            - name: MEMORY_DIR
+              value: /tmp/memory
+            # Provenance deep links. Without GRAFANA_URL the query_prometheus
+            # facts carry reproduce.promql but NO links.grafana.
+            - name: GRAFANA_URL
+              value: http://192.168.0.245
+            - name: HUBBLE_URL
+              value: http://192.168.0.241
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            limits:
+              cpu: 500m
+              memory: 256Mi
+            requests:
+              cpu: 100m
+              memory: 128Mi
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: assistant-e4-gpu
+  namespace: assistant
+spec:
+  selector:
+    app: assistant-e4-gpu
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
