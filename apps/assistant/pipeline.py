@@ -78,15 +78,20 @@ _CRITERIA[_DEFAULT_LABEL] = "anything else / a general cluster question"
 
 _PLAN_SYS = (
     "You choose read-only tools to answer a question about a Kubernetes cluster. "
-    'Reply with ONLY JSON: {"tools": [{"tool": "<name>", "args": {}}]}. '
+    "Reply with ONLY a JSON object whose key is tools: an array of objects, each "
+    "having the keys tool (a tool name) and args (an object of arguments). "
     "Pick at most 4 independent tools. Available tools:\n"
 )
 _CORRELATE_SYS = (
-    "You are an SRE assistant. Using ONLY the evidence, answer the question. "
-    'Reply with ONLY JSON: {"screen_md": "<rich markdown>", '
-    '"speech": "<1-2 short conversational sentences, no markdown, no paths>"}. '
-    "In screen_md separate OBSERVED FACTS from HYPOTHESES and name the tool each "
-    "fact came from. If evidence is insufficient, say so. speech <= 240 chars."
+    "You are an SRE assistant. Answer the question using ONLY the evidence. "
+    "Reply with ONLY a JSON object with exactly two string fields: screen_md and speech. "
+    "Write screen_md as Markdown for a human reading a screen: one short lead sentence, "
+    "then a bullet list, labelling each point OBSERVED (naming the tool it came from) "
+    "or HYPOTHESIS. "
+    "Write speech as one or two short spoken sentences in plain words, with no markdown "
+    "and no paths, at most 240 characters. "
+    "State the actual findings from the evidence. Never repeat these instructions and "
+    "never answer with placeholder text."
 )
 
 
@@ -112,13 +117,33 @@ def _looks_like_json(text: str) -> bool:
     return t.startswith("{") or t.startswith("[") or '"screen_md"' in t
 
 
+_PLACEHOLDER_WORDS = {
+    "<rich markdown>", "rich markdown", "<screen_md>", "<speech>",
+    "<name>", "<answer>", "<text>", "...", "…",
+}
+
+
+def _is_placeholder(text: str) -> bool:
+    """Reject template output — the model echoing the prompt instead of answering."""
+    t = (text or "").strip().strip('"').strip("'").strip()
+    if not t:
+        return True
+    if t.lower() in _PLACEHOLDER_WORDS:
+        return True
+    return t.startswith("<") and t.endswith(">") and len(t) < 80
+
+
 def _parse_tools(obj) -> list:
     if not isinstance(obj, dict):
         return []
     batch = []
     for item in (obj.get("tools") or [])[:MAX_FACTS]:
-        if isinstance(item, dict) and item.get("tool"):
-            batch.append((str(item["tool"]), item.get("args") or {}))
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("tool") or "").strip()
+        if not name or _is_placeholder(name):
+            continue
+        batch.append((name, item.get("args") or {}))
     return batch
 
 
@@ -128,9 +153,11 @@ def _parse_answer(raw: str):
     if not isinstance(obj, dict):
         return None, None
     screen = str(obj.get("screen_md") or "").strip()
-    if not screen or _looks_like_json(screen):     # reject a leaked/nested JSON blob
-        return None, None
-    speech = str(obj.get("speech") or "").strip() or screen[:200]
+    if not screen or _looks_like_json(screen) or _is_placeholder(screen):
+        return None, None                     # leaked JSON or a placeholder is not an answer
+    speech = str(obj.get("speech") or "").strip()
+    if _is_placeholder(speech):
+        speech = screen[:200]
     return screen, speech
 
 
