@@ -19,6 +19,7 @@ import concurrent.futures as futures
 import inspect
 import json
 import os
+import re
 import time
 
 import httpx
@@ -302,6 +303,11 @@ def plan(question, llm_url, model, timeout, history=None, kind=None):
         return _DEFAULT_BUNDLE, "laya-fallback:default", ms
 
     lowered = question.lower()
+    if any(p in lowered for p in _SANDBOX_ROUTE):
+        sandbox = _sandbox_batch(lowered, question)
+        if sandbox:
+            return sandbox, "route:sandbox", 0.0
+
     if any(k in lowered for k in _METRIC_INTENTS):
         query, ms = _write_promql(question, llm_url, model, timeout)
         if query:
@@ -400,6 +406,32 @@ def correlate(question, facts, llm_url, model, timeout):
     out = _fallback_digest(facts)
     out.update(correlate_ms=round(ms, 1), degraded="invalid-json")
     return out
+
+
+_SANDBOX_ROUTE = ("open a sandbox", "create a sandbox", "launch a sandbox",
+                  "destroy the sandbox", "delete the sandbox", "screenshot", "screen shot")
+_SANDBOX_ID_RE = re.compile(r"sandbox[\s:]+([a-z0-9][a-z0-9.-]{2,})")
+_URL_RE = re.compile(r"https?://[^\s,]+")
+
+
+def _sandbox_batch(lowered: str, question: str):
+    """Explicit sandbox phrases only. No autonomous sandbox use."""
+    sid = _SANDBOX_ID_RE.search(lowered)
+    sandbox_id = sid.group(1) if sid else ""
+    url = (_URL_RE.search(question).group(0) if _URL_RE.search(question) else "")
+    if "destroy the sandbox" in lowered or "delete the sandbox" in lowered:
+        return [("propose_action",
+                 {"action": "destroy_sandbox", "args": {"sandbox_id": sandbox_id}})]
+    if any(p in lowered for p in ("open a sandbox", "create a sandbox", "launch a sandbox")):
+        return [("propose_action", {"action": "create_sandbox", "args": {}})]
+    if "screenshot" in lowered or "screen shot" in lowered:
+        if sandbox_id and url:
+            return [("sandbox_open", {"sandbox_id": sandbox_id, "url": url}),
+                    ("sandbox_shot", {"sandbox_id": sandbox_id})]
+        if sandbox_id:
+            return [("sandbox_shot", {"sandbox_id": sandbox_id})]
+        return [("sandbox_list", {})]
+    return None
 
 
 def _intent(facts) -> str:

@@ -94,6 +94,9 @@ spec:
               value: /corpus
             - name: UI_LINKS
               value: '[{"label":"Grafana","url":"http://192.168.0.245/"},{"label":"Hubble UI","url":"http://192.168.0.241/"},{"label":"VictoriaMetrics","url":"http://192.168.0.246/"}]'
+            # Sandbox console API (the console owns routing/readiness/token).
+            - name: CONSOLE_URL
+              value: http://192.168.0.250
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true

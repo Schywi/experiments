@@ -21,6 +21,9 @@ SCHEMAS = {
     "search_knowledge": {"query": (str, True)},
     "remember": {"text": (str, True), "tag": (str, False)},
     "recall": {"query": (str, True), "k": (int, False)},
+    "sandbox_list": {},
+    "sandbox_open": {"sandbox_id": (str, True), "url": (str, True)},
+    "sandbox_shot": {"sandbox_id": (str, True)},
 }
 
 
