@@ -252,6 +252,17 @@ def _fmt_fact(fact: dict) -> str:
     for name, url in (fact.get("links") or {}).items():
         line += (f' <a href="{html.escape(str(url), quote=True)}" target="_blank"'
                  f' rel="noopener">Open in {html.escape(str(name).title())}</a>')
+    if fact.get("ok") and str(fact.get("tool", "")).startswith("sandbox"):
+        try:
+            payload = json.loads(fact.get("evidence") or "{}")
+        except (ValueError, TypeError):
+            payload = {}
+        image = payload.get("image_url") if isinstance(payload, dict) else None
+        if image:
+            safe = html.escape(str(image), quote=True)
+            line += (f'<br><img src="{safe}" alt="sandbox frame"'
+                     ' style="max-width:100%;border:1px solid #30363d;border-radius:6px">'
+                     f' <a href="{safe}" target="_blank" rel="noopener">Open frame</a>')
     return f"<li>{line}</li>"
 
 
