@@ -80,6 +80,9 @@ _PLAN_SYS = (
     "You choose read-only tools to answer a question about a Kubernetes cluster. "
     "Reply with ONLY a JSON object whose key is tools: an array of objects, each "
     "having the keys tool (a tool name) and args (an object of arguments). "
+    "query_prometheus takes a PromQL query in args.query: write the query yourself, "
+    "choosing the metric, the rate window, and any by(...) grouping that answers the "
+    "question. "
     "Pick at most 4 independent tools. Available tools:\n"
 )
 _CORRELATE_SYS = (
@@ -236,9 +239,6 @@ def plan(question, llm_url, model, timeout, history=None, kind=None):
             return bundle[1], f"laya-fallback:{bundle[0]}", ms
         return _DEFAULT_BUNDLE, "laya-fallback:default", ms
 
-    bundle = _bundle_for(question)
-    if bundle is not None:
-        return bundle[1], f"bundle:{bundle[0]}", 0.0
     messages = [{"role": "system", "content": _PLAN_SYS + _catalog()},
                 *(history or []),
                 {"role": "user", "content": question}]

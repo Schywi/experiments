@@ -221,10 +221,12 @@ def healthz() -> dict:
 
 @app.post("/chat", response_model=ChatResponse)
 async def chat(req: ChatRequest) -> ChatResponse:
+    """Chat is chat: the LLM answers directly, with no tools."""
     t0 = time.perf_counter()
-    messages, used_tool = _build_messages(req.message)
+    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
     if req.session:
-        messages = [messages[0], *memory.recent(req.session), *messages[1:]]
+        messages = [*messages, *memory.recent(req.session)]
+    messages.append({"role": "user", "content": req.message})
     async with _llm_slot():
         reply, ttft_ms, llm_ms = await _ask_llm_stream(messages)
     metrics = {"elapsed_ms": round((time.perf_counter() - t0) * 1000, 1),
@@ -233,7 +235,7 @@ async def chat(req: ChatRequest) -> ChatResponse:
     if req.session:
         memory.append_turn(req.session, "user", req.message)
         memory.append_turn(req.session, "assistant", reply)
-    return ChatResponse(reply=reply, tool=used_tool, metrics=metrics,
+    return ChatResponse(reply=reply, tool=None, metrics=metrics,
                         screen_md=reply, speech=reply, audio_id=_start_tts(reply))
 
 
@@ -383,9 +385,11 @@ async def ui_message(
     facts = None
     try:
         if mode == "chat":
-            messages, tool = _build_messages(msg)
+            messages = [{"role": "system", "content": SYSTEM_PROMPT}]
             if session:
-                messages = [messages[0], *memory.recent(session), *messages[1:]]
+                messages = [*messages, *memory.recent(session)]
+            messages.append({"role": "user", "content": msg})
+            tool = None
             async with _llm_slot():
                 reply, ttft_ms, llm_ms = await _ask_llm_stream(messages)
             speech = reply
