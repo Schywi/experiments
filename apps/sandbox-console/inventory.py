@@ -154,6 +154,10 @@ class Tile:
     reachability: dict | None = None
     screenshot_ts: int = 0
     note: str | None = None
+    # The page the sandbox's browser is on. Learned from the browser itself
+    # (`location.href`), not from the template, so it reflects a navigation the
+    # pane performed and disappears with the pod.
+    url: str | None = None
 
     @property
     def ready(self) -> bool:
@@ -180,6 +184,7 @@ class Tile:
             "reachability": self.reachability,
             "screenshot_ts": self.screenshot_ts,
             "note": self.note,
+            "url": self.url,
         }
 
 

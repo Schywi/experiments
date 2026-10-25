@@ -76,6 +76,13 @@ writeEnabled: true
 # without it; set it false on any deployment that should never create one.
 allowRawSandbox: true
 
+# Timings and compare runs are written to a SQLite file so they survive a
+# redeploy. Without the volume the pane still works; it just forgets.
+persistence:
+  enabled: true
+  size: 1Gi
+  storageClassName: ""
+
 # M7: how many tiles the demo fills, and the ceiling that refuses more. 9 is the
 # measured ~9.1 active-browser limit from experiment 02; the demo targets 8 so the
 # desktop keeps a little headroom.

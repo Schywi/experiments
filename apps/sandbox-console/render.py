@@ -113,22 +113,6 @@ a { color: inherit; text-decoration: none; }
 .muted { color: hsl(var(--muted-foreground)); }
 .spacer { margin-left: auto; }
 
-.app-header {
-  position: sticky; top: 0; z-index: 10;
-  display: flex; align-items: center; gap: var(--space-3);
-  padding: var(--space-3) var(--space-6);
-  background: hsl(var(--background) / .85);
-  backdrop-filter: blur(8px);
-  border-bottom: 1px solid hsl(var(--border));
-}
-.brand { display: flex; align-items: center; gap: var(--space-2); }
-.brand-mark {
-  width: 22px; height: 22px; border-radius: 6px;
-  background: linear-gradient(140deg, hsl(var(--primary)), hsl(262 83% 58%));
-}
-.brand h1 { font-size: var(--text-lg); }
-.meta { display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap; }
-main { max-width: 1440px; margin: 0 auto; padding: var(--space-6); }
 
 .btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;
@@ -148,9 +132,6 @@ main { max-width: 1440px; margin: 0 auto; padding: var(--space-6); }
 .btn-ghost:hover { background: hsl(var(--secondary)); color: hsl(var(--foreground)); }
 .btn-sm { height: 26px; padding: 0 var(--space-2); font-size: var(--text-xs); }
 
-.toolbar { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; padding-bottom: var(--space-4); }
-.separator { width: 1px; height: 20px; background: hsl(var(--border)); margin: 0 var(--space-1); }
-
 .badge {
   display: inline-flex; align-items: center; gap: 6px;
   padding: 2px 8px; border-radius: 999px;
@@ -162,10 +143,6 @@ main { max-width: 1440px; margin: 0 auto; padding: var(--space-6); }
 .badge-warning { color: hsl(var(--warning)); border-color: hsl(var(--warning) / .35); background: hsl(var(--warning) / .12); }
 .badge-outline { background: transparent; }
 
-.stats { display: flex; gap: var(--space-4); flex-wrap: wrap; margin-bottom: var(--space-4); }
-.stat { display: flex; flex-direction: column; gap: 2px; min-width: 78px; }
-.stat-label { font-size: var(--text-xs); color: hsl(var(--muted-foreground)); text-transform: uppercase; letter-spacing: .04em; }
-.stat-value { font-size: var(--text-xl); font-weight: 600; font-variant-numeric: tabular-nums; }
 #stream-state { color: hsl(var(--success)); }
 
 .grid { display: grid; gap: var(--space-4); grid-template-columns: repeat(auto-fill, minmax(288px, 1fr)); }
@@ -192,6 +169,25 @@ main { max-width: 1440px; margin: 0 auto; padding: var(--space-6); }
 .card-head { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-3) var(--space-3) 0; }
 .card-title { font-size: var(--text-sm); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .card-head .badge { margin-left: auto; }
+.url-row {
+  display: flex; align-items: center; gap: var(--space-2);
+  margin: var(--space-2) var(--space-3) 0; padding: 2px 6px;
+  border-radius: var(--radius); border: 1px solid transparent;
+  font-size: var(--text-xs); color: hsl(var(--muted-foreground)); cursor: pointer;
+}
+.url-row:hover { border-color: hsl(var(--border)); background: hsl(var(--secondary)); color: hsl(var(--foreground)); }
+.url-row .url { font-family: var(--font-mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.url-row .url-unknown { font-style: italic; }
+.url-row .pencil { margin-left: auto; opacity: .7; }
+.url-row[hidden], .url-form[hidden] { display: none; }
+.url-form { display: flex; align-items: center; gap: 6px; margin: var(--space-2) var(--space-3) 0; }
+.url-input {
+  flex: 1; min-width: 0; height: 26px; padding: 0 var(--space-2);
+  border-radius: var(--radius); border: 1px solid hsl(var(--input));
+  background: hsl(var(--background)); color: hsl(var(--foreground));
+  font: 500 12px/1 var(--font-mono);
+}
+.url-input:focus { outline: none; border-color: hsl(var(--ring)); }
 .card-body { padding: var(--space-2) var(--space-3) var(--space-3); display: grid; gap: var(--space-2); }
 .facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-1) var(--space-3); margin: 0; }
 .fact { display: flex; justify-content: space-between; gap: var(--space-2); font-size: var(--text-xs); }
@@ -373,6 +369,26 @@ def tile(tile: inventory.Tile) -> str:
         if tile.ready
         else '<p class="hint">not Ready — a frame appears once the readiness probe on :9222 answers</p>'
     )
+    # The page the browser is on, and a way to change it. The value comes from
+    # the browser (`location.href`), so it survives a redirect the pane never
+    # asked for and shows `unknown` until the first frame has been captured.
+    url_value = (tile.url or "").strip()
+    url_text = url_value or "page unknown"
+    url_css = "url mono" if url_value else "url mono url-unknown"
+    url_row = (
+        f'<div class="url-row" data-act="url-edit" data-id="{esc(tile.id)}" tabindex="0"'
+        f' role="button" title="change the page open in this browser">'
+        f'<span class="{url_css}">{esc(url_text)}</span>'
+        '<span class="pencil" aria-hidden="true">✎</span></div>'
+    )
+    url_form = (
+        f'<form class="url-form" data-act="url-form" data-id="{esc(tile.id)}" hidden>'
+        f'<input class="url-input" type="text" name="url" value="{esc(url_value)}"'
+        f' spellcheck="false" autocomplete="off" aria-label="url to open in {esc(tile.id)}"/>'
+        '<button class="btn btn-primary btn-sm" type="submit">go</button>'
+        '<button class="btn btn-ghost btn-sm" type="button" data-act="url-cancel"'
+        f' data-id="{esc(tile.id)}">cancel</button></form>'
+    )
     return f"""<article class="card" id="tile-{esc(tile.id)}" data-act="expand" data-id="{esc(tile.id)}"
          role="button" tabindex="0" aria-label="open {esc(tile.id)}">
   <div class="shot">
@@ -384,6 +400,8 @@ def tile(tile: inventory.Tile) -> str:
     <span class="card-title mono" title="{esc(tile.id)}">{esc(tile.id)}</span>
     {phase_badge(tile)}
   </div>
+  {url_row}
+  {url_form}
   <div class="card-body">
     <dl class="facts">{fact_rows}</dl>
     {hint}{note}
@@ -402,24 +420,27 @@ def tile(tile: inventory.Tile) -> str:
 def action_bar(write_enabled: bool, allow_raw: bool) -> str:
     """The controls that mutate. Every one reports success or failure."""
     if not write_enabled:
-        return '<div class="toolbar"><span class="badge badge-outline">read-only · WRITE_ENABLED is off</span></div>'
+        return (
+            '<div class="flex items-center gap-2 pb-4">'
+            '<span class="badge badge-outline">read-only · WRITE_ENABLED is off</span></div>'
+        )
     raw = (
         '<button class="btn btn-outline" data-act="create" data-kind="sandbox">+ bare sandbox</button>'
         if allow_raw
         else ""
     )
     return (
-        '<div class="toolbar" role="toolbar" aria-label="actions">'
+        '<div class="flex flex-wrap items-center gap-2 pb-4" role="toolbar" aria-label="actions">'
         '<button class="btn btn-primary" data-act="create" data-kind="claim">+ claim</button>'
         f"{raw}"
-        '<span class="separator" role="separator"></span>'
+        '<span class="w-px h-5 bg-border mx-1" role="separator"></span>'
         '<button class="btn btn-outline" data-act="demo-fill">fill demo grid</button>'
         '<button class="btn btn-outline" data-act="demo-teardown">teardown</button>'
         '<a class="btn btn-outline" href="/compare">compare</a>'
-        '<span class="separator" role="separator"></span>'
+        '<span class="w-px h-5 bg-border mx-1" role="separator"></span>'
         '<button class="btn btn-ghost" data-act="recipe" data-recipe="claim-burst">claim-burst</button>'
         '<button class="btn btn-ghost" data-act="recipe" data-recipe="capacity-check">capacity</button>'
-        '<span class="spacer"></span>'
+        '<span class="ml-auto"></span>'
         f'<span class="badge badge-outline">ceiling {config.MAX_CONCURRENT_SANDBOXES}</span>'
         f'<span class="badge badge-outline">demo {config.DEMO_TILES}</span>'
         "</div>"
@@ -436,14 +457,16 @@ def stats(report: inventory.Report) -> str:
         ("as of", _clock(report.collected_at)),
     ]
     cells = "".join(
-        f'<div class="stat"><span class="stat-label">{esc(label)}</span>'
-        f'<span class="stat-value">{esc(value)}</span></div>'
+        f'<div class="flex flex-col gap-0.5 min-w-[78px]" data-stat="{esc(label)}">'
+        f'<span class="text-xs uppercase tracking-wide text-muted-foreground">{esc(label)}</span>'
+        f'<span class="text-xl font-semibold tabular-nums">{esc(value)}</span></div>'
         for label, value in items
     )
     return (
-        f'<div class="stats">{cells}'
-        '<div class="stat"><span class="stat-label">stream</span>'
-        '<span class="stat-value" id="stream-state" style="font-size:var(--text-base)">connecting</span></div></div>'
+        f'<div class="flex flex-wrap gap-4 mb-4">{cells}'
+        '<div class="flex flex-col gap-0.5 min-w-[78px]" data-stat="stream">'
+        '<span class="text-xs uppercase tracking-wide text-muted-foreground">stream</span>'
+        '<span class="text-sm font-semibold" id="stream-state">connecting</span></div></div>'
     )
 
 
@@ -508,9 +531,11 @@ def expanded(tile_obj: inventory.Tile) -> str:
       <span class="badge badge-outline">{esc(tile_obj.phase)}</span>
       <span class="muted mono">{esc(tile_obj.pod_ip or "")} · {esc(fmt_age(tile_obj.age_s))}</span>
       <span class="spacer"></span>
+      <button class="btn btn-primary btn-sm" data-act="compare" data-id="{esc(tile_obj.id)}"
+              title="time this sandbox against a freshly created bare one">compare</button>
       <button class="btn btn-ghost btn-sm" data-act="close">close</button>
     </div>
-    <div class="dialog-body">
+    <div class="dialog-body" id="dialog-body">
       <img class="big" src="/sandboxes/{esc(tile_obj.id)}/shot?v={tile_obj.screenshot_ts}"
            alt="expanded live screenshot of {esc(tile_obj.id)}"/>
       <div class="big-placeholder">no frame yet</div>
@@ -594,15 +619,21 @@ def compare_page(latest, medians: dict, allow_raw: bool, write_enabled: bool) ->
 <html lang="en"><head>
 <meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>compare · sandbox-console</title>
-<style>{BASE_CSS}</style></head>
+<style>{BASE_CSS}</style>
+<script>{UNO_CONFIG}</script>
+<script src="/static/unocss.js"></script></head>
 <body>
-<header class="app-header">
-  <div class="brand"><span class="brand-mark"></span><h1>compare</h1></div>
-  <div class="meta"><span class="badge badge-outline">same image · same URL · fired together</span></div>
-  <span class="spacer"></span>
-  <div class="meta">{button}<a class="btn btn-ghost" href="/">grid</a></div>
+<header class="sticky top-0 z-10 flex flex-wrap items-center gap-3 px-6 py-3 border-b border-border"
+        style="background:hsl(var(--background)/.88);backdrop-filter:blur(8px)">
+  <div class="flex items-center gap-2">
+    <span class="w-5 h-5 rounded-md" style="background:linear-gradient(140deg,hsl(var(--primary)),hsl(262 83% 58%))"></span>
+    <h1 class="text-base">compare</h1>
+  </div>
+  <span class="badge badge-outline">same image · same URL · fired together</span>
+  <span class="ml-auto"></span>
+  {button}<a class="btn btn-ghost" href="/">grid</a>
 </header>
-<main>{body}{note}<p class="hint" id="compare-status" role="status"></p></main>
+<main class="max-w-[1440px] mx-auto p-6">{body}{note}<p class="hint mt-4" id="compare-status" role="status"></p></main>
 <div id="toasts" aria-live="polite"></div>
 <script>{COMPARE_JS}</script>
 </body></html>"""
@@ -665,6 +696,30 @@ COMPARE_JS = """
 """
 
 
+UNO_CONFIG = """
+window.__unocss = {
+  presets: [function () { return window.__unocss_runtime.presets.presetUno(); }],
+  theme: {
+    colors: {
+      background: "hsl(var(--background))",
+      foreground: "hsl(var(--foreground))",
+      border: "hsl(var(--border))",
+      input: "hsl(var(--input))",
+      ring: "hsl(var(--ring))",
+      card: { DEFAULT: "hsl(var(--card))", foreground: "hsl(var(--foreground))" },
+      muted: { DEFAULT: "hsl(var(--muted))", foreground: "hsl(var(--muted-foreground))" },
+      primary: { DEFAULT: "hsl(var(--primary))", foreground: "hsl(var(--primary-foreground))" },
+      secondary: { DEFAULT: "hsl(var(--secondary))", foreground: "hsl(var(--foreground))" },
+      destructive: { DEFAULT: "hsl(var(--destructive))", foreground: "hsl(var(--destructive-foreground))" },
+      success: "hsl(var(--success))",
+      warning: "hsl(var(--warning))"
+    },
+    borderRadius: { lg: "var(--radius)", md: "calc(var(--radius) - 2px)", sm: "calc(var(--radius) - 4px)" },
+    fontFamily: { sans: "var(--font-sans)", mono: "var(--font-mono)" }
+  },
+};
+"""
+
 PAGE_JS = """
 "use strict";
 (function () {
@@ -721,13 +776,86 @@ PAGE_JS = """
     fallbackTimer = setInterval(poll, 3000);
   }
 
+  var deferredGrid = null;
+
   function swapGrid(markup) {
     // Never yank the DOM while a dialog is open or an action is in flight.
     if (!markup || inFlight > 0 || document.getElementById("dialog")) return;
+    // Never yank it out from under someone typing a url either: the SSE tick
+    // fires whenever a frame lands, which is exactly while an input is focused.
+    var active = document.activeElement;
+    if (active && active.classList && active.classList.contains("url-input")) {
+      deferredGrid = markup;
+      return;
+    }
+    deferredGrid = null;
     var holder = document.createElement("div");
     holder.innerHTML = markup;
     var next = holder.firstElementChild;
     if (next && next.id === "grid-inner") grid.replaceChildren(next);
+  }
+
+  function applyDeferredGrid() {
+    if (!deferredGrid) return;
+    var markup = deferredGrid;
+    deferredGrid = null;
+    swapGrid(markup);
+  }
+
+  function urlParts(id) {
+    return {
+      row: document.querySelector('.url-row[data-id="' + id + '"]'),
+      form: document.querySelector('.url-form[data-id="' + id + '"]')
+    };
+  }
+
+  function openUrlEditor(id) {
+    var parts = urlParts(id);
+    if (!parts.row || !parts.form) return;
+    parts.row.hidden = true;
+    parts.form.hidden = false;
+    var input = parts.form.querySelector("input[name='url']");
+    if (input) { input.focus(); input.select(); }
+  }
+
+  function closeUrlEditor(id) {
+    var parts = urlParts(id);
+    if (parts.row) parts.row.hidden = false;
+    if (parts.form) parts.form.hidden = true;
+    applyDeferredGrid();
+  }
+
+  async function submitUrl(id, form, trigger) {
+    var input = form.querySelector("input[name='url']");
+    var value = input ? input.value.trim() : "";
+    if (!value) { closeUrlEditor(id); return; }
+    if (trigger) trigger.setAttribute("aria-busy", "true");
+    inFlight += 1;
+    try {
+      var response = await fetch("/sandboxes/" + id + "/url", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({url: value})
+      });
+      var body = await response.text();
+      if (!response.ok) {
+        var detail = body;
+        try { detail = JSON.parse(body).detail || body; } catch (error) { /* plain text */ }
+        throw new Error(detail || "HTTP " + response.status);
+      }
+      var holder = document.createElement("div");
+      holder.innerHTML = body;
+      var next = holder.firstElementChild;
+      var current = document.getElementById("tile-" + id);
+      if (next && current) current.replaceWith(next);
+      toast("opened " + value);
+    } catch (error) {
+      toast("could not open " + value + ": " + error.message, true);
+      closeUrlEditor(id);
+    } finally {
+      inFlight -= 1;
+      if (trigger) trigger.removeAttribute("aria-busy");
+    }
   }
 
   async function refreshNow() {
@@ -757,10 +885,30 @@ PAGE_JS = """
     }
   }
 
+  async function compareFromDialog(id, node) {
+    var body = document.getElementById("dialog-body");
+    if (!body) return;
+    if (node) { node.setAttribute("aria-busy", "true"); node.disabled = true; }
+    var previous = body.innerHTML;
+    body.innerHTML = '<p class="hint">firing a bare sandbox and timing it against this one — up to ~90 s…</p>';
+    try {
+      var response = await fetch("/sandboxes/" + id + "/compare", {method: "POST"});
+      var html = await response.text();
+      if (!response.ok) throw new Error(html || "HTTP " + response.status);
+      body.innerHTML = html;
+    } catch (error) {
+      body.innerHTML = previous;
+      toast("compare failed: " + error.message, true);
+    } finally {
+      if (node) { node.removeAttribute("aria-busy"); node.disabled = false; }
+    }
+  }
+
   async function openDialog(id) {
     try {
       var response = await fetch("/sandboxes/" + id + "/expanded", {cache: "no-store"});
       if (!response.ok) throw new Error("HTTP " + response.status);
+      closeDialog();
       var holder = document.createElement("div");
       holder.innerHTML = await response.text();
       var backdrop = holder.firstElementChild;
@@ -792,8 +940,10 @@ PAGE_JS = """
       body: JSON.stringify({x: clientX - rect.left, y: clientY - rect.top, scale: scale})
     }, "clicked " + id);
     if (body) {
+      // fresh=1 asks for a capture rather than the cached frame: the click has
+      // just changed the page, so whatever is in the cache predates it.
       var image = document.querySelector(".dialog img.big");
-      if (image) image.src = base + "?v=" + Date.now();
+      if (image) image.src = base + "?fresh=1&v=" + Date.now();
       await refreshNow();
     }
   }
@@ -875,8 +1025,12 @@ PAGE_JS = """
         });
         return;
       }
+      if (act === "compare") { compareFromDialog(id, action); return; }
+      if (act === "back") { closeDialog(); openDialog(id); return; }
       if (act === "recipe") { runRecipe(action.dataset.recipe, action); return; }
       if (act === "probe") { probe(id, action); return; }
+      if (act === "url-edit") { openUrlEditor(id); return; }
+      if (act === "url-cancel") { closeUrlEditor(id); return; }
       if (act === "expand") { openDialog(id); return; }
       if (act === "close") { closeDialog(); return; }
     }
@@ -896,12 +1050,27 @@ PAGE_JS = """
     }
   });
 
+  document.addEventListener("submit", function (event) {
+    var form = event.target.closest ? event.target.closest(".url-form") : null;
+    if (!form) return;
+    event.preventDefault();
+    submitUrl(form.dataset.id, form, form.querySelector("button[type='submit']"));
+  });
+
   document.addEventListener("keydown", function (event) {
-    if (event.key === "Escape") closeDialog();
+    if (event.key === "Escape") {
+      var urlForm = event.target.closest ? event.target.closest(".url-form") : null;
+      if (urlForm) { closeUrlEditor(urlForm.dataset.id); return; }
+      closeDialog();
+    }
     if ((event.key === "Enter" || event.key === " ") &&
         event.target.matches("[data-act='expand']")) {
       event.preventDefault();
       openDialog(event.target.dataset.id);
+    }
+    if ((event.key === "Enter" || event.key === " ") && event.target.matches(".url-row")) {
+      event.preventDefault();
+      openUrlEditor(event.target.dataset.id);
     }
   });
 
@@ -930,19 +1099,25 @@ PAGE = """<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>sandbox-console</title>
 <style>__BASE_CSS__</style>
+<script>__UNO_CONFIG__</script>
+<script src="/static/unocss.js"></script>
 </head>
 <body>
-<header class="app-header">
-  <div class="brand"><span class="brand-mark"></span><h1>sandbox-console</h1></div>
-  <div class="meta">
+<header class="sticky top-0 z-10 flex flex-wrap items-center gap-3 px-6 py-3 border-b border-border"
+        style="background:hsl(var(--background)/.88);backdrop-filter:blur(8px)">
+  <div class="flex items-center gap-2">
+    <span class="w-5 h-5 rounded-md" style="background:linear-gradient(140deg,hsl(var(--primary)),hsl(262 83% 58%))"></span>
+    <h1 class="text-base">sandbox-console</h1>
+  </div>
+  <div class="flex flex-wrap items-center gap-2">
     <span class="badge badge-outline">agent-sandbox</span>
     <span class="badge badge-outline">__NAMESPACE__</span>
     <span class="badge badge-outline" title="__ROUTER__">router</span>
   </div>
-  <span class="spacer"></span>
-  <div class="meta"><a class="btn btn-ghost" href="/healthz">health</a></div>
+  <span class="ml-auto"></span>
+  <a class="btn btn-ghost" href="/healthz">health</a>
 </header>
-<main>
+<main class="max-w-[1440px] mx-auto p-6 max-sm:p-4">
   <div id="grid">__GRID__</div>
   <section class="stream" id="stream" aria-live="polite">
     <header>recipe output <span class="stream-live">streaming</span></header>
@@ -964,8 +1139,65 @@ def page(report: inventory.Report) -> str:
         "__ROUTER__": esc(config.ROUTER_URL),
         "__GRID__": grid(report),
         "__PAGE_JS__": PAGE_JS,
+        "__UNO_CONFIG__": UNO_CONFIG,
     }
     html_text = PAGE
     for token, value in replacements.items():
         html_text = html_text.replace(token, value)
     return html_text
+
+
+def compare_columns(latest, *, allow_raw: bool, subject: str | None = None) -> str:
+    """The two columns as a fragment, for swapping into an open dialog.
+
+    Same rendering as the /compare page's body: one shared bar scale, p50 in each
+    tooltip, reachability underneath. `subject` names the sandbox the comparison
+    was launched from, so the dialog can offer the way back.
+    """
+    if latest is None:
+        return '<div class="empty"><strong>Nothing to compare yet.</strong></div>'
+    scale = max([arm.total_ms() for arm in latest.arms] or [0])
+    columns = []
+    for arm in latest.arms:
+        if arm.timers:
+            timers = "".join(
+                _bar(label, arm.timers.get(key), scale, None)
+                for label, key in (
+                    ("scheduled", "t_sched_ms"),
+                    ("ready", "t_ready_ms"),
+                    ("cdp up", "t_cdp_ms"),
+                    ("first paint", "t_paint_ms"),
+                )
+            )
+        else:
+            timers = '<p class="hint">no recorded timings for this sandbox</p>'
+        reach = ""
+        if isinstance(arm.reachability, dict):
+            reach = '<div class="chips">' + "".join(
+                _chip(key, str(value), _class_for(str(value), "blocked"), "")
+                for key, value in arm.reachability.items()
+            ) + "</div>"
+        error = f'<p class="note">{esc(arm.error)}</p>' if arm.error else ""
+        columns.append(
+            f'<section class="card col" style="cursor:default">'
+            f'<div class="card-head"><span class="card-title mono">{esc(arm.sandbox)}</span>'
+            f'<span class="badge badge-outline">{esc(arm.label)}</span></div>'
+            f'<div class="card-body">{timers}{reach}{error}</div></section>'
+        )
+    note = "" if allow_raw else (
+        '<p class="note">allowRawSandbox is off: the bare column could not be created.</p>'
+    )
+    if latest.note:
+        note += f'<p class="note">{esc(latest.note)}</p>'
+    back = (
+        f'<button class="btn btn-ghost btn-sm" data-act="back" data-id="{esc(subject)}">'
+        "back to sandbox</button>"
+        if subject
+        else ""
+    )
+    return (
+        '<div class="flex items-center gap-2">'
+        '<span class="badge badge-outline">same image · same URL · shared scale</span>'
+        f'<span class="ml-auto"></span>{back}</div>'
+        '<div class="grid" style="grid-template-columns:1fr 1fr">' + "".join(columns) + "</div>" + note
+    )

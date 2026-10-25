@@ -20,28 +20,42 @@ from dataclasses import dataclass, field
 import cdp
 import config
 import lifecycle
+import records
 
 
 @dataclass
 class Arm:
-    """One column of the split view."""
+    """One column of the split view.
+
+    `recorded` carries timings read back from the database for a sandbox that was
+    created earlier; `created` carries timings from a sandbox this run just made.
+    Exactly one of them is normally set, and `timers` hides which.
+    """
 
     label: str
     kind: str
     created: lifecycle.Created | None = None
     reachability: dict | None = None
     error: str | None = None
+    recorded: dict[str, int] | None = None
+    sandbox_name: str | None = None
 
     @property
     def name(self) -> str:
-        return (self.created.name if self.created else "-")
+        if self.created:
+            return self.created.name
+        return self.sandbox_name or "-"
 
     @property
     def sandbox(self) -> str:
-        return ((self.created.sandbox if self.created else None) or self.name)
+        if self.created:
+            return self.created.sandbox or self.created.name
+        return self.sandbox_name or "-"
 
     @property
     def timers(self) -> dict:
+        if self.recorded:
+            return dict(self.recorded)
         return (self.created.timers if self.created else {})
 
     def total_ms(self) -> int:
@@ -173,6 +187,8 @@ async def run_compare(client: cdp.RouterCDP, allow_raw: bool, timeout: float = 9
         except Exception as error:  # noqa: BLE001 - a failed probe is a reported arm
             arm.error = f"probe failed: {error}"
 
+    payload = run.to_dict()
+    records.remember_run(payload)
     HISTORY.insert(0, run)
     del HISTORY[MAX_HISTORY:]
     return run
@@ -204,3 +220,136 @@ def _pod_for(sandbox_name: str) -> dict | None:
         if (pod.get("metadata") or {}).get("name") == sandbox_name:
             return pod
     return None
+
+
+async def run_against(
+    client: cdp.RouterCDP,
+    sandbox_id: str,
+    *,
+    allow_raw: bool,
+    timeout: float = 90.0,
+) -> Run:
+    """Compare one existing sandbox against a freshly created bare Sandbox.
+
+    The left column is the sandbox the viewer opened. Its four timers come from
+    the database, because they only exist at creation time; if this console never
+    made it there is no row and the column says so instead of inventing numbers.
+    Its reachability is probed live, right now, since that is a property of the
+    running pod rather than of its birth.
+
+    The right column is a bare `kind: Sandbox` created for this comparison and
+    timed end to end. That is the arm that carries the cold-start story.
+    """
+    run = Run(started_at=time.time())
+
+    stored = records.timings_for(sandbox_id)
+    left = Arm(
+        label="THIS SANDBOX",
+        kind="recorded",
+        sandbox_name=sandbox_id,
+        recorded=(
+            {
+                key: stored[key]
+                for key in ("t_sched_ms", "t_ready_ms", "t_cdp_ms", "t_paint_ms")
+                if stored.get(key) is not None
+            }
+            if stored
+            else None
+        ),
+    )
+    if not stored:
+        left.error = "no recorded timings: this console did not create this sandbox"
+    run.arms.append(left)
+
+    right = Arm(label="BARE SANDBOX", kind="sandbox")
+    run.arms.append(right)
+    deadline = time.monotonic() + timeout
+
+    if allow_raw:
+        try:
+            right.created = await asyncio.get_running_loop().run_in_executor(
+                None,
+                lambda: lifecycle.create_sandbox(
+                    config.SANDBOX_NAMESPACE,
+                    image=config.SANDBOX_IMAGE,
+                    target_url=config.TARGET_URL,
+                    cdp_port=config.SANDBOX_PORT,
+                ),
+            )
+        except Exception as error:  # noqa: BLE001 - reported in the column
+            right.error = f"create failed: {error}"
+    else:
+        run.note = "allowRawSandbox is off: the bare column could not be created"
+
+    await asyncio.gather(
+        _time_arm(right, client, deadline),
+        _probe_arm_only(left, client),
+    )
+    if right.created is not None:
+        await _probe_arm_only(right, client)
+        if right.created.timers:
+            records.remember_timings(
+                right.sandbox,
+                kind="sandbox",
+                timers=right.created.timers,
+                image=config.SANDBOX_IMAGE,
+                target_url=config.TARGET_URL,
+            )
+
+    payload = run.to_dict()
+    records.remember_run(payload)
+    HISTORY.insert(0, run)
+    del HISTORY[MAX_HISTORY:]
+    return run
+
+
+async def _probe_arm_only(arm: Arm, client: cdp.RouterCDP) -> None:
+    """Reachability for an arm whose timers are not ours to measure."""
+    try:
+        arm.reachability = await probe_arm(arm, client, config.PROBE_TIMEOUT_MS)
+    except Exception as error:  # noqa: BLE001
+        arm.reachability = None
+        if not arm.error:
+            arm.error = f"probe failed: {error}"
+
+
+def latest_run() -> Run | None:
+    """The most recent run, from memory, or from the database after a restart.
+
+    Without this the /compare page forgets every run whenever the pod is
+    redeployed, which is exactly what made the split view look absent.
+    """
+    if HISTORY:
+        return HISTORY[0]
+    rows = records.recent_runs(1)
+    if not rows:
+        return None
+    payload = rows[0]
+    run = Run(started_at=payload.get("started_at") or 0.0, note=payload.get("note"))
+    for item in payload.get("arms") or []:
+        run.arms.append(
+            Arm(
+                label=item.get("label", "?"),
+                kind=item.get("kind", "?"),
+                reachability=item.get("reachability"),
+                error=item.get("error"),
+                recorded=item.get("timers") or None,
+                sandbox_name=item.get("sandbox"),
+            )
+        )
+    return run
+
+
+def medians_from_db(runs: int = 3) -> dict:
+    """p50 per arm label across recent runs, including runs from before a restart."""
+    rows = records.recent_runs(runs)
+    if not rows:
+        return history_medians()
+    buckets: dict[str, dict[str, list[int]]] = {}
+    for payload in rows:
+        for item in payload.get("arms") or []:
+            label = item.get("label", "?")
+            for key, value in (item.get("timers") or {}).items():
+                if value is not None:
+                    buckets.setdefault(label, {}).setdefault(key, []).append(value)
+    return {label: {key: p50(values) for key, values in timers.items()} for label, timers in buckets.items()}

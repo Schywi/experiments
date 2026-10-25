@@ -51,7 +51,7 @@ def test_grid_fragment_is_html(client):
 
 
 def test_shot_returns_a_png_and_a_cache_header(client, monkeypatch):
-    async def fake_shot(sandbox_id):
+    async def fake_shot(sandbox_id, fresh=False):
         return b"\x89PNG\r\n"
 
     monkeypatch.setattr(server.SCREEN, "shot", fake_shot)
@@ -65,7 +65,7 @@ def test_shot_returns_a_png_and_a_cache_header(client, monkeypatch):
 def test_shot_reports_a_router_failure_instead_of_hanging(client, monkeypatch):
     import cdp
 
-    async def failing_shot(sandbox_id):
+    async def failing_shot(sandbox_id, fresh=False):
         raise cdp.RouterError(502, "Could not connect to the backend sandbox: sb-4f2a")
 
     monkeypatch.setattr(server.SCREEN, "shot", failing_shot)
@@ -278,10 +278,13 @@ def test_a_running_recipe_refuses_a_second_request(client, monkeypatch):
 # --------------------------------------------------------------------------- #
 # M6 / M7: compare and the demo run
 # --------------------------------------------------------------------------- #
-def test_compare_page_renders_without_a_run(client):
+def test_compare_page_renders_without_a_run(client, monkeypatch):
     import compare
 
     compare.HISTORY.clear()
+    # The page now falls back to the database after a restart, so isolate the
+    # empty state from whatever earlier tests wrote there.
+    monkeypatch.setattr(server.compare_mode, "latest_run", lambda: None)
     response = client.get("/compare")
     assert response.status_code == 200
     assert "No comparison has run yet" in response.text
@@ -356,3 +359,195 @@ def test_demo_teardown_deletes_only_managed_claims(client, monkeypatch):
     assert response.status_code == 200
     assert sorted(removed) == ["bare-1", "demo-1", "demo-2"]
     assert response.json()["removed"] == ["demo-1", "demo-2", "bare-1"]
+
+
+# --------------------------------------------------------------------------- #
+# vendored front-end assets
+# --------------------------------------------------------------------------- #
+def test_the_unocss_runtime_is_served_locally(client):
+    """No CDN at runtime: the pane renders on a LAN with no egress."""
+    response = client.get("/static/unocss.js")
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/javascript")
+    assert len(response.content) > 50_000
+    assert "max-age" in response.headers["cache-control"]
+
+
+def test_static_route_refuses_to_escape_its_directory(client):
+    response = client.get("/static/..%2Fserver.py")
+    assert response.status_code == 404
+
+
+def test_the_page_loads_the_runtime_and_its_config(client):
+    page = client.get("/").text
+    assert '<script src="/static/unocss.js"></script>' in page
+    assert "window.__unocss" in page
+    assert "hsl(var(--primary))" in page
+
+
+def test_compare_from_a_card_returns_the_two_columns(client, monkeypatch):
+    class Arm:
+        def __init__(self, label, kind):
+            self.label = label
+            self.kind = kind
+            self.timers = {"t_ready_ms": 123 if kind == "recorded" else 3055}
+            self.reachability = {"cluster": "blocked"}
+            self.error = None
+            self.sandbox = "browser-pool-2fngr" if kind == "recorded" else "bare-1"
+
+        def total_ms(self):
+            return max(self.timers.values())
+
+    class Run:
+        def __init__(self):
+            self.arms = [Arm("THIS SANDBOX", "recorded"), Arm("BARE SANDBOX", "sandbox")]
+            self.note = None
+
+    async def fake_run_against(client_cdp, sandbox_id, allow_raw, timeout=90.0):
+        return Run()
+
+    monkeypatch.setattr(server.compare_mode, "run_against", fake_run_against)
+    response = client.post("/sandboxes/browser-pool-2fngr/compare")
+    assert response.status_code == 200
+    assert "THIS SANDBOX" in response.text
+    assert "BARE SANDBOX" in response.text
+    assert 'data-act="back"' in response.text
+
+
+def test_compare_from_a_card_is_refused_when_writes_are_off(client, monkeypatch):
+    monkeypatch.setattr(server.config, "WRITE_ENABLED", False)
+    assert client.post("/sandboxes/browser-pool-2fngr/compare").status_code == 403
+
+
+def test_healthz_reports_whether_timings_are_durable(client):
+    body = client.get("/healthz").json()
+    assert "durable_timings" in body
+
+
+# --------------------------------------------------------------------------- #
+# the frame after a click, and the url a card offers
+# --------------------------------------------------------------------------- #
+def test_a_fresh_shot_skips_the_cache(client, monkeypatch):
+    seen = {}
+
+    async def fake_shot(sandbox_id, fresh=False):
+        seen["fresh"] = fresh
+        return b"\x89PNG\r\n"
+
+    monkeypatch.setattr(server.SCREEN, "shot", fake_shot)
+    assert client.get("/sandboxes/sb-4f2a/shot").status_code == 200
+    assert seen["fresh"] is False
+    assert client.get("/sandboxes/sb-4f2a/shot?fresh=1").status_code == 200
+    assert seen["fresh"] is True
+
+
+def test_opening_a_url_returns_the_tile_with_the_new_page(client, monkeypatch):
+    seen = {}
+
+    async def fake_navigate(sandbox_id, url):
+        seen["sandbox"] = sandbox_id
+        seen["url"] = url
+        server.SCREEN.store_url(sandbox_id, url)
+        return url
+
+    monkeypatch.setattr(server.SCREEN, "navigate", fake_navigate)
+    try:
+        response = client.post("/sandboxes/sb-4f2a/url", json={"url": "https://wikipedia.org/"})
+        assert response.status_code == 200
+        assert seen == {"sandbox": "sb-4f2a", "url": "https://wikipedia.org/"}
+        assert "https://wikipedia.org/" in response.text
+        assert 'class="url-row"' in response.text
+    finally:
+        server.SCREEN._urls.pop("sb-4f2a", None)
+
+
+def test_opening_a_url_on_an_unknown_sandbox_is_404(client):
+    response = client.post("/sandboxes/nope/url", json={"url": "https://example.com/"})
+    assert response.status_code == 404
+
+
+@pytest.mark.parametrize(
+    "raw,expected",
+    [
+        ("example.com", "https://example.com"),
+        ("http://example.com/a", "http://example.com/a"),
+        ("https://example.com/?q=1", "https://example.com/?q=1"),
+        ("  https://example.com/  ", "https://example.com/"),
+    ],
+)
+def test_a_bare_host_is_read_as_https(raw, expected):
+    assert server.clean_url(raw) == expected
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "",
+        "   ",
+        "file:///etc/passwd",
+        "javascript:alert(1)",
+        "data:text/html,hi",
+        "ftp://example.com/",
+        "chrome://settings",
+        "https://",
+        "https://example.com:99999/",
+        "https://example.com/" + "a" * 2100,
+    ],
+)
+def test_anything_but_http_and_https_is_refused(raw):
+    from fastapi import HTTPException
+
+    with pytest.raises(HTTPException) as failure:
+        server.clean_url(raw)
+    assert failure.value.status_code == 400
+
+
+def test_navigation_stores_the_frame_and_the_page(monkeypatch):
+    import asyncio
+
+    screen = server.Screen()
+    calls = {}
+
+    async def fake_navigate(sandbox_id, url):
+        calls["url"] = url
+        return "https://wikipedia.org/"
+
+    async def fake_screenshot(sandbox_id):
+        calls["shot"] = True
+        return b"\x89PNG\r\n"
+
+    monkeypatch.setattr(screen.cdp, "navigate", fake_navigate)
+    monkeypatch.setattr(screen.cdp, "screenshot", fake_screenshot)
+    landed = asyncio.run(screen.navigate("sb-1", "https://wikipedia.org"))
+    assert landed == "https://wikipedia.org/"
+    assert screen.url("sb-1") == "https://wikipedia.org/"
+    assert screen.shot_ts("sb-1") > 0
+    assert calls["shot"] is True
+
+
+def test_the_first_frame_teaches_the_pane_which_page_it_is(monkeypatch):
+    import asyncio
+
+    screen = server.Screen()
+
+    async def fake_screenshot(sandbox_id):
+        return b"\x89PNG\r\n"
+
+    async def fake_location(sandbox_id):
+        return "https://example.com/"
+
+    monkeypatch.setattr(screen.cdp, "screenshot", fake_screenshot)
+    monkeypatch.setattr(screen.cdp, "location", fake_location)
+    asyncio.run(screen.shot("sb-1"))
+    assert screen.url("sb-1") == "https://example.com/"
+
+
+def test_deleting_a_sandbox_forgets_its_page(monkeypatch):
+    import asyncio
+
+    screen = server.Screen()
+    screen.store_url("sb-1", "https://example.com/")
+    monkeypatch.setattr(server.config, "WRITE_ENABLED", True)
+    monkeypatch.setattr(server.lifecycle, "delete_any", lambda namespace, name: f"claim/{name}")
+    asyncio.run(screen.delete("sb-1"))
+    assert screen.url("sb-1") is None

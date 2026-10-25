@@ -48,7 +48,14 @@ class FakeBrowser:
 
     def __init__(self, evaluate_value='{"cluster": {"outcome": "timeout", "ms": 4001}}'):
         self.evaluate_value = evaluate_value
+        # Answers for the two expressions `navigate()` polls, so a navigation can
+        # be exercised without a real page.
+        self.ready_state = "complete"
+        self.location = "https://example.com/"
+        self.fail_methods: set[str] = set()
         self.methods = []
+        self.expressions = []
+        self.navigations = []
         self.clicks = []
         self.handshakes = 0
         self.headers = None
@@ -71,13 +78,31 @@ class FakeBrowser:
             message = json.loads(raw)
             method = message.get("method")
             self.methods.append(method)
+            if method in self.fail_methods:
+                await socket.send(
+                    json.dumps({"id": message["id"], "error": {"message": "detached", "code": -32000}})
+                )
+                continue
             if method == "Page.captureScreenshot":
                 result = {"data": base64.b64encode(PNG).decode()}
             elif method == "Input.dispatchMouseEvent":
                 self.clicks.append((message["params"]["type"], message["params"]["x"], message["params"]["y"]))
                 result = {}
+            elif method == "Page.navigate":
+                self.navigations.append(message["params"]["url"])
+                result = {"frameId": "F1"}
             elif method == "Runtime.evaluate":
-                result = {"result": {"value": self.evaluate_value}}
+                expression = str(message["params"].get("expression") or "")
+                self.expressions.append(expression)
+                if "document.readyState" in expression:
+                    value = self.ready_state
+                elif "location.href" in expression:
+                    value = self.location
+                elif "requestAnimationFrame" in expression:
+                    value = True
+                else:
+                    value = self.evaluate_value
+                result = {"result": {"value": value}}
             else:
                 result = {}
             await socket.send(json.dumps({"id": message["id"], "result": result}))
@@ -344,3 +369,78 @@ def test_http_transport_maps_a_bridge_failure_to_a_router_error():
         assert "upstream closed" in error.detail
     else:  # pragma: no cover - failure path guard
         raise AssertionError("expected RouterError")
+
+
+# --------------------------------------------------------------------------- #
+# paint settle and navigation
+# --------------------------------------------------------------------------- #
+def test_click_settles_the_frame_before_it_returns():
+    """The capture that follows a click must show the click, not the frame before it."""
+
+    async def body():
+        async with FakeBrowser() as browser:
+            client = client_for(browser)
+            try:
+                await client.click("sb-4f2a", x=10, y=20)
+            finally:
+                await client.close_all()
+        return browser
+
+    browser = run(body())
+    assert browser.methods[-3:] == [
+        "Input.dispatchMouseEvent",
+        "Input.dispatchMouseEvent",
+        "Runtime.evaluate",
+    ]
+    assert "requestAnimationFrame" in browser.expressions[-1]
+
+
+def test_a_detached_context_during_the_settle_is_not_an_error():
+    """A click that navigates destroys the context; the click still happened."""
+
+    async def body():
+        async with FakeBrowser() as browser:
+            browser.fail_methods = {"Runtime.evaluate"}
+            client = client_for(browser)
+            try:
+                return await client.click("sb-4f2a", x=1, y=2), browser
+            finally:
+                await client.close_all()
+
+    point, browser = run(body())
+    assert point == (1, 2)
+    assert "Runtime.evaluate" in browser.methods
+
+
+def test_navigate_waits_for_load_and_returns_where_it_landed():
+    async def body():
+        async with FakeBrowser() as browser:
+            browser.location = "https://wikipedia.org/"
+            client = client_for(browser)
+            try:
+                return await client.navigate("sb-4f2a", "https://wikipedia.org"), browser
+            finally:
+                await client.close_all()
+
+    landed, browser = run(body())
+    assert landed == "https://wikipedia.org/"
+    assert browser.navigations == ["https://wikipedia.org"]
+    assert any("document.readyState" in expression for expression in browser.expressions)
+
+
+def test_a_page_that_never_finishes_loading_is_an_error():
+    async def body():
+        async with FakeBrowser() as browser:
+            browser.ready_state = "loading"
+            client = client_for(browser)
+            try:
+                await client.navigate("sb-4f2a", "https://slow.example/", timeout=0.2)
+            finally:
+                await client.close_all()
+
+    try:
+        run(body())
+    except cdp.CDPError as error:
+        assert "did not finish" in str(error)
+    else:  # pragma: no cover - failure path guard
+        raise AssertionError("expected CDPError")

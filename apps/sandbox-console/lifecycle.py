@@ -24,7 +24,9 @@ from typing import Any
 from kubernetes import client
 
 import cdp
+import config
 import kube
+import records
 
 # Stamped on everything the pane creates, so teardown removes only its own work.
 MANAGED_LABEL = "sandbox-console"
@@ -353,3 +355,36 @@ def sandbox_name_from_object(payload: dict) -> str | None:
 
 def valid_name(name: str) -> bool:
     return bool(re.fullmatch(r"[a-z0-9]([-a-z0-9]*[a-z0-9])?", name or ""))
+
+
+async def time_and_record(
+    client,
+    created: Created,
+    *,
+    image: str | None = None,
+    target_url: str | None = None,
+    timeout: float | None = None,
+) -> Created:
+    """Measure a creation end to end and write the numbers down.
+
+    Called as a background task right after a POST, because the timers only exist
+    while the sandbox is being born and the HTTP response cannot wait for them.
+    With no database (no volume) `records` falls back to memory and the numbers
+    last until the next restart, which the health endpoint reports.
+    """
+    deadline = time.monotonic() + (timeout or config.CREATE_TIMEOUT_SECONDS)
+    await wait_for_sandbox(created, deadline)
+    if created.error:
+        return created
+    await wait_for_cdp(client, created, deadline)
+    await wait_for_paint(client, created, deadline)
+    finish(created)
+    records.remember_timings(
+        created.sandbox or created.name,
+        kind=created.kind,
+        claim=created.name if created.kind == "claim" else None,
+        timers=dict(created.timers),
+        image=image,
+        target_url=target_url,
+    )
+    return created

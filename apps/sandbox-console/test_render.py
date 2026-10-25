@@ -111,10 +111,10 @@ def test_grid_counts_the_pool_and_states_the_ceiling():
     report.pool_idle = 3
     report.truncated = 2
     markup = render.grid(report)
-    # Stats are label/value pairs so the numbers sit on their own type scale.
-    assert '<span class="stat-label">running</span><span class="stat-value">1</span>' in markup
-    assert '<span class="stat-label">pending</span><span class="stat-value">1</span>' in markup
-    assert '<span class="stat-label">pool</span><span class="stat-value">0/3</span>' in markup
+    # Stats carry a stable data-stat hook; the styling is utilities on top.
+    assert 'data-stat="running"' in markup and ">1</span>" in markup
+    assert 'data-stat="pending"' in markup
+    assert 'data-stat="pool"' in markup and ">0/3</span>" in markup
     assert "2 more not shown" in markup
     # Two cards drawn: the ready one and the pending one.
     assert markup.count('class="card"') == 2
@@ -208,3 +208,90 @@ def test_page_javascript_parses(tmp_path):
 
 def test_compare_page_javascript_parses(tmp_path):
     _check_scripts(render.compare_page(None, {}, allow_raw=True, write_enabled=True), tmp_path)
+
+
+def test_dialog_offers_compare_and_has_a_container_to_swap():
+    markup = render.expanded(tile_with())
+    assert 'data-act="compare"' in markup
+    assert 'id="dialog-body"' in markup
+    assert ">compare<" in markup
+
+
+def test_compare_columns_fragment_carries_both_arms_and_a_way_back():
+    import compare
+
+    class Arm:
+        def __init__(self, label, kind, timers, reach):
+            self.label = label
+            self.kind = kind
+            self.timers = timers
+            self.reachability = reach
+            self.error = None
+            self.sandbox = label.lower().replace(" ", "-")
+
+        def total_ms(self):
+            return max(self.timers.values())
+
+    run = compare.Run(
+        started_at=0.0,
+        arms=[
+            Arm("THIS SANDBOX", "recorded", {"t_sched_ms": 147, "t_ready_ms": 123}, {"cluster": "blocked"}),
+            Arm("BARE SANDBOX", "sandbox", {"t_sched_ms": 800, "t_ready_ms": 3055}, {"cluster": "reachable"}),
+        ],
+    )
+    markup = render.compare_columns(run, allow_raw=True, subject="browser-pool-2fngr")
+    assert "THIS SANDBOX" in markup and "BARE SANDBOX" in markup
+    assert 'data-act="back" data-id="browser-pool-2fngr"' in markup
+    assert markup.count('class="bar"') == 8
+
+
+def test_compare_columns_explains_an_arm_without_timings():
+    import compare
+
+    class Arm:
+        label = "THIS SANDBOX"
+        kind = "recorded"
+        timers = {}
+        reachability = {"cluster": "blocked"}
+        error = "no recorded timings: this console did not create this sandbox"
+        sandbox = "browser-pool-2fngr"
+
+        def total_ms(self):
+            return 0
+
+    run = compare.Run(started_at=0.0, arms=[Arm()])
+    markup = render.compare_columns(run, allow_raw=True)
+    assert "no recorded timings for this sandbox" in markup
+    assert "this console did not create this sandbox" in markup
+
+
+# --------------------------------------------------------------------------- #
+# the page a card shows, and changing it without a dialog
+# --------------------------------------------------------------------------- #
+def test_the_card_shows_the_page_and_offers_to_change_it():
+    markup = render.tile(tile_with(url="https://example.com/"))
+    assert 'class="url-row"' in markup
+    assert 'data-act="url-edit"' in markup
+    assert 'data-act="url-form"' in markup
+    assert 'name="url"' in markup
+    assert "https://example.com/" in markup
+    # Editing happens in the card, not in a second window.
+    assert "dialog" not in markup
+
+
+def test_a_card_that_has_not_seen_a_frame_yet_says_the_page_is_unknown():
+    markup = render.tile(tile_with(url=None))
+    assert "page unknown" in markup
+    assert 'value=""' in markup
+
+
+def test_the_page_is_escaped_into_the_row_and_into_the_input():
+    markup = render.tile(tile_with(url='https://example.com/?a=1&b="2"'))
+    assert "https://example.com/?a=1&amp;b=&quot;2&quot;" in markup
+    assert "<script" not in markup
+
+
+def test_the_url_editor_is_scoped_to_one_card():
+    markup = render.tile(tile_with(url="https://example.com/"))
+    assert 'data-act="url-edit" data-id="sb-4f2a"' in markup
+    assert 'data-act="url-form" data-id="sb-4f2a"' in markup

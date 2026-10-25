@@ -17,8 +17,12 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import time
 from contextlib import asynccontextmanager
+
+from pathlib import Path
+from urllib.parse import urlparse
 
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
@@ -35,6 +39,7 @@ import inventory
 import kube
 import lifecycle
 import probes
+import records
 import recipes
 import render
 from concurrency import BoundedFIFO, QueueFull
@@ -56,6 +61,51 @@ class ClickRequest(BaseModel):
     scale: float = 1.0
 
 
+class UrlRequest(BaseModel):
+    """The page to open in one sandbox's browser."""
+
+    url: str
+
+
+ALLOWED_URL_SCHEMES = ("http", "https")
+MAX_URL_LENGTH = 2048
+
+
+def clean_url(raw: str) -> str:
+    """Validate a URL the pane is about to navigate a sandbox to.
+
+    Chromium will happily open `file:///tmp/chrome-data/...`, which would let the
+    input paint a sandbox's own disk onto the pane, so the scheme is checked
+    rather than trusted. A bare host is accepted and read as `https://host`,
+    which is what a person typing `example.com` means.
+    """
+    text = (raw or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="url is empty")
+    if len(text) > MAX_URL_LENGTH:
+        raise HTTPException(status_code=400, detail=f"url is longer than {MAX_URL_LENGTH} characters")
+    # `data:text/html,...` and `javascript:...` have no `://`, so the prefix test
+    # is on the scheme grammar rather than on the separator.
+    has_scheme = re.match(r"^[a-zA-Z][a-zA-Z0-9+.\-]*:", text) is not None
+    candidate = text if has_scheme else f"https://{text}"
+    parsed = urlparse(candidate)
+    scheme = (parsed.scheme or "").lower()
+    if scheme not in ALLOWED_URL_SCHEMES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"only {', '.join(ALLOWED_URL_SCHEMES)} urls can be opened, not {scheme or 'this'}",
+        )
+    if not parsed.hostname:
+        raise HTTPException(status_code=400, detail="url has no host")
+    try:
+        port = parsed.port
+    except ValueError:
+        raise HTTPException(status_code=400, detail="url has an invalid port") from None
+    if port is not None and not 0 < port < 65536:
+        raise HTTPException(status_code=400, detail="url has an invalid port")
+    return candidate
+
+
 class Screen:
     """Everything the console keeps in memory: last frames, probes, limits."""
 
@@ -63,6 +113,7 @@ class Screen:
         self._shots: dict[str, tuple[float, bytes]] = {}
         self._reach: dict[str, dict] = {}
         self._notes: dict[str, str] = {}
+        self._urls: dict[str, str] = {}
         self._locks: dict[str, asyncio.Lock] = {}
         self.cdp = cdp.RouterCDP(
             config.ROUTER_URL,
@@ -95,6 +146,13 @@ class Screen:
 
     def note(self, sandbox_id: str, message: str) -> None:
         self._notes[sandbox_id] = message
+
+    def url(self, sandbox_id: str) -> str | None:
+        return self._urls.get(sandbox_id)
+
+    def store_url(self, sandbox_id: str, url: str | None) -> None:
+        if url:
+            self._urls[sandbox_id] = url
 
     def reach_key(self, sandbox_id: str, pod_ip: str | None) -> str:
         return f"{sandbox_id}/{pod_ip or '-'}"
@@ -149,6 +207,18 @@ class Screen:
             name=created.name,
             namespace=created.namespace,
         )
+        # Time it in the background and write the numbers down: the four timers
+        # only exist while the sandbox is being born, and the response cannot wait.
+        task = asyncio.create_task(
+            lifecycle.time_and_record(
+                self.cdp,
+                created,
+                image=config.SANDBOX_IMAGE,
+                target_url=config.TARGET_URL,
+            )
+        )
+        _BACKGROUND.add(task)
+        task.add_done_callback(_BACKGROUND.discard)
         return created
 
     async def delete(self, sandbox_id: str) -> str:
@@ -160,6 +230,7 @@ class Screen:
             None, lifecycle.delete_any, config.SANDBOX_NAMESPACE, sandbox_id
         )
         self._shots.pop(sandbox_id, None)
+        self._urls.pop(sandbox_id, None)
         self._reach = {key: value for key, value in self._reach.items() if not key.startswith(f"{sandbox_id}/")}
         audit.record(config.AUDIT_LOG, "delete", removed=removed)
         return removed
@@ -180,6 +251,7 @@ class Screen:
                 screenshot_ts=self.shot_ts(tile.id),
                 reachability=self.reach(tile.id, tile.pod_ip),
                 note=self._notes.get(tile.id),
+                url=self._urls.get(tile.id),
             )
             decorated.append(tile)
         report.tiles = decorated
@@ -194,16 +266,31 @@ class Screen:
 
     # -- actions -----------------------------------------------------------
 
-    async def shot(self, sandbox_id: str) -> bytes:
+    async def shot(self, sandbox_id: str, fresh: bool = False) -> bytes:
+        """One frame. `fresh` skips the cache read, never the cache write.
+
+        A cached frame is only trustworthy while nothing outside the pane
+        changed the page. After a click or a navigation the caller asks for a
+        capture regardless of age, so two viewers cannot show each other's
+        stale picture.
+        """
         cached = self.cached_shot(sandbox_id)
-        if cached and (time.time() - cached[0]) < config.SHOT_TTL_SECONDS:
+        if cached and not fresh and (time.time() - cached[0]) < config.SHOT_TTL_SECONDS:
             return cached[1]
         async with self.lock(sandbox_id):
             cached = self.cached_shot(sandbox_id)
-            if cached and (time.time() - cached[0]) < config.SHOT_TTL_SECONDS:
+            if cached and not fresh and (time.time() - cached[0]) < config.SHOT_TTL_SECONDS:
                 return cached[1]
             payload = await self.cdp.screenshot(sandbox_id)
             self.store_shot(sandbox_id, payload)
+            # The first frame is also the first chance to learn what the page
+            # is: the template's TARGET_URL is the boot value, not the truth
+            # after a navigation.
+            if sandbox_id not in self._urls:
+                try:
+                    self.store_url(sandbox_id, await self.cdp.location(sandbox_id))
+                except (cdp.CDPError, cdp.RouterError):
+                    pass
             return payload
 
     async def click(self, sandbox_id: str, payload: ClickRequest) -> None:
@@ -216,8 +303,14 @@ class Screen:
                 width=config.VIEWPORT_WIDTH,
                 height=config.VIEWPORT_HEIGHT,
             )
+            # A click can navigate (a link, a form). Capture after the click's
+            # own settle, so the stored frame is the one that shows the result.
             frame = await self.cdp.screenshot(sandbox_id)
             self.store_shot(sandbox_id, frame)
+            try:
+                self.store_url(sandbox_id, await self.cdp.location(sandbox_id))
+            except (cdp.CDPError, cdp.RouterError):
+                pass
         audit.record(
             config.AUDIT_LOG,
             "click",
@@ -226,6 +319,21 @@ class Screen:
             y=point[1],
             scale=payload.scale,
         )
+
+    async def navigate(self, sandbox_id: str, url: str) -> str:
+        """Open `url` in the sandbox's browser, then store the new frame.
+
+        The page lives in the pod's Chromium, so this is a change to the running
+        sandbox and it lasts until that pod goes away. A pool member boots at
+        the template's TARGET_URL again.
+        """
+        async with self.lock(sandbox_id):
+            landed = await self.cdp.navigate(sandbox_id, url)
+            frame = await self.cdp.screenshot(sandbox_id)
+            self.store_shot(sandbox_id, frame)
+            self.store_url(sandbox_id, landed)
+        audit.record(config.AUDIT_LOG, "navigate", sandbox=sandbox_id, url=landed)
+        return landed
 
     async def probe(self, sandbox_id: str, tile: inventory.Tile) -> dict:
         spec_pod = None
@@ -267,6 +375,9 @@ def _http_error(error: Exception) -> HTTPException:
 
 
 SCREEN = Screen()
+# Keep strong references to background tasks; a bare create_task can be collected
+# before it runs (the assistant learned this the hard way).
+_BACKGROUND: set = set()
 
 
 @asynccontextmanager
@@ -276,6 +387,26 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="sandbox-console", version="0.1.0", lifespan=lifespan)
+
+STATIC_DIR = Path(__file__).parent / "static"
+
+
+@app.get("/static/{name}")
+async def static_file(name: str) -> Response:
+    """Serve the vendored front-end assets (currently just the UnoCSS runtime).
+
+    Self-hosted rather than a CDN: the pane has to render on a LAN with no egress,
+    and a node build step for Tailwind is not available in this image.
+    """
+    path = (STATIC_DIR / name).resolve()
+    if STATIC_DIR.resolve() not in path.parents or not path.is_file():
+        raise HTTPException(status_code=404, detail="not found")
+    media = "text/javascript" if path.suffix == ".js" else "application/octet-stream"
+    return Response(
+        content=path.read_bytes(),
+        media_type=media,
+        headers={"Cache-Control": "public, max-age=86400"},
+    )
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -335,11 +466,16 @@ async def sandboxes() -> HTMLResponse:
 
 
 @app.get("/sandboxes/{sandbox_id}/shot")
-async def shot(sandbox_id: str) -> Response:
-    """One PNG frame, captured through the router and cached for SHOT_TTL_SECONDS."""
+async def shot(sandbox_id: str, fresh: int = 0) -> Response:
+    """One PNG frame, captured through the router and cached for SHOT_TTL_SECONDS.
+
+    `?fresh=1` forces a capture for the caller that just changed the page, so the
+    frame it receives is the one after its own click rather than whatever the
+    cache holds.
+    """
     try:
         async with LIMITER.slot():
-            payload = await SCREEN.shot(sandbox_id)
+            payload = await SCREEN.shot(sandbox_id, fresh=bool(fresh))
     except QueueFull:
         raise HTTPException(
             status_code=429,
@@ -380,6 +516,33 @@ async def click(sandbox_id: str, payload: ClickRequest) -> HTMLResponse:
     return HTMLResponse(render.tile(refreshed or tile))
 
 
+@app.post("/sandboxes/{sandbox_id}/url", response_class=HTMLResponse)
+async def open_url(sandbox_id: str, payload: UrlRequest) -> HTMLResponse:
+    """Open a url in one sandbox's browser and return the refreshed tile.
+
+    The page lives in the pod's Chromium: this changes the running sandbox, not
+    the template. A pool member that is deleted and re-claimed boots at the
+    template's `TARGET_URL` again.
+    """
+    tile, _ = await SCREEN.tile(sandbox_id)
+    if tile is None:
+        raise HTTPException(status_code=404, detail=f"no sandbox {sandbox_id}")
+    url = clean_url(payload.url)
+    try:
+        async with LIMITER.slot():
+            await SCREEN.navigate(sandbox_id, url)
+    except QueueFull:
+        raise HTTPException(
+            status_code=429,
+            detail="at capacity",
+            headers={"Retry-After": str(config.RETRY_AFTER_SECONDS)},
+        )
+    except Exception as error:  # noqa: BLE001
+        SCREEN.note(sandbox_id, f"navigate failed: {error}")
+        audit.record(config.AUDIT_LOG, "navigate_failed", sandbox=sandbox_id, url=url, error=str(error))
+        raise _http_error(error)
+    refreshed, _ = await SCREEN.tile(sandbox_id)
+    return HTMLResponse(render.tile(refreshed or tile))
 @app.post("/sandboxes/{sandbox_id}/reachability", response_class=HTMLResponse)
 async def reachability(sandbox_id: str) -> HTMLResponse:
     """Live isolation evidence from inside the sandbox's own Chromium."""
@@ -502,14 +665,43 @@ async def start_compare() -> JSONResponse:
     return JSONResponse(status_code=200, content=run.to_dict())
 
 
+@app.post("/sandboxes/{sandbox_id}/compare", response_class=HTMLResponse)
+async def compare_against(sandbox_id: str) -> HTMLResponse:
+    """Compare one open sandbox against a fresh bare Sandbox, for the dialog.
+
+    The left column reads its timings from the database (they only exist at
+    creation), the right column times a bare Sandbox made for this run.
+    """
+    if not config.WRITE_ENABLED:
+        raise HTTPException(status_code=403, detail="write access is disabled on this pane")
+    if not lifecycle.valid_name(sandbox_id):
+        raise HTTPException(status_code=400, detail="invalid sandbox name")
+    try:
+        run = await compare_mode.run_against(
+            SCREEN.cdp,
+            sandbox_id,
+            allow_raw=config.ALLOW_RAW_SANDBOX,
+            timeout=config.CREATE_TIMEOUT_SECONDS,
+        )
+    except Exception as error:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"compare failed: {error}")
+    audit.record(
+        config.AUDIT_LOG,
+        "compare_subject",
+        sandbox=sandbox_id,
+        arms=[{"label": arm.label, "timers": arm.timers} for arm in run.arms],
+    )
+    return HTMLResponse(render.compare_columns(run, allow_raw=config.ALLOW_RAW_SANDBOX, subject=sandbox_id))
+
+
 @app.get("/compare", response_class=HTMLResponse)
 async def compare_view() -> HTMLResponse:
     """The split view: the last run, plus p50 of the last three on hover."""
-    latest = compare_mode.HISTORY[0] if compare_mode.HISTORY else None
+    latest = compare_mode.latest_run()
     return HTMLResponse(
         render.compare_page(
             latest,
-            compare_mode.history_medians(),
+            compare_mode.medians_from_db(),
             allow_raw=config.ALLOW_RAW_SANDBOX,
             write_enabled=config.WRITE_ENABLED,
         )
@@ -591,4 +783,5 @@ async def healthz(request: Request) -> dict:
         "pool_ready": report.pool_ready,
         "admitting": LIMITER.admitted,
         "errors": report.errors,
+        "durable_timings": records.durable(),
     }

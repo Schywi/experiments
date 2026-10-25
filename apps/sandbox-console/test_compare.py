@@ -161,3 +161,72 @@ def test_wait_for_sandbox_stamps_the_ready_timer(monkeypatch):
     run(lifecycle.wait_for_sandbox(created, deadline=_time.monotonic() + 5))
     assert "t_ready_ms" in created.timers
     assert "t_sched_ms" in created.timers
+
+
+def test_run_against_uses_recorded_timings_for_the_subject(monkeypatch):
+    import lifecycle
+    import records
+
+    monkeypatch.setattr(
+        records,
+        "timings_for",
+        lambda sandbox: {"t_sched_ms": 147, "t_ready_ms": 123, "t_cdp_ms": 1005, "t_paint_ms": 2675},
+    )
+    monkeypatch.setattr(records, "remember_run", lambda payload: None)
+    monkeypatch.setattr(records, "remember_timings", lambda *a, **k: None)
+
+    async def fake_wait(created, deadline):
+        created.sandbox = created.name
+        created.timers.update(
+            {"t_sched_ms": 800, "t_ready_ms": 3055, "t_cdp_ms": 4944, "t_paint_ms": 5643}
+        )
+        return created.sandbox
+
+    async def fake_ready(client, created, deadline):
+        return True
+
+    async def fake_paint(client, created, deadline):
+        return True
+
+    monkeypatch.setattr(lifecycle, "wait_for_sandbox", fake_wait)
+    monkeypatch.setattr(lifecycle, "wait_for_cdp", fake_ready)
+    monkeypatch.setattr(lifecycle, "wait_for_paint", fake_paint)
+    monkeypatch.setattr(
+        lifecycle,
+        "create_sandbox",
+        lambda *a, **k: lifecycle.Created("sandbox", "bare-1", "sandbox-demo", 0.0),
+    )
+    compare.HISTORY.clear()
+
+    async def fake_probe(arm, client, timeout_ms):
+        return {"cluster": "blocked" if arm.kind == "recorded" else "reachable"}
+
+    monkeypatch.setattr(compare, "probe_arm", fake_probe)
+
+    run_ = run(compare.run_against(StubCDP(), "browser-pool-2fngr", allow_raw=True, timeout=5))
+
+    left, right = run_.arms
+    assert left.label == "THIS SANDBOX" and left.kind == "recorded"
+    assert left.timers["t_ready_ms"] == 123
+    assert left.reachability == {"cluster": "blocked"}
+    assert right.timers["t_ready_ms"] == 3055
+    assert right.reachability == {"cluster": "reachable"}
+
+
+def test_run_against_says_so_when_it_has_no_row(monkeypatch):
+    import records
+
+    monkeypatch.setattr(records, "timings_for", lambda sandbox: None)
+    monkeypatch.setattr(records, "remember_run", lambda payload: None)
+    compare.HISTORY.clear()
+
+    async def fake_probe(arm, client, timeout_ms):
+        return {"cluster": "blocked"}
+
+    monkeypatch.setattr(compare, "probe_arm", fake_probe)
+    run_ = run(compare.run_against(StubCDP(), "browser-pool-2fngr", allow_raw=False, timeout=5))
+
+    left = run_.arms[0]
+    assert left.recorded is None
+    assert "no recorded timings" in (left.error or "")
+    assert "allowRawSandbox is off" in (run_.note or "")

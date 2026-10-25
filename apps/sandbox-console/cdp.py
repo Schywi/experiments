@@ -28,6 +28,7 @@ import asyncio
 import base64
 import itertools
 import json
+import time
 from dataclasses import dataclass, field
 from typing import Any
 from urllib.parse import urlparse, urlunparse
@@ -268,7 +269,11 @@ class RouterCDP:
         return base64.b64decode(data)
 
     async def click(self, sandbox_id: str, x: float, y: float, scale: float = 1.0, width: int | None = None, height: int | None = None) -> tuple[int, int]:
-        """Press and release at a viewport coordinate. Returns the clamped point."""
+        """Press and release at a viewport coordinate. Returns the clamped point.
+
+        The release is followed by `settle()`, so a capture taken right after
+        this returns shows the click's effect instead of the frame before it.
+        """
         await self._enable_page(sandbox_id)
         width = width or self.viewport[0]
         height = height or self.viewport[1]
@@ -286,7 +291,64 @@ class RouterCDP:
                     "clickCount": 1,
                 },
             )
+        await self.settle(sandbox_id)
         return point_x, point_y
+
+    async def settle(self, sandbox_id: str, frames: int = 2) -> None:
+        """Wait for the compositor to present the frame an input event produced.
+
+        `Page.captureScreenshot` returns the last presented surface. A mouse
+        release is dispatched, the page reacts, and only then does a frame
+        exist, so capturing straight after the release returns the picture from
+        *before* the click. Two animation frames are enough for Chromium to
+        paint the result.
+
+        A click that navigates destroys the execution context, so a failure here
+        is expected rather than an error: the caller captures whatever the new
+        page shows. The expression resolves `false` when the document has no
+        animation frames to wait on, which some error pages do.
+        """
+        expression = (
+            "new Promise(function (resolve) {"
+            "  if (typeof requestAnimationFrame !== 'function') { resolve(false); return; }"
+            "  var left = %d;"
+            "  function step() {"
+            "    left -= 1;"
+            "    if (left <= 0) { resolve(true); return; }"
+            "    requestAnimationFrame(step);"
+            "  }"
+            "  requestAnimationFrame(step);"
+            "})" % max(1, int(frames))
+        )
+        try:
+            await self.evaluate(sandbox_id, expression, await_promise=True)
+        except (CDPError, RouterError):
+            return
+
+    async def navigate(self, sandbox_id: str, url: str, timeout: float | None = None) -> str:
+        """Open `url` in the sandbox's page and wait until it has settled.
+
+        Returns the page's `location.href` after load, which is the value the
+        card shows: a redirect or a `https` upgrade is what the browser really
+        ended up on, not what was asked for.
+
+        There are no CDP events over the HTTP bridge (see the module docstring),
+        so "loaded" is polled from the page rather than waited for.
+        """
+        await self._enable_page(sandbox_id)
+        await self.call(sandbox_id, "Page.navigate", {"url": url})
+        budget = self.command_timeout if timeout is None else timeout
+        deadline = time.monotonic() + max(0.0, budget)
+        while time.monotonic() < deadline:
+            try:
+                if await self.evaluate(sandbox_id, "document.readyState") == "complete":
+                    await self.settle(sandbox_id)
+                    return str(await self.evaluate(sandbox_id, "location.href") or url)
+            except CDPError:
+                # The old context is gone mid-navigation; ask again shortly.
+                pass
+            await asyncio.sleep(0.05)
+        raise CDPError(f"navigation to {url} did not finish in {budget:.1f}s")
 
     async def evaluate(self, sandbox_id: str, expression: str, await_promise: bool = True) -> Any:
         """Run JavaScript in the page and return its value."""

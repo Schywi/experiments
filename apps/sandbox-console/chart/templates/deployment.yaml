@@ -89,6 +89,8 @@ spec:
               value: {{ .Values.probes.reachableMs | quote }}
             - name: AUDIT_LOG
               value: /var/log/sandbox-console/audit.jsonl
+            - name: CONSOLE_DB
+              value: {{ .Values.persistence.path | default "/data/console.db" | quote }}
           startupProbe:
             httpGet: {path: /healthz, port: http}
             periodSeconds: 3
@@ -113,6 +115,10 @@ spec:
               mountPath: /var/log/sandbox-console
             - name: tmp
               mountPath: /tmp
+            {{- if .Values.persistence.enabled }}
+            - name: data
+              mountPath: /data
+            {{- end }}
       volumes:
         # emptyDir on purpose: the audit trail is a per-pod log, not a database
         # (RFC §10). Losing it on restart is acceptable and cheaper than a PVC.
@@ -120,3 +126,8 @@ spec:
           emptyDir: {}
         - name: tmp
           emptyDir: {}
+        {{- if .Values.persistence.enabled }}
+        - name: data
+          persistentVolumeClaim:
+            claimName: sandbox-console-data
+        {{- end }}

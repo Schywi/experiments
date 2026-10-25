@@ -80,6 +80,15 @@ The recipe runner executes three operations in-process — `claim-burst`,
 - **No htmx.** The markup is server-rendered fragments, but the page swaps them
   with `fetch()` and plain DOM instead of loading htmx from a public CDN. The
   pane has to work on a LAN.
+- **UnoCSS, vendored.** `static/unocss.js` is the `@unocss/runtime` bundle served
+  from `/static` (241 KB, cached), configured with a shadcn-shaped theme so
+  utilities read `bg-card`, `text-muted-foreground`, `border-border`,
+  `rounded-lg`. Tailwind proper or the shadcn package would need a node build
+  step this image does not have; `.btn`, `.badge`, `.card`, `.chip` remain the
+  component layer, which is how shadcn is structured anyway.
+- **Server-Sent Events, not WebSocket.** The grid subscribes to `/events` and
+  gets a fragment pushed when the state changes, with polling as a fallback. SSE
+  because the traffic is one-way and the router cannot carry an upgrade.
 - **No outbound dashboard links.** The header links to Grafana, Hubble and Argo
   CD were removed: the pane is the pane, and a link nobody asked for is noise.
 - **CDP runs over HTTP to a bridge inside the sandbox.** See the diagram above;
