@@ -29,3 +29,7 @@ secrets*.yml
 # Python bytecode caches (apps/models/* are Python)
 __pycache__/
 *.pyc
+
+# Handoff notes for the sandbox-console commits; never published.
+commit_message.txt
+commit_message.sh
