@@ -38,8 +38,6 @@ GRAFANA_DATASOURCE_NAME = os.environ.get("GRAFANA_DATASOURCE_NAME", "victoriamet
 # No default: an unset NEO4J_UI_URL means no neo4j link. There is no fallback host.
 NEO4J_UI = os.environ.get("NEO4J_UI_URL", "").rstrip("/")
 
-ARGOCD_NAMESPACE = os.environ.get("ARGOCD_APPLICATIONS_NAMESPACE", "argocd")
-
 _NAMESPACE_RE = re.compile(r'"namespace"\s*:\s*"([^"]+)"')
 
 _SOURCE = {
@@ -110,15 +108,17 @@ def _hubble_link(namespace):
 
 
 def _argocd_link(args: dict):
-    """Applications overview, or one Application when a fact names it."""
+    """Applications overview, or one Application when a fact names it.
+
+    Argo CD v3 serves the SPA from `/` and routes client-side through the hash
+    (`/#/applications/...`); path routes such as `/applications/...` return 404.
+    """
     if not ARGOCD_URL:
         return None
     name = args.get("application") or args.get("app")
     if isinstance(name, str) and name:
-        return (f"{ARGOCD_URL}/applications/"
-                f"{urllib.parse.quote(str(args.get('namespace') or ARGOCD_NAMESPACE))}/"
-                f"{urllib.parse.quote(name)}")
-    return f"{ARGOCD_URL}/applications"
+        return f"{ARGOCD_URL}/#/applications/{urllib.parse.quote(name)}"
+    return f"{ARGOCD_URL}/#/applications"
 
 
 def _kargo_link(args: dict):

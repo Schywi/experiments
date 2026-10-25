@@ -8,7 +8,7 @@ an unset env means that link is omitted, never guessed.
 |---|---|---|---|
 | `grafana` | `GRAFANA_URL` | `<GRAFANA_URL>/explore?schemaVersion=1&panes=<panes json>` | fact tool is `query_prometheus` with a query |
 | `hubble` ("Open in Cilium") | `HUBBLE_URL` | `<HUBBLE_URL>/?namespace=<ns>` | the fact carries a namespace (args, or derived from its resources) |
-| `argocd` | `ARGOCD_URL` | `<ARGOCD_URL>/applications/<namespace>/<name>` when the fact names an Application; else `<ARGOCD_URL>/applications` | any fact whose resources mention an Application name |
+| `argocd` | `ARGOCD_URL` | `<ARGOCD_URL>/#/applications/<name>` when a fact names an Application; else `<ARGOCD_URL>/#/applications` | any fact whose resources mention an Application name |
 | `kargo` | `KARGO_URL` | `<KARGO_URL>/projects/<project>/stages/<stage>` when the fact carries a project and stage; else `<KARGO_URL>/projects` | a fact that names Kargo resources |
 | `neo4j` | `NEO4J_UI_URL` | `NEO4J_UI_URL` verbatim | fact tool is `get_topology_snapshot` |
 
@@ -22,11 +22,15 @@ Hosts (live, passed by env, not hardcoded):
 | Grafana | `http://192.168.0.245` |
 | Neo4j Browser | `http://192.168.0.242/browser/` |
 
-Route shapes: Argo CD v3 serves Applications at
-`/applications/<namespace>/<name>`; Kargo serves Stages at
-`/projects/<project>/stages/<stage>`. Both are confirmed against the running
-apps before the generators are written; if a shape differs, the generator uses
-the overview route (`/applications`, `/projects`) instead of a broken link.
+Route shapes, checked against the running apps:
+
+- **Argo CD v3.5.2** serves the SPA from `/` and routes client-side through the
+  **hash**: `/applications`, `/applications/<name>` and
+  `/applications/<namespace>/<name>` all return **404**; `/#/applications/<name>`
+  returns 200. The generator therefore emits `/#/applications/<name>`.
+- **Kargo** is **path**-routed: `/projects`, `/projects/pilot` and
+  `/projects/pilot/stages/staging` all return 200. The generator emits
+  `/projects/<project>/stages/<stage>`.
 
 `reproduce` stays separate from `links`: `reproduce` is the copyable command or
 PromQL, `links` is the clickable destination.
