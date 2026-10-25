@@ -70,6 +70,9 @@ def metric_names(keywords=(), limit=24) -> list:
     picked = [n for n in names
               if n.startswith(("hubble_", "cilium_")) and any(k in n.lower() for k in keys)]
     return sorted(picked)[:limit]
+
+
+def search_logs(namespace: str, contains: str, tail_lines: int = 200) -> dict:
     """Case-insensitively search the recent logs of every Pod in a namespace.
 
     Bounded: at most LOG_MAX_HITS matching lines are returned, and each line is
