@@ -29,6 +29,8 @@ addresses are the ones the cluster actually reports.
 | VictoriaMetrics | `http://192.168.0.246/` | scrapes Cilium agent/operator/Hubble |
 | Hubble UI | `http://192.168.0.241/` | flow visibility |
 | Assistant API | `http://192.168.0.243/` | `POST /chat`, evidence panel, htmx UI |
+| Sandbox console | `http://192.168.0.249/` | read-only grid of live Chromium sandboxes, screenshot per tap, isolation badge |
+| Sandbox router | ClusterIP `sandbox-router-svc` | `X-Sandbox-ID` routing to sandbox pods; TokenReview auth. `.248`/`.249` belong to the Kargo gateways |
 | Neo4j Browser | `http://192.168.0.242/` | Cartography graph, `NEO4J_AUTH=none` |
 | Cilium Ingress | `192.168.0.240` | shared ingress, class `cilium` |
 
@@ -42,9 +44,14 @@ Namespaces:
 | `cartography` | `cartography-neo4j` + 6-hourly sync | — |
 | `fuwa` | `fuwa`, `loki`, `otel-collector`, `tempo` | — |
 | `worm-lab` | — | `worm-controller`, `worm-worker`, `vector`, `regression` |
+| `sandbox-console` | `sandbox-console` | — |
+| `sandbox-demo` | `browser-pool` (8 warm sandboxes) | — |
+| `agent-sandbox-system` | `agent-sandbox-controller`, `sandbox-router` | — |
 
 `fuwa` and the E4 assistant variant were applied by hand; they are not Argo
-Applications yet.
+Applications yet. The agent-sandbox controller and its four CRDs come from the
+pinned upstream release manifest applied by `config/sandbox/install.sh`; only
+the router, template and warm pool are chart-managed.
 
 ## Networking
 
@@ -62,13 +69,14 @@ Two settings in `config/k3s/config.yaml` are easy to break:
 
 ## GitOps
 
-Argo CD 10.8.0 reconciles 12 Applications, all `Synced / Healthy`. Each
+Argo CD 10.8.0 reconciles 14 Applications, all `Synced / Healthy`. Each
 Application reads the branch its work lives on:
 
 | targetRevision | Applications |
 |---|---|
 | `native-k3s-gpu-models` | assistant, assistant-laya, cartography, grafana, models-kokoro, models-laya, victoriametrics |
 | `trackc` | models-llm, worm-controller, worm-regression, worm-vector, worm-worker |
+| `feat/sandbox-console` | sandbox-console, sandbox-platform |
 | commit `592d7f51…` | `applications/stable/` bundle, manual sync only |
 
 `main` holds the Phase-1 history and is not a deploy source. Moving the set
@@ -128,6 +136,52 @@ Tests:
 
 ```bash
 cd apps/assistant && python3 -m pytest -q
+```
+
+## Sandbox console
+
+`apps/sandbox-console/` is a read-only pane over live agent-sandbox Chromium
+sandboxes at `http://192.168.0.249/`. It answers two questions on one screen:
+whether a sandbox is a real browser (a screenshot per tile, refreshed on tap)
+and whether it can reach the cluster (a badge measured from inside the
+sandbox's own browser).
+
+```
+console ──HTTP──► sandbox-router ──HTTP──► pod:9222 cdp-bridge ──WS──► Chromium
+                  X-Sandbox-ID / X-Sandbox-Port   ingress allowed only from the router
+```
+
+Every byte of DevTools traffic goes through the router, because a
+template-derived sandbox pod drops all other ingress. The console speaks HTTP to
+a small bridge inside the sandbox (`apps/browser-sandbox/cdp-bridge.py`), which
+holds the WebSocket Chromium requires: the router cannot forward an upgrade in
+any published version (`sandbox-router/proxy/proxy.go:545`). Four details decide
+whether a tile renders: the router's own NetworkPolicy must allow egress on
+`9222` (upstream allows `8888` only), `X-Sandbox-Port` must be sent (the router
+defaults to `8888`), Chromium must bind CDP to `0.0.0.0`, and `/json/list`
+reports a loopback socket URL that has to be rewritten to the router. All four
+are recorded in `config/sandbox/README.md` and `evolution/06-sandbox-console.md`.
+
+Isolation is measured with three `fetch` calls issued through
+`Runtime.evaluate` inside the sandbox's Chromium, each with a 4 s
+`AbortController`. An abort at the deadline means the packet was dropped; a
+failure after a few milliseconds means the handshake completed. Two further
+claims (mounted service-account token, DNS policy) are read from the pod spec
+and labelled `spec` in the badge. The console holds `get/list/watch` only —
+there is no `pods/exec`, so no command runs in a sandbox.
+
+The pane can create and delete claims (M4), run three bounded recipes streaming
+their output (M5), compare a warm Claim against a bare `kind: Sandbox` with four
+timers and reachability side by side (M6), and fill or tear down the demo grid in
+one press (M7). Creating past 9 sandboxes is refused: that is the active-browser
+ceiling experiment 02 measured. Templates, warm-pool size and network policy stay
+in `config/sandbox/`, applied by GitOps or `install.sh`, so the pane's write
+verbs reach claims and sandboxes only.
+
+Tests:
+
+```bash
+cd apps/sandbox-console && python3 -m pytest -q     # 60 tests, no cluster, no browser
 ```
 
 ## Worm lab
@@ -194,12 +248,15 @@ benchmark/               E2 planner A/B, E3 AMD GPU, E4 in progress
 apps/
   assistant/             pipeline, tools, provenance, voice, memory
   assistant-laya/        isolated A/B variant, scaled to 0
+  sandbox-console/       read-only agent-sandbox pane (grid, screenshots, isolation badge)
+  browser-sandbox/       Chromium + CDP image the tile shows
   models/                llm/, kokoro/, laya/
   gpu-device-plugin/     Go plugin for amd.com/render
   controller/ worker/ regression/   Worm lab
 config/
   k3s/                   live profile
   k3d/                   Phase-1 profile, archived
+  sandbox/               agent-sandbox router, browser template, warm pool
   argocd/                values and Applications
   cartography/ grafana/ victoriametrics/ vector/   platform services
   gpu/                   Vulkan smoke image and pods

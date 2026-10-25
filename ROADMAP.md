@@ -28,6 +28,7 @@ Ground rules that shaped it (from [`AGENTS.md`](AGENTS.md)):
 | Models | Qwen2.5-1.5B (llama.cpp, CPU) and Kokoro TTS running; Laya scaled to 0 |
 | GPU | AMD RX 570 (`gfx803`) reachable as `amd.com/render` through a Go device plugin; Vulkan path proven, **no ROCm/CUDA, no VRAM enforcement** |
 | AI Ops | `apps/assistant` — 10 read-only tools, 2 LLM calls per answer, evidence attached server-side |
+| Sandboxes | agent-sandbox `v1.0.7` (pinned release) + `apps/sandbox-console` at `192.168.0.249` — read-only grid, one screenshot per tap, live isolation badge. Milestones M1-M3 of `research/rfc-sandbox-console.md` |
 | Worm lab | Complete on `trackc`, merged here, and **scaled to 0** — it is preserved history, not a live workload |
 | Branches | `main` (frozen k3d era) · `native-k3s-gpu-models` (live Argo target) · `trackc` (worm-lab + registry backports) · **`cluster-evolution` (this branch, unifies all three)** |
 
@@ -174,10 +175,39 @@ permissive CORS change (`e415607`) is documented as a known exposure in
 
 ---
 
-## 3. What is actually deployed (verified against the cluster)
+### Phase 6 — agent-sandbox and the console that proves it (2026-10-18 → )
 
+**Branch:** `feat/sandbox-console` · **Paths:** `apps/sandbox-console/`,
+`apps/browser-sandbox/`, `config/sandbox/` · **Design note:**
+`research/rfc-sandbox-console.md` · **Narrative:** `evolution/06-sandbox-console.md`
+
+agent-sandbox runs as a pinned upstream release: four CRDs plus the `v1.0.7`
+controller, applied by `config/sandbox/install.sh` after verifying the
+manifest's sha256. The SIGs checkout at `~/Documentos/git_repos/agent-sandbox`
+stays read-only; the objects this repo owns are the router (LoadBalancer
+`192.168.0.248`), the browser `SandboxTemplate`, the 8-replica warm pool, and
+the console at `192.168.0.249`.
+
+The console covers M1-M3 of the RFC: a read-only grid of claimed sandboxes, one
+screenshot per tap through the DevTools protocol via the router, and an
+isolation badge measured inside the sandbox's own Chromium. It holds
+`get/list/watch` only, so no command runs in a sandbox.
+
+Four substrate details, each of which produces an unreachable tile rather than
+an error: the router's NetworkPolicy needed egress on `9222` (upstream allows
+the default payload's `8888`), `X-Sandbox-Port` has to be sent explicitly,
+Chromium must bind CDP to `0.0.0.0`, and `/json/list` reports a loopback socket
+URL that has to be rewritten. Warm-pool members that no claim has adopted are
+excluded from the router's name index, so the grid counts them instead of
+drawing tiles that could only 502.
+
+---
+
+## 3. What is actually deployed (verified against the cluster)
 | App | Namespace | Argo targetRevision | Exposure |
 |---|---|---|---|
+| `sandbox-console` | `sandbox-console` | `feat/sandbox-console` | `192.168.0.249` |
+| `sandbox-platform` | `agent-sandbox-system`, `sandbox-demo` | `feat/sandbox-console` | router `192.168.0.248` |
 | `assistant` | `assistant` | `native-k3s-gpu-models` | `192.168.0.243` |
 | `assistant-laya` | `assistant` | `native-k3s-gpu-models` | scaled to 0 |
 | `cartography` | `cartography` | `native-k3s-gpu-models` | `192.168.0.242` (Neo4j, no auth) |
@@ -244,10 +274,26 @@ Grouped from `bd ready`; run `bd ready` for the live list.
     no code exists yet (`bd experiments-9q0`).
 
 **Assistant**
-10. `experiments-yc4` (permissive CORS on an unauthenticated API),
+11. `experiments-yc4` (permissive CORS on an unauthenticated API),
     `experiments-vf4` (chat tool call off the event loop), `experiments-oon`
     (drop planned tools missing required args), `experiments-qib` (pin the
     output contract with pytest).
+
+**Sandbox console (M4-M7 shipped on `feat/sandbox-console`)**
+12. Register an `agent_sandbox_*` scrape in `config/victoriametrics/` and a
+    claim-latency panel in `config/grafana/`: the console reports timers, the
+    controller exports the same numbers, and nothing scrapes them yet.
+13. Port the recipe runner to the real `dev/load-test/test-recipes/` scripts once
+    they are reachable from a cluster-side runner; today the three in-process
+    recipes cover burst, teardown and capacity.
+15. Report the router's 101 bug upstream: `sandbox-router/proxy/proxy.go:545`
+    wraps every upstream response body in a byte-counting wrapper, so Go's
+    `ReverseProxy` aborts every WebSocket upgrade with "101 switching protocols
+    response with non-writable body". Reproduced on v1.0.7 and v1.0.8; the
+    metrics transport that wraps the body cannot be disabled
+    (`cmd/main.go:117`). Their README advertises code-server and VSCode through
+    this router. `apps/browser-sandbox/cdp-bridge.py` is the workaround, and
+    `CDP_TRANSPORT=ws` is the switch to delete once it is fixed.
 
 ---
 
