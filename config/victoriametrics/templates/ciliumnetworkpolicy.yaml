@@ -32,11 +32,13 @@ spec:
               protocol: TCP
     # vmui through the Cilium Ingress Controller, the VictoriaMetrics
     # LoadBalancer (192.168.0.246) for out-of-cluster/LAN clients, plus node
-    # health probes.
+    # health probes. `cluster` admits pod traffic, which is what a browser
+    # sandbox sends when it renders this UI.
     - fromEntities:
         - ingress
         - world
         - host
+        - cluster
       toPorts:
         - ports:
             - port: "8428"
