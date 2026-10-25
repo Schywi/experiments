@@ -26,10 +26,16 @@ spec:
           command:
             - sh
             - -c
-            - cp -rL /ctx/. /workspace/ && ls /workspace
+            # A ConfigMap key cannot contain "/", so the vendored front-end asset
+            # arrives as a flat key and is assembled into static/ here. Without
+            # it the Containerfile's COPY static/ has nothing to copy.
+            - cp -rL /ctx/. /workspace/ && mkdir -p /workspace/static &&
+              cp -L /asset/unocss.js /workspace/static/unocss.js && ls -l /workspace /workspace/static
           volumeMounts:
             - name: context
               mountPath: /ctx
+            - name: asset
+              mountPath: /asset
             - name: work
               mountPath: /workspace
       containers:
@@ -58,5 +64,8 @@ spec:
         - name: context
           configMap:
             name: ctx-sandbox-console
+        - name: asset
+          configMap:
+            name: ctx-sandbox-asset
         - name: work
           emptyDir: {}
