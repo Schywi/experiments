@@ -1,0 +1,594 @@
+"""sandbox-console: a read-only pane over live agent-sandbox Chromium sandboxes.
+
+Milestones 1-3 of `research/rfc-sandbox-console.md`:
+
+    M1  GET  /                                the grid of claimed sandboxes
+    M2  GET  /sandboxes/{id}/shot             one PNG, through the router
+        POST /sandboxes/{id}/click            a real click, then a new PNG
+    M3  POST /sandboxes/{id}/reachability     live isolation evidence
+
+There is no create, no delete and no `pods/exec`: the RBAC in
+`chart/templates/rbac.yaml` grants `get/list/watch` only, and the isolation
+badge is measured from inside the sandbox's own browser rather than by running
+commands in the pod.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import time
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
+from pydantic import BaseModel
+from starlette.concurrency import run_in_threadpool
+
+import asyncio
+
+import audit
+import cdp
+import compare as compare_mode
+import config
+import inventory
+import kube
+import lifecycle
+import probes
+import recipes
+import render
+from concurrency import BoundedFIFO, QueueFull
+
+LIMITER = BoundedFIFO(config.CDP_CONCURRENCY, config.CDP_QUEUE_SIZE)
+
+
+class CreateRequest(BaseModel):
+    """M4: what to create. `claim` inherits pool warmth; `sandbox` is bare."""
+
+    kind: str = "claim"
+
+
+class ClickRequest(BaseModel):
+    """A click in *displayed* pixels plus the factor that maps it to the viewport."""
+
+    x: float
+    y: float
+    scale: float = 1.0
+
+
+class Screen:
+    """Everything the console keeps in memory: last frames, probes, limits."""
+
+    def __init__(self):
+        self._shots: dict[str, tuple[float, bytes]] = {}
+        self._reach: dict[str, dict] = {}
+        self._notes: dict[str, str] = {}
+        self._locks: dict[str, asyncio.Lock] = {}
+        self.cdp = cdp.RouterCDP(
+            config.ROUTER_URL,
+            port=config.SANDBOX_PORT,
+            namespace=config.SANDBOX_NAMESPACE,
+            token=kube.router_token(),
+            connect_timeout=config.CDP_CONNECT_TIMEOUT,
+            command_timeout=config.CDP_COMMAND_TIMEOUT,
+            viewport=(config.VIEWPORT_WIDTH, config.VIEWPORT_HEIGHT),
+            transport=config.CDP_TRANSPORT,
+        )
+
+    # -- state -------------------------------------------------------------
+
+    def lock(self, sandbox_id: str) -> asyncio.Lock:
+        if sandbox_id not in self._locks:
+            self._locks[sandbox_id] = asyncio.Lock()
+        return self._locks[sandbox_id]
+
+    def shot_ts(self, sandbox_id: str) -> int:
+        cached = self._shots.get(sandbox_id)
+        return int(cached[0]) if cached else 0
+
+    def cached_shot(self, sandbox_id: str) -> tuple[float, bytes] | None:
+        return self._shots.get(sandbox_id)
+
+    def store_shot(self, sandbox_id: str, payload: bytes) -> None:
+        self._shots[sandbox_id] = (time.time(), payload)
+        self._notes.pop(sandbox_id, None)
+
+    def note(self, sandbox_id: str, message: str) -> None:
+        self._notes[sandbox_id] = message
+
+    def reach_key(self, sandbox_id: str, pod_ip: str | None) -> str:
+        return f"{sandbox_id}/{pod_ip or '-'}"
+
+    def reach(self, sandbox_id: str, pod_ip: str | None) -> dict | None:
+        return self._reach.get(self.reach_key(sandbox_id, pod_ip))
+
+    def store_reach(self, sandbox_id: str, pod_ip: str | None, value: dict) -> None:
+        self._reach[self.reach_key(sandbox_id, pod_ip)] = value
+        self._notes.pop(sandbox_id, None)
+
+    # -- collection --------------------------------------------------------
+
+    async def create(self, kind: str) -> lifecycle.Created:
+        """Create one sandbox: a claim from the pool, or a bare Sandbox."""
+        if not config.WRITE_ENABLED:
+            raise HTTPException(status_code=403, detail="write access is disabled on this pane")
+        report = await self.report()
+        live = report.running + report.pending
+        if live >= config.MAX_CONCURRENT_SANDBOXES:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"{live} sandboxes already live; the ceiling is "
+                    f"{config.MAX_CONCURRENT_SANDBOXES} (experiment 02)"
+                ),
+            )
+        loop = asyncio.get_running_loop()
+        if kind == "sandbox":
+            if not config.ALLOW_RAW_SANDBOX:
+                raise HTTPException(
+                    status_code=403,
+                    detail="allowRawSandbox is off: a bare Sandbox has no NetworkPolicy, cluster DNS and a mounted token",
+                )
+            created = await loop.run_in_executor(
+                None,
+                lambda: lifecycle.create_sandbox(
+                    config.SANDBOX_NAMESPACE,
+                    image=config.SANDBOX_IMAGE,
+                    target_url=config.TARGET_URL,
+                    cdp_port=config.SANDBOX_PORT,
+                ),
+            )
+        else:
+            created = await loop.run_in_executor(
+                None, lambda: lifecycle.create_claim(config.SANDBOX_NAMESPACE, config.WARM_POOL)
+            )
+        audit.record(
+            config.AUDIT_LOG,
+            "create",
+            kind=created.kind,
+            name=created.name,
+            namespace=created.namespace,
+        )
+        return created
+
+    async def delete(self, sandbox_id: str) -> str:
+        if not config.WRITE_ENABLED:
+            raise HTTPException(status_code=403, detail="write access is disabled on this pane")
+        if not lifecycle.valid_name(sandbox_id):
+            raise HTTPException(status_code=400, detail="invalid sandbox name")
+        removed = await asyncio.get_running_loop().run_in_executor(
+            None, lifecycle.delete_any, config.SANDBOX_NAMESPACE, sandbox_id
+        )
+        self._shots.pop(sandbox_id, None)
+        self._reach = {key: value for key, value in self._reach.items() if not key.startswith(f"{sandbox_id}/")}
+        audit.record(config.AUDIT_LOG, "delete", removed=removed)
+        return removed
+
+    async def report(self) -> inventory.Report:
+        snapshot = await run_in_threadpool(kube.snapshot, config.SANDBOX_NAMESPACE)
+        report = inventory.build_report(
+            snapshot.sandboxes,
+            claims=snapshot.claims,
+            pods=snapshot.pods,
+            usage=snapshot.usage,
+            max_tiles=config.MAX_TILES,
+        )
+        report.errors = snapshot.errors
+        decorated = []
+        for tile in report.tiles:
+            tile = tile.replace(
+                screenshot_ts=self.shot_ts(tile.id),
+                reachability=self.reach(tile.id, tile.pod_ip),
+                note=self._notes.get(tile.id),
+            )
+            decorated.append(tile)
+        report.tiles = decorated
+        return report
+
+    async def tile(self, sandbox_id: str) -> tuple[inventory.Tile | None, inventory.Report]:
+        report = await self.report()
+        for tile in report.tiles:
+            if tile.id == sandbox_id:
+                return tile, report
+        return None, report
+
+    # -- actions -----------------------------------------------------------
+
+    async def shot(self, sandbox_id: str) -> bytes:
+        cached = self.cached_shot(sandbox_id)
+        if cached and (time.time() - cached[0]) < config.SHOT_TTL_SECONDS:
+            return cached[1]
+        async with self.lock(sandbox_id):
+            cached = self.cached_shot(sandbox_id)
+            if cached and (time.time() - cached[0]) < config.SHOT_TTL_SECONDS:
+                return cached[1]
+            payload = await self.cdp.screenshot(sandbox_id)
+            self.store_shot(sandbox_id, payload)
+            return payload
+
+    async def click(self, sandbox_id: str, payload: ClickRequest) -> None:
+        async with self.lock(sandbox_id):
+            point = await self.cdp.click(
+                sandbox_id,
+                payload.x,
+                payload.y,
+                scale=payload.scale,
+                width=config.VIEWPORT_WIDTH,
+                height=config.VIEWPORT_HEIGHT,
+            )
+            frame = await self.cdp.screenshot(sandbox_id)
+            self.store_shot(sandbox_id, frame)
+        audit.record(
+            config.AUDIT_LOG,
+            "click",
+            sandbox=sandbox_id,
+            x=point[0],
+            y=point[1],
+            scale=payload.scale,
+        )
+
+    async def probe(self, sandbox_id: str, tile: inventory.Tile) -> dict:
+        spec_pod = None
+        if tile.pod_name:
+            spec_pod = await run_in_threadpool(kube.pod, config.SANDBOX_NAMESPACE, tile.pod_name)
+        async with self.lock(sandbox_id):
+            raw = await self.cdp.evaluate(
+                sandbox_id, probes.build_expression(config.PROBE_TIMEOUT_MS)
+            )
+            observations = probes.parse(raw)
+            reachability = probes.summarise(
+                observations,
+                config.PROBE_TIMEOUT_MS,
+                probes.spec_claims(spec_pod),
+            )
+            self.store_reach(sandbox_id, tile.pod_ip, reachability)
+        audit.record(
+            config.AUDIT_LOG,
+            "probe",
+            sandbox=sandbox_id,
+            pod_ip=tile.pod_ip,
+            cluster=reachability.get("cluster"),
+            metadata=reachability.get("metadata"),
+            egress_public_ok=reachability.get("egress_public_ok"),
+        )
+        return reachability
+
+
+def _http_error(error: Exception) -> HTTPException:
+    """Map a transport failure to the status the pane shows."""
+    if isinstance(error, cdp.RouterError):
+        status = error.status or 502
+        if status < 400:
+            status = 502
+        return HTTPException(status_code=status, detail=f"router: {error.detail}")
+    if isinstance(error, cdp.CDPError):
+        return HTTPException(status_code=502, detail=f"cdp: {error}")
+    return HTTPException(status_code=500, detail=error.__class__.__name__)
+
+
+SCREEN = Screen()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    yield
+    await SCREEN.cdp.close_all()
+
+
+app = FastAPI(title="sandbox-console", version="0.1.0", lifespan=lifespan)
+
+
+@app.get("/", response_class=HTMLResponse)
+async def index() -> HTMLResponse:
+    """The one screen: counters, tiles, isolation badges, links out."""
+    return HTMLResponse(render.page(await SCREEN.report()))
+
+
+@app.get("/events")
+async def events(request: Request) -> StreamingResponse:
+    """Push the grid when it changes (Server-Sent Events).
+
+    One connection per tab, no polling loop: the signature of the report is
+    compared against the last one sent, so an idle cluster sends a heartbeat and
+    nothing else. SSE rather than a WebSocket because the traffic is one-way and
+    the router cannot carry an upgrade -- the DevTools socket lives inside the
+    sandbox for the same reason.
+    """
+    pause = max(0.5, float(config.POLL_SECONDS))
+
+    async def stream():
+        last = None
+        ticks = 0
+        yield "retry: 3000\n\n"
+        while True:
+            if await request.is_disconnected():
+                break
+            try:
+                report = await SCREEN.report()
+                signature = render.signature(report)
+                if signature != last:
+                    last = signature
+                    # SSE frames are line-based; collapse the fragment's newlines.
+                    markup = render.grid(report).replace("\n", " ")
+                    yield f"event: grid\ndata: {markup}\n\n"
+                    ticks = 0
+                else:
+                    ticks += 1
+                    if ticks >= 10:
+                        yield "event: heartbeat\ndata: {}\n\n"
+                        ticks = 0
+            except Exception as error:  # noqa: BLE001 - a failing poll must not kill the stream
+                yield f"event: heartbeat\ndata: {json.dumps({'error': str(error)[:120]})}\n\n"
+            await asyncio.sleep(pause)
+
+    return StreamingResponse(
+        stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"},
+    )
+
+
+@app.get("/sandboxes", response_class=HTMLResponse)
+async def sandboxes() -> HTMLResponse:
+    """The polled fragment. Same markup htmx would swap, minus the htmx CDN."""
+    return HTMLResponse(render.grid(await SCREEN.report()))
+
+
+@app.get("/sandboxes/{sandbox_id}/shot")
+async def shot(sandbox_id: str) -> Response:
+    """One PNG frame, captured through the router and cached for SHOT_TTL_SECONDS."""
+    try:
+        async with LIMITER.slot():
+            payload = await SCREEN.shot(sandbox_id)
+    except QueueFull:
+        raise HTTPException(
+            status_code=429,
+            detail="at capacity",
+            headers={"Retry-After": str(config.RETRY_AFTER_SECONDS)},
+        )
+    except Exception as error:  # noqa: BLE001 - every transport failure is a tile state
+        SCREEN.note(sandbox_id, f"shot failed: {error}")
+        audit.record(config.AUDIT_LOG, "shot_failed", sandbox=sandbox_id, error=str(error))
+        raise _http_error(error)
+    return Response(
+        content=payload,
+        media_type="image/png",
+        headers={"Cache-Control": f"public, max-age={int(config.SHOT_TTL_SECONDS)}"},
+    )
+
+
+@app.post("/sandboxes/{sandbox_id}/click", response_class=HTMLResponse)
+async def click(sandbox_id: str, payload: ClickRequest) -> HTMLResponse:
+    """Dispatch a real mouse press/release, then return the refreshed tile."""
+    tile, _ = await SCREEN.tile(sandbox_id)
+    if tile is None:
+        raise HTTPException(status_code=404, detail=f"no sandbox {sandbox_id}")
+    try:
+        async with LIMITER.slot():
+            await SCREEN.click(sandbox_id, payload)
+    except QueueFull:
+        raise HTTPException(
+            status_code=429,
+            detail="at capacity",
+            headers={"Retry-After": str(config.RETRY_AFTER_SECONDS)},
+        )
+    except Exception as error:  # noqa: BLE001
+        SCREEN.note(sandbox_id, f"click failed: {error}")
+        audit.record(config.AUDIT_LOG, "click_failed", sandbox=sandbox_id, error=str(error))
+        raise _http_error(error)
+    refreshed, _ = await SCREEN.tile(sandbox_id)
+    return HTMLResponse(render.tile(refreshed or tile))
+
+
+@app.post("/sandboxes/{sandbox_id}/reachability", response_class=HTMLResponse)
+async def reachability(sandbox_id: str) -> HTMLResponse:
+    """Live isolation evidence from inside the sandbox's own Chromium."""
+    tile, _ = await SCREEN.tile(sandbox_id)
+    if tile is None:
+        raise HTTPException(status_code=404, detail=f"no sandbox {sandbox_id}")
+    try:
+        async with LIMITER.slot():
+            await SCREEN.probe(sandbox_id, tile)
+    except QueueFull:
+        raise HTTPException(
+            status_code=429,
+            detail="at capacity",
+            headers={"Retry-After": str(config.RETRY_AFTER_SECONDS)},
+        )
+    except Exception as error:  # noqa: BLE001
+        SCREEN.note(sandbox_id, f"probe failed: {error}")
+        audit.record(config.AUDIT_LOG, "probe_failed", sandbox=sandbox_id, error=str(error))
+        raise _http_error(error)
+    refreshed, _ = await SCREEN.tile(sandbox_id)
+    return HTMLResponse(render.tile(refreshed or tile))
+
+
+@app.get("/sandboxes/{sandbox_id}/expanded", response_class=HTMLResponse)
+async def expanded(sandbox_id: str) -> HTMLResponse:
+    """The modal: the same frame at a larger size, viewport unchanged."""
+    tile, _ = await SCREEN.tile(sandbox_id)
+    if tile is None:
+        raise HTTPException(status_code=404, detail=f"no sandbox {sandbox_id}")
+    return HTMLResponse(render.expanded(tile))
+
+
+# --------------------------------------------------------------------------- #
+# M4: create and delete from the pane
+# --------------------------------------------------------------------------- #
+@app.post("/sandboxes")
+async def create_sandbox(payload: CreateRequest) -> JSONResponse:
+    """Create a Claim (default) or a bare Sandbox (allowRawSandbox only)."""
+    created = await SCREEN.create((payload.kind or "claim").lower())
+    return JSONResponse(
+        status_code=202,
+        content={"kind": created.kind, "name": created.name, "namespace": created.namespace},
+    )
+
+
+@app.delete("/sandboxes/{sandbox_id}")
+async def delete_sandbox(sandbox_id: str) -> JSONResponse:
+    """Delete the Claim that owns this sandbox, or the Sandbox itself."""
+    removed = await SCREEN.delete(sandbox_id)
+    return JSONResponse(status_code=202, content={"removed": removed})
+
+
+# --------------------------------------------------------------------------- #
+# M5: recipes, streamed as newline-delimited JSON
+# --------------------------------------------------------------------------- #
+@app.get("/recipes")
+async def list_recipes() -> dict:
+    return {
+        "running": recipes.busy_with(),
+        "recipes": [
+            {"name": item.name, "summary": item.summary, "blast_radius": item.blast_radius}
+            for item in recipes.RECIPES.values()
+        ],
+    }
+
+
+@app.post("/recipes/{name}")
+async def run_recipe(name: str, count: int | None = None, hold: float = 0.0) -> StreamingResponse:
+    """Run one bounded recipe. One at a time, and refused rather than queued."""
+    if not config.WRITE_ENABLED and name != "capacity-check":
+        raise HTTPException(status_code=403, detail="write access is disabled on this pane")
+    # Checked before the stream is created: `recipes.stream` is an async
+    # generator, so nothing inside it runs until the first line is read -- by
+    # which point the response is already committed as 200 OK.
+    if name not in recipes.RECIPES:
+        raise HTTPException(status_code=404, detail=f"no recipe {name}")
+    running = recipes.busy_with()
+    if running:
+        raise HTTPException(status_code=409, detail=f"recipe {running} is already running")
+    stream = recipes.stream(name, count=count, hold=hold)
+
+    async def body():
+        try:
+            async for item in stream:
+                yield (json.dumps(item) + "\n").encode()
+        except (recipes.RecipeBusy, recipes.UnknownRecipe) as error:
+            yield (json.dumps({"line": f"refused: {error}", "done": True}) + "\n").encode()
+        finally:
+            audit.record(config.AUDIT_LOG, "recipe", recipe=name, count=count)
+
+    return StreamingResponse(body(), media_type="application/x-ndjson")
+
+
+# --------------------------------------------------------------------------- #
+# M6: compare mode
+# --------------------------------------------------------------------------- #
+@app.post("/compare")
+async def start_compare() -> JSONResponse:
+    """Fire one warm Claim and (if allowed) one bare Sandbox, then time both."""
+    if not config.WRITE_ENABLED:
+        raise HTTPException(status_code=403, detail="write access is disabled on this pane")
+    try:
+        run = await compare_mode.run_compare(
+            SCREEN.cdp,
+            allow_raw=config.ALLOW_RAW_SANDBOX,
+            timeout=config.CREATE_TIMEOUT_SECONDS,
+        )
+    except HTTPException:
+        raise
+    except Exception as error:  # noqa: BLE001 - a failed run is a reportable state
+        raise HTTPException(status_code=502, detail=f"compare failed: {error}")
+    audit.record(
+        config.AUDIT_LOG,
+        "compare",
+        arms=[
+            {"label": arm.label, "timers": arm.timers, "error": arm.error}
+            for arm in run.arms
+        ],
+    )
+    return JSONResponse(status_code=200, content=run.to_dict())
+
+
+@app.get("/compare", response_class=HTMLResponse)
+async def compare_view() -> HTMLResponse:
+    """The split view: the last run, plus p50 of the last three on hover."""
+    latest = compare_mode.HISTORY[0] if compare_mode.HISTORY else None
+    return HTMLResponse(
+        render.compare_page(
+            latest,
+            compare_mode.history_medians(),
+            allow_raw=config.ALLOW_RAW_SANDBOX,
+            write_enabled=config.WRITE_ENABLED,
+        )
+    )
+
+
+# --------------------------------------------------------------------------- #
+# M7: the demo run
+# --------------------------------------------------------------------------- #
+@app.post("/demo")
+async def demo_fill() -> JSONResponse:
+    """Fill the grid to `DEMO_TILES` by claiming from the pool."""
+    if not config.WRITE_ENABLED:
+        raise HTTPException(status_code=403, detail="write access is disabled on this pane")
+    report = await SCREEN.report()
+    live = report.running + report.pending
+    wanted = max(0, min(config.DEMO_TILES, config.MAX_CONCURRENT_SANDBOXES) - live)
+    created = []
+    loop = asyncio.get_running_loop()
+    for _ in range(wanted):
+        try:
+            item = await loop.run_in_executor(
+                None, lambda: lifecycle.create_claim(config.SANDBOX_NAMESPACE, config.WARM_POOL)
+            )
+        except Exception as error:  # noqa: BLE001
+            created.append({"error": str(error)})
+            continue
+        created.append({"name": item.name})
+    audit.record(config.AUDIT_LOG, "demo_fill", created=len(created), target=config.DEMO_TILES)
+    return JSONResponse(status_code=202, content={"created": created, "target": config.DEMO_TILES})
+
+
+@app.post("/demo/teardown")
+async def demo_teardown() -> JSONResponse:
+    """Delete every claim this pane created, leaving the pool at its baseline."""
+    if not config.WRITE_ENABLED:
+        raise HTTPException(status_code=403, detail="write access is disabled on this pane")
+    loop = asyncio.get_running_loop()
+    claims = await loop.run_in_executor(None, lifecycle.managed_claims, config.SANDBOX_NAMESPACE)
+    # Bare Sandboxes are not owned by a claim, so they need their own sweep;
+    # without it the compare column of the demo would survive every teardown.
+    sandboxes = await loop.run_in_executor(None, lifecycle.managed_sandboxes, config.SANDBOX_NAMESPACE)
+    removed, failed = [], []
+    for item in claims:
+        name = (item.get("metadata") or {}).get("name")
+        if not name:
+            continue
+        try:
+            await loop.run_in_executor(None, lifecycle.delete_claim, config.SANDBOX_NAMESPACE, name)
+            removed.append(name)
+        except Exception as error:  # noqa: BLE001
+            failed.append({"name": name, "error": str(error)})
+    for item in sandboxes:
+        name = (item.get("metadata") or {}).get("name")
+        if not name:
+            continue
+        try:
+            await loop.run_in_executor(None, lifecycle.delete_sandbox, config.SANDBOX_NAMESPACE, name)
+            removed.append(name)
+        except Exception as error:  # noqa: BLE001
+            failed.append({"name": name, "error": str(error)})
+    audit.record(config.AUDIT_LOG, "demo_teardown", removed=removed, failed=failed)
+    return JSONResponse(status_code=200, content={"removed": removed, "failed": failed})
+
+
+@app.get("/healthz")
+async def healthz(request: Request) -> dict:
+    """Configuration echo plus the last observed tile count. No secrets."""
+    report = await SCREEN.report()
+    return {
+        "ok": True,
+        "namespace": config.SANDBOX_NAMESPACE,
+        "router": config.ROUTER_URL,
+        "sandbox_port": config.SANDBOX_PORT,
+        "viewport": [config.VIEWPORT_WIDTH, config.VIEWPORT_HEIGHT],
+        "max_tiles": config.MAX_TILES,
+        "tiles": len(report.tiles),
+        "pool_idle": report.pool_idle,
+        "pool_ready": report.pool_ready,
+        "admitting": LIMITER.admitted,
+        "errors": report.errors,
+    }
