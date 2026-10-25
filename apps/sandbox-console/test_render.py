@@ -295,3 +295,42 @@ def test_the_url_editor_is_scoped_to_one_card():
     markup = render.tile(tile_with(url="https://example.com/"))
     assert 'data-act="url-edit" data-id="sb-4f2a"' in markup
     assert 'data-act="url-form" data-id="sb-4f2a"' in markup
+
+
+def test_structural_markup_is_styled_by_css_not_only_by_utilities():
+    """A deleted rule plus a runtime that generates nothing = unstyled page.
+
+    That regression shipped once: the stat row rendered as `pending0` because the
+    `.stat*` rules were removed while the markup was rewritten to UnoCSS utility
+    classes, and the vendored runtime produced none of them. Structural classes
+    must therefore exist in the markup *and* have a rule in the page's CSS.
+    """
+    page = render.page(report_with())
+    css = page.split("</style>")[0]
+    pairs = {
+        ".app-header": 'class="app-header"',
+        ".brand": 'class="brand"',
+        ".toolbar": 'class="toolbar"',
+        ".separator": 'class="separator"',
+        ".stats": 'class="stats"',
+        ".stat": 'class="stat"',
+        ".stat-label": 'class="stat-label"',
+        ".stat-value": 'class="stat-value"',
+    }
+    for selector, marker in pairs.items():
+        assert f"{selector} " in css or f"{selector}{{" in css, f"no CSS rule for {selector}"
+        assert marker in page, f"markup lost {marker}"
+
+
+def test_the_stat_row_renders_label_and_value_as_separate_elements():
+    markup = render.grid(report_with())
+    # The bug's signature was the two strings touching with nothing between them.
+    assert '<span class="stat-label">pool</span><span class="stat-value">0/3</span>' in markup or \
+           '<span class="stat-label">pool</span><span class="stat-value">' in markup
+
+
+def test_the_dialog_offers_both_scroll_directions():
+    markup = render.expanded(tile_with())
+    assert 'data-act="scroll"' in markup
+    assert 'data-dy="-400"' in markup
+    assert 'data-dy="400"' in markup

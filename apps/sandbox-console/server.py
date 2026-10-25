@@ -67,8 +67,16 @@ class UrlRequest(BaseModel):
     url: str
 
 
+class ScrollRequest(BaseModel):
+    """A wheel delta in CSS pixels. Positive scrolls down."""
+
+    dy: int
+
+
 ALLOWED_URL_SCHEMES = ("http", "https")
 MAX_URL_LENGTH = 2048
+# One arrow press moves at most this many CSS pixels.
+MAX_SCROLL = 2000
 
 
 def clean_url(raw: str) -> str:
@@ -335,6 +343,14 @@ class Screen:
             self.store_url(sandbox_id, landed)
         audit.record(config.AUDIT_LOG, "navigate", sandbox=sandbox_id, url=landed)
         return landed
+
+    async def scroll(self, sandbox_id: str, dy: int) -> None:
+        """Scroll the sandbox's page one wheel notch and store the new frame."""
+        async with self.lock(sandbox_id):
+            await self.cdp.scroll(sandbox_id, dy)
+            frame = await self.cdp.screenshot(sandbox_id)
+            self.store_shot(sandbox_id, frame)
+        audit.record(config.AUDIT_LOG, "scroll", sandbox=sandbox_id, dy=dy)
 
     async def probe(self, sandbox_id: str, tile: inventory.Tile) -> dict:
         spec_pod = None

@@ -294,6 +294,29 @@ class RouterCDP:
         await self.settle(sandbox_id)
         return point_x, point_y
 
+    async def scroll(self, sandbox_id: str, dy: int) -> None:
+        """One wheel notch in the middle of the viewport, then let it paint.
+
+        A real wheel event, so a page that scrolls inside its own container or
+        loads more content on wheel behaves as it would for a person.
+        """
+        await self._enable_page(sandbox_id)
+        width, height = self.viewport
+        await self.call(
+            sandbox_id,
+            "Input.dispatchMouseEvent",
+            {
+                "type": "mouseWheel",
+                "x": width / 2,
+                "y": height / 2,
+                "deltaX": 0,
+                "deltaY": dy,
+                "button": "none",
+                "clickCount": 0,
+            },
+        )
+        await self.settle(sandbox_id)
+
     async def settle(self, sandbox_id: str, frames: int = 2) -> None:
         """Wait for the compositor to present the frame an input event produced.
 

@@ -444,3 +444,19 @@ def test_a_page_that_never_finishes_loading_is_an_error():
         assert "did not finish" in str(error)
     else:  # pragma: no cover - failure path guard
         raise AssertionError("expected CDPError")
+
+
+def test_scroll_sends_one_wheel_event_then_settles():
+    async def body():
+        async with FakeBrowser() as browser:
+            client = client_for(browser)
+            try:
+                await client.scroll("sb-4f2a", 400)
+            finally:
+                await client.close_all()
+        return browser
+
+    browser = run(body())
+    assert "Input.dispatchMouseEvent" in browser.methods
+    assert browser.methods[-1] == "Runtime.evaluate"
+    assert "requestAnimationFrame" in browser.expressions[-1]

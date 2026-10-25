@@ -565,6 +565,10 @@ def expanded(tile_obj: inventory.Tile) -> str:
       <span class="badge badge-outline">{esc(tile_obj.phase)}</span>
       <span class="muted mono">{esc(tile_obj.pod_ip or "")} · {esc(fmt_age(tile_obj.age_s))}</span>
       <span class="spacer"></span>
+      <button class="btn btn-ghost btn-sm" data-act="scroll" data-id="{esc(tile_obj.id)}" data-dy="-400"
+              title="scroll the page up">↑</button>
+      <button class="btn btn-ghost btn-sm" data-act="scroll" data-id="{esc(tile_obj.id)}" data-dy="400"
+              title="scroll the page down">↓</button>
       <button class="btn btn-primary btn-sm" data-act="compare" data-id="{esc(tile_obj.id)}"
               title="time this sandbox against a freshly created bare one">compare</button>
       <button class="btn btn-ghost btn-sm" data-act="close">close</button>
@@ -988,6 +992,22 @@ PAGE_JS = """
     if (node) node.removeAttribute("aria-busy");
   }
 
+  async function scrollPage(id, dy, trigger) {
+    var image = document.querySelector(".dialog img.big");
+    var base = image ? image.src.split("?")[0] : "";
+    if (trigger) trigger.setAttribute("aria-busy", "true");
+    var body = await mutate("/sandboxes/" + id + "/scroll", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({dy: dy})
+    }, (dy > 0 ? "scrolled down " : "scrolled up ") + id);
+    if (trigger) trigger.removeAttribute("aria-busy");
+    if (body && image) {
+      image.src = base + "?fresh=1&v=" + Date.now();
+      await refreshNow();
+    }
+  }
+
   async function tap(id, base, rect, clientX, clientY) {
     var scale = rect.width / VIEWPORT.w;
     var body = await mutate("/sandboxes/" + id + "/click", {
@@ -1085,6 +1105,7 @@ PAGE_JS = """
       if (act === "back") { closeDialog(); openDialog(id); return; }
       if (act === "recipe") { runRecipe(action.dataset.recipe, action); return; }
       if (act === "probe") { probe(id, action); return; }
+      if (act === "scroll") { scrollPage(id, Number(action.dataset.dy), action); return; }
       if (act === "url-edit") { openUrlEditor(id); return; }
       if (act === "url-cancel") { closeUrlEditor(id); return; }
       if (act === "expand") { openDialog(id); return; }

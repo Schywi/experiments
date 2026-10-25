@@ -551,3 +551,62 @@ def test_deleting_a_sandbox_forgets_its_page(monkeypatch):
     monkeypatch.setattr(server.lifecycle, "delete_any", lambda namespace, name: f"claim/{name}")
     asyncio.run(screen.delete("sb-1"))
     assert screen.url("sb-1") is None
+
+
+def test_scroll_passes_the_delta_and_returns_the_tile(client, monkeypatch):
+    seen = {}
+
+    async def fake_scroll(sandbox_id, dy):
+        seen["sandbox"] = sandbox_id
+        seen["dy"] = dy
+
+    monkeypatch.setattr(server.SCREEN, "scroll", fake_scroll)
+    response = client.post("/sandboxes/sb-4f2a/scroll", json={"dy": 400})
+    assert response.status_code == 200
+    assert seen == {"sandbox": "sb-4f2a", "dy": 400}
+    assert 'id="tile-sb-4f2a"' in response.text
+
+
+def test_scroll_is_clamped_and_zero_is_refused(client, monkeypatch):
+    seen = {}
+
+    async def fake_scroll(sandbox_id, dy):
+        seen["dy"] = dy
+
+    monkeypatch.setattr(server.SCREEN, "scroll", fake_scroll)
+    client.post("/sandboxes/sb-4f2a/scroll", json={"dy": 999999})
+    assert seen["dy"] == server.MAX_SCROLL
+    assert client.post("/sandboxes/sb-4f2a/scroll", json={"dy": 0}).status_code == 400
+    assert client.post("/sandboxes/nope/scroll", json={"dy": 400}).status_code == 404
+
+
+# --------------------------------------------------------------------------- #
+# frame refresh
+# --------------------------------------------------------------------------- #
+def test_a_fresh_shot_bypasses_the_cache(client, monkeypatch):
+    """The dialog's timer must force a capture; a cached PNG would freeze it."""
+    calls = []
+
+    async def fake_shot(sandbox_id, fresh=False):
+        calls.append(fresh)
+        return b"\x89PNG" + bytes([len(calls)])
+
+    monkeypatch.setattr(server.SCREEN, "shot", fake_shot)
+    first = client.get("/sandboxes/sb-1/shot")
+    second = client.get("/sandboxes/sb-1/shot?fresh=1")
+    assert first.status_code == 200 and second.status_code == 200
+    assert calls == [False, True]
+    assert first.content != second.content
+    assert second.headers["cache-control"] == "no-store"
+    assert first.headers["cache-control"] != "no-store"
+
+
+def test_the_dialog_declares_its_refresh_interval_and_the_script_honours_it():
+    page = server.SCREEN and None  # keep the import used consistently
+    markup = server.render.expanded(server.inventory.Tile(id="sb-1", phase="ready", age_s=1))
+    assert 'data-refresh-ms="' in markup
+    assert "refreshes every" in markup
+    html = server.render.page(server.inventory.build_report([]))
+    assert "startFrameRefresh" in html
+    assert "?fresh=1" in html
+    assert "stopFrameRefresh" in html
