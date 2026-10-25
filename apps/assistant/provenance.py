@@ -108,17 +108,15 @@ def _hubble_link(namespace):
 
 
 def _argocd_link(args: dict):
-    """Applications overview, or one Application when a fact names it.
+    """Argo CD root.
 
-    Argo CD v3 serves the SPA from `/` and routes client-side through the hash
-    (`/#/applications/...`); path routes such as `/applications/...` return 404.
+    argocd-server on 192.168.0.247 does not serve SPA paths: /applications and
+    /applications/<name> return 404, only / serves the shell. Until the server
+    does SPA fallback, link the verified root rather than a dead path.
     """
     if not ARGOCD_URL:
         return None
-    name = args.get("application") or args.get("app")
-    if isinstance(name, str) and name:
-        return f"{ARGOCD_URL}/#/applications/{urllib.parse.quote(name)}"
-    return f"{ARGOCD_URL}/#/applications"
+    return ARGOCD_URL
 
 
 def _kargo_link(args: dict):
@@ -182,7 +180,8 @@ def enrich(fact: dict) -> dict:
         out["reproduce"] = reproduce
 
     links = {}
-    if tool == "query_prometheus":
+    if tool == "query_prometheus" and out.get("ok"):
+        # Only a query that actually executed may produce a Grafana deep link.
         grafana = _grafana_explore(args.get("query", ""))
         if grafana:
             links["grafana"] = grafana

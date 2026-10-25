@@ -24,6 +24,8 @@ import time
 import httpx
 
 import llm_metrics
+import observability
+import tool_schema
 from k8sutil import audit
 from tools import REGISTRY
 
@@ -214,6 +216,66 @@ def _catalog() -> str:
     return "\n".join(f"- {n}: {t.description}" for n, t in sorted(READ_TOOLS.items()))
 
 
+# --- deterministic Prometheus route -----------------------------------------
+# Metric questions go straight to a PromQL specialist: it is told the live metric
+# names for that intent, writes one query, and gets one repair attempt with the
+# parser's error. The general planner never sees these questions.
+
+_METRIC_INTENTS = ("traffic", "network", "flow", "throughput", "latency", "slow",
+                   "drop", "dropped", "dns", "packet", "http", "rate", "requests")
+
+_PROM_SYS = (
+    "You write exactly one PromQL query for VictoriaMetrics. "
+    "Reply with ONLY a JSON object with the key query. "
+    "Use only these metric names: "
+)
+
+
+def _metric_keywords(question: str) -> tuple:
+    q = question.lower()
+    keys = []
+    for word, found in (("traffic", ("flow",)), ("network", ("flow",)),
+                        ("flow", ("flow",)), ("throughput", ("flow",)),
+                        ("drop", ("drop",)), ("dropped", ("drop",)),
+                        ("packet", ("drop", "flow")), ("dns", ("dns",)),
+                        ("latency", ("http", "duration")), ("slow", ("http", "duration")),
+                        ("http", ("http",)), ("requests", ("http",)),
+                        ("rate", ("flow",))):
+        if word in q:
+            keys.extend(found)
+    return tuple(dict.fromkeys(keys)) or ("flow", "drop")
+
+
+def _write_promql(question, llm_url, model, timeout):
+    names = observability.metric_names(_metric_keywords(question))
+    if not names:
+        return "", 0.0
+    messages = [{"role": "system", "content": _PROM_SYS + ", ".join(names)},
+                {"role": "user", "content": question}]
+    try:
+        raw, ms = _llm(llm_url, model, messages, timeout, "plan",
+                       max_tokens=120, json_mode=True)
+    except _LLMError:
+        return "", 0.0
+    return str((_extract_json(raw) or {}).get("query") or "").strip(), ms
+
+
+def _repair_promql(question, bad_query, error, llm_url, model, timeout):
+    names = observability.metric_names(_metric_keywords(question))
+    messages = [
+        {"role": "system", "content": _PROM_SYS + ", ".join(names)},
+        {"role": "user", "content": (f"Question: {question}\nThe query below failed.\n"
+                                     f"Query: {bad_query}\nError: {error}\n"
+                                     "Write the corrected query.")},
+    ]
+    try:
+        raw, _ms = _llm(llm_url, model, messages, timeout, "plan",
+                        max_tokens=120, json_mode=True)
+    except _LLMError:
+        return ""
+    return str((_extract_json(raw) or {}).get("query") or "").strip()
+
+
 def plan(question, llm_url, model, timeout, history=None, kind=None):
     """Return (batch, source, plan_ms).
 
@@ -239,6 +301,12 @@ def plan(question, llm_url, model, timeout, history=None, kind=None):
             return bundle[1], f"laya-fallback:{bundle[0]}", ms
         return _DEFAULT_BUNDLE, "laya-fallback:default", ms
 
+    lowered = question.lower()
+    if any(k in lowered for k in _METRIC_INTENTS):
+        query, ms = _write_promql(question, llm_url, model, timeout)
+        if query:
+            return [("query_prometheus", {"query": query})], "route:prometheus", ms
+
     messages = [{"role": "system", "content": _PLAN_SYS + _catalog()},
                 *(history or []),
                 {"role": "user", "content": question}]
@@ -258,31 +326,24 @@ def plan(question, llm_url, model, timeout, history=None, kind=None):
 
 # --- FAN-OUT -----------------------------------------------------------------
 
-def _validate_args(tool, args) -> dict:
-    """Keep only kwargs the tool actually accepts (fixes bogus args)."""
-    if not isinstance(args, dict):
-        return {}
-    params = inspect.signature(tool.fn).parameters
-    if any(p.kind == p.VAR_KEYWORD for p in params.values()):
-        return dict(args)
-    return {k: v for k, v in args.items() if k in params}
-
-
 def _run_one(name: str, args: dict) -> dict:
     tool = READ_TOOLS.get(name)
-    if tool is None:
-        return {"tool": name, "args": args, "ok": False,
-                "evidence": f"unknown tool {name}", "ms": None}
-    clean = _validate_args(tool, args)
+    clean, err = tool_schema.check_args(name, args)
+    if tool is None or err:
+        message = err or f"unknown tool {name!r}"
+        audit({"event": "tool_rejected", "tool": name, "args": args, "error": message})
+        return {"tool": name, "args": args if isinstance(args, dict) else {},
+                "ok": False, "error": message, "evidence": message, "ms": None}
     audit({"event": "tool_call", "tool": name, "args": clean, "level": tool.level})
     t0 = time.perf_counter()
     try:
-        result, ok = json.dumps(tool.fn(**clean)), True
+        result, ok, error = json.dumps(tool.fn(**clean)), True, None
     except Exception as exc:                     # a failed tool is evidence, not a crash
-        result, ok = f"{type(exc).__name__}: {exc}", False
+        result, error = f"{type(exc).__name__}: {exc}", f"{type(exc).__name__}: {exc}"
+        ok = False
     ms = (time.perf_counter() - t0) * 1000
     llm_metrics.record_tool(name, ms)
-    return {"tool": name, "args": clean, "ok": ok,
+    return {"tool": name, "args": clean, "ok": ok, "error": error,
             "evidence": result[:PER_FACT_CHARS], "ms": round(ms, 1)}
 
 
@@ -346,6 +407,12 @@ def run(question, llm_url, model, timeout=60.0, history=None, max_rounds=1):
     t0 = time.perf_counter()
     batch, source, plan_ms = plan(question, llm_url, model, timeout, history)
     facts = run_batch(batch)
+    if source.startswith("route:prometheus") and facts and not facts[0].get("ok"):
+        bad = (batch[0][1] or {}).get("query", "") if batch else ""
+        error = facts[0].get("error") or facts[0].get("evidence") or ""
+        fixed = _repair_promql(question, bad, error, llm_url, model, timeout)
+        if fixed:
+            facts = run_batch([("query_prometheus", {"query": fixed})])
     corr = correlate(question, facts, llm_url, model, timeout)
     metrics = {
         "elapsed_ms": round((time.perf_counter() - t0) * 1000, 1),

@@ -53,7 +53,23 @@ def query_prometheus(query: str, time: Optional[str] = None) -> dict:
     }
 
 
-def search_logs(namespace: str, contains: str, tail_lines: int = 200) -> dict:
+def metric_names(keywords=(), limit=24) -> list:
+    """Names of the hubble_*/cilium_* metrics whose name contains a keyword.
+
+    Used to tell the PromQL specialist which metrics actually exist, so it stops
+    inventing names. Read-only; returns [] on any failure.
+    """
+    try:
+        with httpx.Client(timeout=VM_QUERY_TIMEOUT) as client:
+            resp = client.get(f"{VM_URL}/api/v1/label/__name__/values")
+            resp.raise_for_status()
+            names = resp.json().get("data", []) or []
+    except (httpx.HTTPError, ValueError):
+        return []
+    keys = tuple(k.lower() for k in keywords) or ("flow", "drop")
+    picked = [n for n in names
+              if n.startswith(("hubble_", "cilium_")) and any(k in n.lower() for k in keys)]
+    return sorted(picked)[:limit]
     """Case-insensitively search the recent logs of every Pod in a namespace.
 
     Bounded: at most LOG_MAX_HITS matching lines are returned, and each line is
