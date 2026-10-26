@@ -61,11 +61,11 @@ def shot(sandbox_id: str) -> dict:
 
 
 def create_sandbox() -> dict:
-    return _request("POST", "/api/sandboxes")
+    return _request("POST", "/sandboxes")
 
 
 def destroy_sandbox(sandbox_id: str) -> dict:
-    return _request("DELETE", f"/api/sandboxes/{sandbox_id}")
+    return _request("DELETE", f"/sandboxes/{sandbox_id}")
 
 
 # --- tool-facing wrappers (structured results, no exceptions escaping) ------

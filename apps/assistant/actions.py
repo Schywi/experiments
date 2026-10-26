@@ -183,6 +183,10 @@ def confirm(token: str) -> dict:
         raise PolicyError("actions are disabled (set rbac.allowActions=true)")
     act = ACTIONS[pending["action"]]
     audit({"event": "action_confirm", "action": act.name, "args": pending["args"]})
-    result = act.execute(**pending["args"])
+    try:
+        result = act.execute(**pending["args"])
+    except Exception as exc:                     # console/API failure is not a crash
+        audit({"event": "action_error", "action": act.name, "error": str(exc)})
+        raise PolicyError(f"{act.name} failed: {exc}") from exc
     audit({"event": "action_result", "action": act.name, "result": result})
     return {"action": act.name, "result": result}
