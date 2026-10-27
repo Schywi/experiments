@@ -174,6 +174,37 @@ def test_contract_check_reports_missing_route():
     server.shutdown()
 
 
+def test_unknown_sandbox_is_refused_before_the_call():
+    server, s, calls = _client()
+    try:
+        s.sandbox_shot("nope")
+    except s.ConsoleError as exc:
+        assert "the console reports: sb-1" in str(exc), exc
+    else:
+        raise AssertionError("expected ConsoleError")
+    assert not any("/shot" in path for _m, path, _b in calls), calls
+    server.shutdown()
+
+
+def test_destroy_unknown_sandbox_is_refused():
+    server, s, calls = _client()
+    try:
+        s.destroy_sandbox("nope")
+    except s.ConsoleError as exc:
+        assert "no sandbox 'nope'" in str(exc), exc
+    else:
+        raise AssertionError("expected ConsoleError")
+    assert not any(m == "DELETE" for m, _p, _b in calls), calls
+    server.shutdown()
+
+
+def test_create_is_exempt_from_the_guard():
+    server, s, calls = _client()
+    s.create_sandbox()                     # no existence check for creation
+    assert ("POST", "/sandboxes", {"kind": "claim"}) in calls, calls
+    server.shutdown()
+
+
 if __name__ == "__main__":
     failures = 0
     names = sorted(k for k in list(globals()) if k.startswith("test_"))

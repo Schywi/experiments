@@ -94,8 +94,25 @@ def deep_link(sandbox_id: str) -> str:
     return f"{CONSOLE_URL}/s/{sandbox_id}"
 
 
+def _known_ids() -> list:
+    """Ids the console currently reports, used to refuse stale references."""
+    data = list_sandboxes()
+    tiles = data.get("tiles") if isinstance(data, dict) else None
+    return sorted(t["id"] for t in (tiles or []) if isinstance(t, dict) and t.get("id"))
+
+
+def _require_sandbox(sandbox_id: str) -> str:
+    """Guard for actions on an existing sandbox. Creation is exempt."""
+    ids = _known_ids()
+    if sandbox_id not in ids:
+        known = ", ".join(ids) or "(none)"
+        raise ConsoleError(f"no sandbox {sandbox_id!r}; the console reports: {known}")
+    return sandbox_id
+
+
 def shot(sandbox_id: str, fresh: bool = False) -> dict:
     """A screenshot is reported as a URL the UI can render, not as bytes."""
+    _require_sandbox(sandbox_id)
     query = "?fresh=1" if fresh else ""
     return {"sandbox": sandbox_id,
             "image_url": f"{CONSOLE_URL}/sandboxes/{sandbox_id}/shot{query}",
@@ -109,6 +126,7 @@ def create_sandbox(kind: str = "claim") -> dict:
 
 
 def destroy_sandbox(sandbox_id: str) -> dict:
+    _require_sandbox(sandbox_id)
     return _request("DELETE", f"/sandboxes/{sandbox_id}")
 
 
@@ -126,6 +144,7 @@ def sandbox_list() -> dict:
 
 def sandbox_open(sandbox_id: str, url: str) -> dict:
     """Navigate a sandbox, then return the frame URL for that view."""
+    _require_sandbox(sandbox_id)
     result = open_url(sandbox_id, url)
     return {"sandbox": sandbox_id, "url": url, "result": result,
             "image_url": f"{CONSOLE_URL}/sandboxes/{sandbox_id}/shot",
