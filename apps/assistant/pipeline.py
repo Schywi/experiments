@@ -153,6 +153,12 @@ def _parse_tools(obj) -> list:
     return batch
 
 
+def _screen_has_prose(screen: str) -> bool:
+    """True when the body has a sentence that is not just an image or a link."""
+    stripped = re.sub(r"!\[[^\]]*\]\([^)]*\)|\[[^\]]*\]\([^)]*\)", " ", screen)
+    return len(re.sub(r"[#*`>\-\s]", "", stripped)) >= 20
+
+
 def _parse_answer(raw: str):
     """Return (screen_md, speech) ONLY if the {screen_md, speech} contract held."""
     obj = _extract_json(raw)
@@ -164,6 +170,9 @@ def _parse_answer(raw: str):
     speech = str(obj.get("speech") or "").strip()
     if _is_placeholder(speech):
         speech = screen[:200]
+    if not _screen_has_prose(screen):
+        # An image-only or link-only body reads as a blank answer: lead with prose.
+        screen = f"{speech or 'Here is what the evidence shows.'}\n\n{screen}".strip()
     return screen, speech
 
 

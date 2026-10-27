@@ -113,6 +113,25 @@ def test_unknown_keys_are_dropped():
     assert err is None and "field" not in clean, (clean, err)
 
 
+def test_markdown_image_renders_img():
+    import ui
+    out = ui.render_markdown("![shot](http://x/shot)")
+    assert '<img src="http://x/shot" alt="shot"' in out, out
+    assert "!" not in out.split("<img")[0], out
+
+
+def test_markdown_rejects_non_http_scheme():
+    import ui
+    out = ui.render_markdown("![x](javascript:alert(1))")
+    assert "<img" not in out, out
+
+
+def test_markdown_empty_alt():
+    import ui
+    out = ui.render_markdown("![](http://x/s.png)")
+    assert '<img src="http://x/s.png" alt=""' in out, out
+
+
 if __name__ == "__main__":
     failures = 0
     names = sorted(k for k in list(globals()) if k.startswith("test_"))

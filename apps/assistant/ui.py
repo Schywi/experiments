@@ -71,6 +71,8 @@ _PAGE = """<!doctype html>
              border-radius: 6px; cursor: pointer; }
     .speak:disabled { opacity: .5; cursor: default; }
     audio { display: block; margin-top: 6px; width: 100%; height: 32px; }
+    .md img { max-width: 100%; border-radius: 6px; display: block; margin: 8px 0;
+              border: 1px solid #30363d; }
     form { display: flex; gap: 8px; padding: 12px 16px; border-top: 1px solid #21262d; }
     select, input, button { font: inherit; border-radius: 8px; border: 1px solid #30363d;
            background: #0d1117; color: #e6edf3; padding: 8px 10px; }
@@ -316,6 +318,7 @@ def user_bubble(text: str) -> str:
 
 _HEADING = re.compile(r"^(#{1,4})\s+(.*)$")
 _BULLET = re.compile(r"^\s*[-*]\s+(.*)$")
+_IMAGE = re.compile(r"!\[([^\]]*)\]\((https?://[^\s)]+)\)")
 _LINK = re.compile(r"\[([^\]]+)\]\((https?://[^\s)]+)\)")
 _BOLD = re.compile(r"\*\*([^*]+)\*\*")
 _ITALIC = re.compile(r"(?<!\*)\*([^*]+)\*(?!\*)")
@@ -327,6 +330,10 @@ def _inline(text: str) -> str:
     text = _INLINE_CODE.sub(r"<code>\1</code>", text)
     text = _BOLD.sub(r"<strong>\1</strong>", text)
     text = _ITALIC.sub(r"<em>\1</em>", text)
+    text = _IMAGE.sub(
+        lambda m: (f'<img src="{m.group(2)}" alt="{m.group(1)}" loading="lazy"'
+                   ' referrerpolicy="no-referrer">'),
+        text)
     text = _LINK.sub(
         lambda m: f'<a href="{m.group(2)}" target="_blank" rel="noopener">{m.group(1)}</a>',
         text)

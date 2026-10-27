@@ -48,20 +48,28 @@ def list_sandboxes() -> dict:
 
 
 def reachability(sandbox_id: str) -> dict:
-    return _request("GET", f"/api/sandboxes/{sandbox_id}/reachability")
+    return _request("POST", f"/api/sandboxes/{sandbox_id}/reachability")
+
+
+def get_sandbox(sandbox_id: str) -> dict:
+    return _request("GET", f"/api/sandboxes/{sandbox_id}")
 
 
 def open_url(sandbox_id: str, url: str) -> dict:
     return _request("POST", f"/api/sandboxes/{sandbox_id}/url", {"url": url})
 
 
-def shot(sandbox_id: str) -> dict:
+def shot(sandbox_id: str, fresh: bool = False) -> dict:
     """A screenshot is reported as a URL the UI can render, not as bytes."""
-    return {"sandbox": sandbox_id, "image_url": f"{CONSOLE_URL}/sandboxes/{sandbox_id}/shot"}
+    query = "?fresh=1" if fresh else ""
+    return {"sandbox": sandbox_id,
+            "image_url": f"{CONSOLE_URL}/sandboxes/{sandbox_id}/shot{query}"}
 
 
-def create_sandbox() -> dict:
-    return _request("POST", "/sandboxes")
+def create_sandbox(kind: str = "claim") -> dict:
+    if kind not in ("claim", "sandbox"):
+        raise ConsoleError(f"kind must be 'claim' or 'sandbox', got {kind!r}")
+    return _request("POST", "/sandboxes", {"kind": kind})
 
 
 def destroy_sandbox(sandbox_id: str) -> dict:
