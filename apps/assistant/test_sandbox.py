@@ -1,4 +1,6 @@
-"""Sandbox tool tests against a fake console (no cluster, no real console).
+"""Sandbox client tests against a fake console that enforces the OpenAPI contract.
+
+Anything not in CONTRACT answers 405, so a wrong method or path fails loudly.
 
     python3 apps/assistant/test_sandbox.py
 """
@@ -14,105 +16,162 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import sandbox  # noqa: E402
 
+# (method, path) pairs the console actually exposes, and what we answer.
+CONTRACT = {
+    ("GET", "/api/sandboxes"): (200, {"ok": True, "tiles": [{"id": "sb-1", "phase": "ready"}]}),
+    ("GET", "/api/sandboxes/sb-1"): (200, {"id": "sb-1", "phase": "ready"}),
+    ("POST", "/api/sandboxes/sb-1/url"): (200, {"ok": True, "url": "x"}),
+    ("POST", "/api/sandboxes/sb-1/reachability"): (200, {"ok": True}),
+    ("POST", "/sandboxes"): (202, {"kind": "claim", "name": "claim-abc", "namespace": "sandbox-demo"}),
+    ("DELETE", "/sandboxes/sb-1"): (202, {"removed": "sb-1"}),
+}
+
 
 class _Handler(BaseHTTPRequestHandler):
     mode = "ok"
+    calls = []
 
-    def log_message(self, *a):        # silence
+    def log_message(self, *a):
         pass
 
-    def _send(self, code, payload=None, raw=None):
+    def _reply(self, code, payload):
+        body = json.dumps(payload).encode()
         self.send_response(code)
-        if raw is not None:
-            self.send_header("content-type", "image/png")
-            self.end_headers()
-            self.wfile.write(raw)
-            return
-        body = json.dumps(payload or {}).encode()
         self.send_header("content-type", "application/json")
         self.send_header("content-length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
 
-    def _route(self):
-        p = self.path
-        if self.mode == "noapi" and p.startswith("/api/"):
-            return self._send(404, {"error": "not found"})
-        if p == "/api/sandboxes" and self.command == "GET":
-            return self._send(200, {"sandboxes": [{"id": "sb-1", "ready": True,
-                                                    "phase": "Ready"}]})
-        if p == "/api/sandboxes" and self.command == "POST":
-            return self._send(200, {"id": "sb-new", "ready": False})
-        if p.endswith("/reachability"):
-            return self._send(200, {"reachable": True})
-        if p.endswith("/url") and self.command == "POST":
-            return self._send(200, {"navigated": True})
-        if p.startswith("/sandboxes/") and p.endswith("/shot"):
-            return self._send(200, raw=b"\x89PNG\r\n\x1a\n")
-        if p.startswith("/api/sandboxes/") and self.command == "DELETE":
-            return self._send(200, {"deleted": True})
-        return self._send(404, {"error": "no route"})
+    def _handle(self):
+        length = int(self.headers.get("content-length") or 0)
+        raw = self.rfile.read(length) if length else b""
+        body = json.loads(raw) if raw else None
+        path = self.path.split("?")[0]
+        type(self).calls.append((self.command, path, body))
+        if self.mode == "noapi" and path.startswith("/api/"):
+            return self._reply(404, {"detail": "not found"})
+        if path == "/openapi.json":
+            spec = {"paths": {}}
+            for m, p in sandbox.CONTRACT_ROUTES:
+                spec["paths"].setdefault(p, {})[m.lower()] = {}
+            if self.mode == "drift":
+                spec["paths"]["/api/sandboxes/{sandbox_id}/reachability"].pop("post", None)
+            return self._reply(200, spec)
+        hit = CONTRACT.get((self.command, path))
+        if hit is None:
+            return self._reply(405, {"detail": "Method Not Allowed"})
+        return self._reply(*hit)
 
-    do_GET = do_POST = do_DELETE = lambda self: self._route()  # noqa: E731
+    do_GET = do_POST = do_DELETE = lambda self: self._handle()  # noqa: E731
 
 
-def _serve(mode):
-    handler = type("H", (_Handler,), {"mode": mode})
+def _client(mode="ok"):
+    handler = type("H", (_Handler,), {"mode": mode, "calls": []})
     server = HTTPServer(("127.0.0.1", 0), handler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
-    return server
+    os.environ["CONSOLE_URL"] = f"http://127.0.0.1:{server.server_port}"
+    module = importlib.reload(sandbox)
+    return server, module, handler.calls
 
 
-def _reload(url):
-    os.environ["CONSOLE_URL"] = url
-    return importlib.reload(sandbox)
+def test_create_posts_kind_claim():
+    server, s, calls = _client()
+    out = s.create_sandbox()
+    assert out["name"] == "claim-abc", out
+    assert ("POST", "/sandboxes", {"kind": "claim"}) in calls, calls
+    server.shutdown()
 
 
-def test_list_reads_console_inventory():
-    srv = _serve("ok")
-    s = _reload(f"http://127.0.0.1:{srv.server_port}")
-    out = s.sandbox_list()
-    assert out["sandboxes"][0]["id"] == "sb-1", out
-    srv.shutdown()
+def test_create_bare_sandbox_kind():
+    server, s, calls = _client()
+    s.create_sandbox(kind="sandbox")
+    assert ("POST", "/sandboxes", {"kind": "sandbox"}) in calls, calls
+    server.shutdown()
 
 
-def test_open_returns_frame_url():
-    srv = _serve("ok")
-    s = _reload(f"http://127.0.0.1:{srv.server_port}")
-    out = s.sandbox_open("sb-1", "http://grafana.localhost")
+def test_create_rejects_bad_kind_without_calling():
+    server, s, calls = _client()
+    try:
+        s.create_sandbox(kind="bogus")
+    except s.ConsoleError as exc:
+        assert "kind must be one of" in str(exc), exc
+    else:
+        raise AssertionError("expected ConsoleError")
+    assert calls == [], calls
+    server.shutdown()
+
+
+def test_reachability_is_post():
+    server, s, calls = _client()
+    s.reachability("sb-1")
+    assert ("POST", "/api/sandboxes/sb-1/reachability", None) in calls, calls
+    server.shutdown()
+
+
+def test_list_and_get_read_tiles():
+    server, s, calls = _client()
+    assert s.sandbox_list()["tiles"][0]["id"] == "sb-1"
+    assert s.get_sandbox("sb-1")["phase"] == "ready"
+    assert ("GET", "/api/sandboxes", None) in calls
+    assert ("GET", "/api/sandboxes/sb-1", None) in calls
+    server.shutdown()
+
+
+def test_open_posts_url_body():
+    server, s, calls = _client()
+    out = s.sandbox_open("sb-1", "http://192.168.0.245/")
     assert out["image_url"].endswith("/sandboxes/sb-1/shot"), out
-    assert out["result"]["navigated"] is True, out
-    srv.shutdown()
+    assert ("POST", "/api/sandboxes/sb-1/url", {"url": "http://192.168.0.245/"}) in calls, calls
+    server.shutdown()
 
 
-def test_create_and_destroy_go_through_console():
-    srv = _serve("ok")
-    s = _reload(f"http://127.0.0.1:{srv.server_port}")
-    assert s.create_sandbox()["id"] == "sb-new"
-    assert s.destroy_sandbox("sb-1")["deleted"] is True
-    srv.shutdown()
+def test_shot_fresh_adds_query():
+    server, s, _ = _client()
+    assert s.shot("sb-1")["image_url"].endswith("/sandboxes/sb-1/shot")
+    assert s.shot("sb-1", fresh=True)["image_url"].endswith("/sandboxes/sb-1/shot?fresh=1")
+    server.shutdown()
 
 
-def test_missing_api_surface_raises_console_error():
-    srv = _serve("noapi")
-    s = _reload(f"http://127.0.0.1:{srv.server_port}")
+def test_destroy_uses_delete():
+    server, s, calls = _client()
+    assert s.destroy_sandbox("sb-1")["removed"] == "sb-1"
+    assert ("DELETE", "/sandboxes/sb-1", None) in calls, calls
+    server.shutdown()
+
+
+def test_missing_api_surface_raises():
+    server, s, _ = _client(mode="noapi")
     try:
         s.sandbox_list()
     except s.ConsoleError as exc:
         assert "console API unavailable" in str(exc), exc
     else:
         raise AssertionError("expected ConsoleError")
-    srv.shutdown()
+    server.shutdown()
 
 
-def test_unreachable_console_raises_console_error():
-    s = _reload("http://127.0.0.1:1")
+def test_unreachable_console_raises():
+    os.environ["CONSOLE_URL"] = "http://127.0.0.1:1"
+    s = importlib.reload(sandbox)
     try:
         s.sandbox_list()
     except s.ConsoleError as exc:
         assert "unreachable" in str(exc), exc
     else:
         raise AssertionError("expected ConsoleError")
+
+
+def test_contract_check_clean():
+    server, s, _ = _client()
+    assert s.contract_check() == [], s.contract_check()
+    server.shutdown()
+
+
+def test_contract_check_reports_missing_route():
+    server, s, _ = _client(mode="drift")
+    missing = s.contract_check()
+    assert any("reachability" in item for item in missing), missing
+    server.shutdown()
 
 
 if __name__ == "__main__":

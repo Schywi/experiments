@@ -9,8 +9,13 @@ question needs it. An unset env drops that kind; nothing is guessed.
 | `grafana` | `prometheus` | `GRAFANA_URL` | `<GRAFANA_URL>/explore?schemaVersion=1&panes=<panes json>` | the fact is `query_prometheus` **and** `ok == true` |
 | `hubble` ("Open in Cilium") | `kube` | `HUBBLE_URL` | `<HUBBLE_URL>/?namespace=<ns>` | the fact carries `args.namespace` |
 | `neo4j` | `cartography` | `NEO4J_UI_URL` | `NEO4J_UI_URL` verbatim | the fact is `get_topology_snapshot` |
+| `sandbox` ("Open in sandbox") | `sandbox` | `CONSOLE_URL` | `<CONSOLE_URL>/s/<id>` | the fact carries a sandbox id (`args.sandbox_id`, or the tile's `id`) |
 
 `general` emits nothing. There is no `argocd` or `kargo` kind.
+
+The sandbox link is a **full console document** (`/s/<id>`), not a fragment: it
+carries its own style/script and opens that sandbox's dialog. `<CONSOLE_URL>/s/<id>?shot=1`
+307s to the PNG alone, which is what the evidence row's "Open frame" uses.
 
 Intent is derived in `pipeline._intent()` from the facts actually used:
 `cartography` > `prometheus` > `kube` > `general`.

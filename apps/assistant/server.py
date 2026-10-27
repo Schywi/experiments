@@ -11,6 +11,7 @@ human confirmation in a later milestone.
 import asyncio
 import json
 import os
+import threading
 import time
 from contextlib import asynccontextmanager
 
@@ -27,6 +28,7 @@ import memory  # M10
 import llm_metrics  # instrumentation
 import pipeline  # plan -> fan-out -> correlate
 import provenance  # human-reproducibility metadata (outside the LLM context)
+import sandbox  # console API client + contract check
 import tts_cache  # background TTS
 from tools import REGISTRY, audit, route
 from starlette.concurrency import run_in_threadpool
@@ -216,7 +218,8 @@ async def _ask_llm_stream(messages: list, stage: str = "chat") -> tuple:
 
 @app.get("/healthz")
 def healthz() -> dict:
-    return {"status": "ok"}
+    """Liveness plus the console contract state (empty list means no drift)."""
+    return {"status": "ok", "console_contract_missing": CONTRACT_MISSING}
 
 
 @app.post("/chat", response_model=ChatResponse)
@@ -356,6 +359,28 @@ def audio(audio_id: str) -> Response:
         return Response(status_code=202, headers={"Retry-After": "1"})
     return Response(content=item["wav"], media_type="audio/wav",
                     headers={"Cache-Control": "private, max-age=600"})
+
+
+CONTRACT_MISSING: list = []
+
+
+def _contract_watch() -> None:
+    """Log once when the console no longer exposes a route this client uses."""
+    try:
+        missing = sandbox.contract_check()
+    except Exception as exc:                       # never block startup
+        missing = [f"contract_check failed: {type(exc).__name__}: {exc}"]
+    global CONTRACT_MISSING
+    CONTRACT_MISSING = missing
+    if missing:
+        print("WARNING console contract drift: " + "; ".join(missing), flush=True)
+    else:
+        print("console contract: all routes present", flush=True)
+
+
+@app.on_event("startup")
+def _start_contract_watch() -> None:
+    threading.Thread(target=_contract_watch, daemon=True).start()
 
 
 @app.get("/metrics")

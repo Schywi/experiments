@@ -448,6 +448,8 @@ def _intent(facts) -> str:
     tools = {f.get("tool") for f in (facts or [])}
     if "get_topology_snapshot" in tools:
         return "cartography"
+    if tools & {"sandbox_list", "sandbox_open", "sandbox_shot", "sandbox_get"}:
+        return "sandbox"
     if "query_prometheus" in tools:
         return "prometheus"
     if tools & {"get_pods", "get_pod_logs", "get_events", "search_logs", "get_topology"}:

@@ -260,11 +260,13 @@ def _fmt_fact(fact: dict) -> str:
         except (ValueError, TypeError):
             payload = {}
         image = payload.get("image_url") if isinstance(payload, dict) else None
+        deep = payload.get("deep_link") if isinstance(payload, dict) else None
         if image:
             safe = html.escape(str(image), quote=True)
+            frame = (html.escape(f"{deep}?shot=1", quote=True) if deep else safe)
             line += (f'<br><img src="{safe}" alt="sandbox frame"'
                      ' style="max-width:100%;border:1px solid #30363d;border-radius:6px">'
-                     f' <a href="{safe}" target="_blank" rel="noopener">Open frame</a>')
+                     f' <a href="{frame}" target="_blank" rel="noopener">Open frame</a>')
     return f"<li>{line}</li>"
 
 

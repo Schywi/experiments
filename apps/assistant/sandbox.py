@@ -21,6 +21,7 @@ import httpx
 
 CONSOLE_URL = os.environ.get("CONSOLE_URL", "http://192.168.0.250").rstrip("/")
 CONSOLE_TIMEOUT = float(os.environ.get("CONSOLE_TIMEOUT", "25"))
+CREATE_KINDS = ("claim", "sandbox")   # the only values POST /sandboxes accepts
 
 
 class ConsoleError(Exception):
@@ -59,16 +60,51 @@ def open_url(sandbox_id: str, url: str) -> dict:
     return _request("POST", f"/api/sandboxes/{sandbox_id}/url", {"url": url})
 
 
+CONTRACT_ROUTES = (
+    ("GET", "/api/sandboxes"),
+    ("GET", "/api/sandboxes/{sandbox_id}"),
+    ("POST", "/api/sandboxes/{sandbox_id}/url"),
+    ("POST", "/api/sandboxes/{sandbox_id}/reachability"),
+    ("POST", "/sandboxes"),
+    ("DELETE", "/sandboxes/{sandbox_id}"),
+    ("GET", "/sandboxes/{sandbox_id}/shot"),
+)
+
+
+def contract_check() -> list:
+    """Routes this client uses that the console's own openapi.json does not expose."""
+    try:
+        with httpx.Client(timeout=CONSOLE_TIMEOUT) as client:
+            response = client.get(f"{CONSOLE_URL}/openapi.json")
+            response.raise_for_status()
+            spec = response.json()
+    except (httpx.HTTPError, ValueError) as exc:
+        return [f"openapi.json unavailable: {type(exc).__name__}"]
+    paths = spec.get("paths") or {}
+    missing = []
+    for method, path in CONTRACT_ROUTES:
+        operations = paths.get(path)
+        if not isinstance(operations, dict) or method.lower() not in operations:
+            missing.append(f"{method} {path}")
+    return missing
+
+
+def deep_link(sandbox_id: str) -> str:
+    """The console page for one sandbox, dialog already open."""
+    return f"{CONSOLE_URL}/s/{sandbox_id}"
+
+
 def shot(sandbox_id: str, fresh: bool = False) -> dict:
     """A screenshot is reported as a URL the UI can render, not as bytes."""
     query = "?fresh=1" if fresh else ""
     return {"sandbox": sandbox_id,
-            "image_url": f"{CONSOLE_URL}/sandboxes/{sandbox_id}/shot{query}"}
+            "image_url": f"{CONSOLE_URL}/sandboxes/{sandbox_id}/shot{query}",
+            "deep_link": deep_link(sandbox_id)}
 
 
 def create_sandbox(kind: str = "claim") -> dict:
-    if kind not in ("claim", "sandbox"):
-        raise ConsoleError(f"kind must be 'claim' or 'sandbox', got {kind!r}")
+    if kind not in CREATE_KINDS:
+        raise ConsoleError(f"kind must be one of {CREATE_KINDS}, got {kind!r}")
     return _request("POST", "/sandboxes", {"kind": kind})
 
 
@@ -80,14 +116,20 @@ def destroy_sandbox(sandbox_id: str) -> dict:
 
 def sandbox_list() -> dict:
     """List sandboxes with the console's own ready/phase/route state."""
-    return list_sandboxes()
+    data = list_sandboxes()
+    tiles = data.get("tiles") if isinstance(data, dict) else None
+    for tile in tiles or []:
+        if isinstance(tile, dict) and isinstance(tile.get("id"), str):
+            tile["deep_link"] = deep_link(tile["id"])
+    return data
 
 
 def sandbox_open(sandbox_id: str, url: str) -> dict:
     """Navigate a sandbox, then return the frame URL for that view."""
     result = open_url(sandbox_id, url)
     return {"sandbox": sandbox_id, "url": url, "result": result,
-            "image_url": f"{CONSOLE_URL}/sandboxes/{sandbox_id}/shot"}
+            "image_url": f"{CONSOLE_URL}/sandboxes/{sandbox_id}/shot",
+            "deep_link": deep_link(sandbox_id)}
 
 
 def sandbox_shot(sandbox_id: str) -> dict:
