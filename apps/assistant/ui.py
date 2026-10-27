@@ -252,6 +252,8 @@ def _fmt_fact(fact: dict) -> str:
         line += (f'<button class="copy" data-copy="{html.escape(str(copyable), quote=True)}"'
                  ' title="Copy">copy</button>')
     for name, url in (fact.get("links") or {}).items():
+        if name == "sandbox":
+            continue                       # rendered from the payload below
         line += (f' <a href="{html.escape(str(url), quote=True)}" target="_blank"'
                  f' rel="noopener">Open in {html.escape(str(name).title())}</a>')
     if fact.get("ok") and str(fact.get("tool", "")).startswith("sandbox"):
@@ -263,10 +265,15 @@ def _fmt_fact(fact: dict) -> str:
         deep = payload.get("deep_link") if isinstance(payload, dict) else None
         if image:
             safe = html.escape(str(image), quote=True)
-            frame = (html.escape(f"{deep}?shot=1", quote=True) if deep else safe)
-            line += (f'<br><img src="{safe}" alt="sandbox frame"'
-                     ' style="max-width:100%;border:1px solid #30363d;border-radius:6px">'
-                     f' <a href="{frame}" target="_blank" rel="noopener">Open frame</a>')
+            line += f'<br><img src="{safe}" alt="sandbox frame" style="{_IMG_STYLE}">'
+        if deep:
+            page = html.escape(str(deep), quote=True)
+            line += (f' <a href="{page}" target="_blank" rel="noopener">Open in sandbox</a>'
+                     f' <a href="{html.escape(str(deep) + "?shot=1", quote=True)}"'
+                     ' target="_blank" rel="noopener">Open frame</a>')
+        elif image:
+            line += (f' <a href="{html.escape(str(image), quote=True)}" target="_blank"'
+                     ' rel="noopener">Open frame</a>')
     return f"<li>{line}</li>"
 
 
@@ -327,6 +334,18 @@ _ITALIC = re.compile(r"(?<!\*)\*([^*]+)\*(?!\*)")
 _INLINE_CODE = re.compile(r"`([^`]+)`")
 
 
+_IMG_STYLE = ("max-width:100%;max-height:320px;object-fit:contain;"
+              "border:1px solid #30363d;border-radius:6px;display:block;margin:8px 0")
+
+
+def strip_url_lines(text: str) -> str:
+    """Drop lines that are only a URL or 'Image URL: …' — the client renders those."""
+    pattern = re.compile(r"^\s*(?:[-*]\s*)?(?:image\s*url|deep\s*link|url|source)?\s*:?\s*"
+                         r"<?https?://\S+>?\s*$", re.IGNORECASE)
+    kept = [line for line in (text or "").splitlines() if not pattern.match(line)]
+    return "\n".join(kept).strip()
+
+
 def _inline(text: str) -> str:
     text = html.escape(text)                       # escape FIRST, then decorate
     text = _INLINE_CODE.sub(r"<code>\1</code>", text)
@@ -334,7 +353,7 @@ def _inline(text: str) -> str:
     text = _ITALIC.sub(r"<em>\1</em>", text)
     text = _IMAGE.sub(
         lambda m: (f'<img src="{m.group(2)}" alt="{m.group(1)}" loading="lazy"'
-                   ' referrerpolicy="no-referrer">'),
+                   f' referrerpolicy="no-referrer" style="{_IMG_STYLE}">'),
         text)
     text = _LINK.sub(
         lambda m: f'<a href="{m.group(2)}" target="_blank" rel="noopener">{m.group(1)}</a>',

@@ -30,6 +30,7 @@ import tool_schema
 from k8sutil import audit
 from sandbox import extract_id
 from tools import REGISTRY
+from ui import strip_url_lines
 
 MAX_FACTS = 6
 PER_FACT_CHARS = 600      # evidence kept per fact
@@ -174,6 +175,7 @@ def _parse_answer(raw: str):
     if not _screen_has_prose(screen):
         # An image-only or link-only body reads as a blank answer: lead with prose.
         screen = f"{speech or 'Here is what the evidence shows.'}\n\n{screen}".strip()
+    screen = strip_url_lines(screen) or screen
     return screen, speech
 
 

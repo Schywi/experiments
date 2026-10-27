@@ -132,6 +132,21 @@ def test_markdown_empty_alt():
     assert '<img src="http://x/s.png" alt=""' in out, out
 
 
+def test_markdown_image_is_size_capped():
+    import ui
+    out = ui.render_markdown("![s](http://x/shot)")
+    assert "max-height:320px" in out and "object-fit:contain" in out, out
+
+
+def test_strip_url_lines_drops_bare_urls():
+    import ui
+    text = ("Screenshot of sandbox x\nImage URL: http://x/shot\n"
+            "Deep Link: http://x/s\nhttp://x/raw\n\nKept sentence.")
+    out = ui.strip_url_lines(text)
+    assert "http://" not in out, out
+    assert "Screenshot of sandbox x" in out and "Kept sentence." in out, out
+
+
 if __name__ == "__main__":
     failures = 0
     names = sorted(k for k in list(globals()) if k.startswith("test_"))
