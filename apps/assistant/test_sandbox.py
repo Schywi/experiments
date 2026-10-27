@@ -205,6 +205,18 @@ def test_create_is_exempt_from_the_guard():
     server.shutdown()
 
 
+def test_extract_id_from_phrasing():
+    cases = {
+        "take a screenshot of browser-pool-xnxpv": "browser-pool-xnxpv",
+        "take a screenshot of sandbox claim-mvok0gx2": "claim-mvok0gx2",
+        "screenshot bare-mvo3klwp please": "bare-mvo3klwp",
+        "take a screenshot": "",
+        "take a screenshot of the browser pool": "",
+    }
+    for text, expected in cases.items():
+        assert sandbox.extract_id(text) == expected, (text, sandbox.extract_id(text))
+
+
 if __name__ == "__main__":
     failures = 0
     names = sorted(k for k in list(globals()) if k.startswith("test_"))

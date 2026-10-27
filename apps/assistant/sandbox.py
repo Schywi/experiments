@@ -16,12 +16,27 @@ Contract consumed:
 """
 
 import os
+import re
 
 import httpx
 
 CONSOLE_URL = os.environ.get("CONSOLE_URL", "http://192.168.0.250").rstrip("/")
 CONSOLE_TIMEOUT = float(os.environ.get("CONSOLE_TIMEOUT", "25"))
 CREATE_KINDS = ("claim", "sandbox")   # the only values POST /sandboxes accepts
+
+# Sandbox ids as the console names them: browser-pool-xxxx, claim-xxxx, bare-xxxx,
+# or an explicit "sandbox <id>". A sentence that merely says the word is not an id.
+_ID_PREFIXED = re.compile(r"\b((?:browser-pool|claim|bare)-[a-z0-9]{3,})\b")
+_ID_NAMED = re.compile(r"sandbox[\s:]+([a-z0-9][a-z0-9.-]{2,})")
+
+
+def extract_id(text: str) -> str:
+    """The sandbox id a question names, or ''."""
+    for pattern in (_ID_PREFIXED, _ID_NAMED):
+        match = pattern.search((text or "").lower())
+        if match:
+            return match.group(1).rstrip(".")
+    return ""
 
 
 class ConsoleError(Exception):

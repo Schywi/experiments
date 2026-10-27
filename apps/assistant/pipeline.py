@@ -28,6 +28,7 @@ import llm_metrics
 import observability
 import tool_schema
 from k8sutil import audit
+from sandbox import extract_id
 from tools import REGISTRY
 
 MAX_FACTS = 6
@@ -419,14 +420,12 @@ def correlate(question, facts, llm_url, model, timeout):
 
 _SANDBOX_ROUTE = ("open a sandbox", "create a sandbox", "launch a sandbox",
                   "destroy the sandbox", "delete the sandbox", "screenshot", "screen shot")
-_SANDBOX_ID_RE = re.compile(r"sandbox[\s:]+([a-z0-9][a-z0-9.-]{2,})")
 _URL_RE = re.compile(r"https?://[^\s,]+")
 
 
 def _sandbox_batch(lowered: str, question: str):
     """Explicit sandbox phrases only. No autonomous sandbox use."""
-    sid = _SANDBOX_ID_RE.search(lowered)
-    sandbox_id = sid.group(1) if sid else ""
+    sandbox_id = extract_id(question)
     url = (_URL_RE.search(question).group(0) if _URL_RE.search(question) else "")
     if "destroy the sandbox" in lowered or "delete the sandbox" in lowered:
         return [("propose_action",
