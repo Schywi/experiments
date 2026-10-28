@@ -81,12 +81,31 @@ def _scale_preview(namespace: str, name: str, replicas: int) -> dict:
     return {"action": "scale_deployment", "target": f"{namespace}/{name}",
             "effect": f"set replicas={int(replicas)}"}
 
-
 def _scale_execute(namespace: str, name: str, replicas: int) -> dict:
     _apps().patch_namespaced_deployment_scale(
         name=name, namespace=namespace, body={"spec": {"replicas": int(replicas)}}
     )
     return {"scaled": f"{namespace}/{name}", "replicas": int(replicas)}
+
+
+def _create_sandbox_preview() -> dict:
+    return {"action": "create_sandbox", "target": "console",
+            "effect": "create one sandbox through the console"}
+
+
+def _create_sandbox_execute() -> dict:
+    import sandbox
+    return {"created": sandbox.create_sandbox()}
+
+
+def _destroy_sandbox_preview(sandbox_id: str) -> dict:
+    return {"action": "destroy_sandbox", "target": sandbox_id,
+            "effect": "delete the sandbox through the console"}
+
+
+def _destroy_sandbox_execute(sandbox_id: str) -> dict:
+    import sandbox
+    return {"destroyed": sandbox.destroy_sandbox(sandbox_id)}
 
 
 ACTIONS: Dict[str, Action] = {
@@ -96,6 +115,12 @@ ACTIONS: Dict[str, Action] = {
     "scale_deployment": Action(
         "scale_deployment", 2, "Scale a Deployment to a replica count",
         _scale_preview, _scale_execute),
+    "create_sandbox": Action(
+        "create_sandbox", 2, "Create one sandbox through the console",
+        _create_sandbox_preview, _create_sandbox_execute),
+    "destroy_sandbox": Action(
+        "destroy_sandbox", 2, "Destroy one sandbox through the console",
+        _destroy_sandbox_preview, _destroy_sandbox_execute),
 }
 
 _pending: Dict[str, dict] = {}
@@ -158,6 +183,10 @@ def confirm(token: str) -> dict:
         raise PolicyError("actions are disabled (set rbac.allowActions=true)")
     act = ACTIONS[pending["action"]]
     audit({"event": "action_confirm", "action": act.name, "args": pending["args"]})
-    result = act.execute(**pending["args"])
+    try:
+        result = act.execute(**pending["args"])
+    except Exception as exc:                     # console/API failure is not a crash
+        audit({"event": "action_error", "action": act.name, "error": str(exc)})
+        raise PolicyError(f"{act.name} failed: {exc}") from exc
     audit({"event": "action_result", "action": act.name, "result": result})
     return {"action": act.name, "result": result}

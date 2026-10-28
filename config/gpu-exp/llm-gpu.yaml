@@ -1,0 +1,122 @@
+# GPU experiment LLM: llama.cpp on Vulkan, served as `llm-gpu`.
+#
+# Backend for `assistant-e4-gpu` (LLM_URL=http://llm-gpu.gpu-exp.svc.cluster.local:8000).
+# Tracked here because the live object previously existed only in the cluster, so
+# the `-c 4096` fix would have been lost on any re-apply.
+#
+# This environment is CONTEXTUAL — it only works while the host's Vulkan path works:
+#
+#   * The pod requests `amd.com/render`, which the node advertises from the
+#     `gpu-device-plugin` DaemonSet (namespace `gpu`). That plugin mounts
+#     /dev/dri/renderD128 (the RX 570, gfx803, driven by Mesa RADV) and registers
+#     `amd.com/render` with kubelet. No plugin registration => the node advertises
+#     0 and this pod is Unschedulable ("Insufficient amd.com/render").
+#   * `-ngl 99` offloads every layer over Vulkan. If Vulkan/RADV breaks, the server
+#     fails to start or produces garbage; there is no CPU fallback here by design.
+#   * There is exactly ONE render device, so exactly one pod may hold it. Stale
+#     `Unknown` pods from an earlier rollout keep the claim and block a new pod:
+#     delete them, and restart the plugin pod if the resource is still 0.
+#
+# Not Argo-managed (no Application targets this path). Apply by hand:
+#     kubectl apply -f config/gpu-exp/llm-gpu.yaml
+# and verify: kubectl -n gpu-exp get pods; kubectl get node fedora \
+#     -o jsonpath='{.status.allocatable.amd\.com/render}'   # expect 1
+#
+# `-c 4096` is deliberate. The assistant's correlate prompt reaches ~2.2k tokens
+# (system + capped evidence + question). With `-c 2048` llama.cpp returned
+# HTTP 400 "request exceeds the available context size", and the assistant
+# degraded. Keep the context window at or above 4096, or lower the assistant's
+# EVIDENCE_CHARS / PER_FACT_CHARS so the prompt fits.
+#
+# Model: Qwen2.5-1.5B-Instruct Q4_K_M on the `gpu-models` PVC (read-only).
+# Image: `llama-vulkan:local` from the in-cluster registry; not the CPU
+# `llama-server` image — it is built with Vulkan and has no CPU path.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: llm-gpu
+  namespace: gpu-exp
+  labels:
+    app: llm-gpu
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate          # one render device: never run two pods at once
+  selector:
+    matchLabels:
+      app: llm-gpu
+  template:
+    metadata:
+      labels:
+        app: llm-gpu
+    spec:
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: llm
+          image: 127.0.0.1:5000/llama-vulkan:local
+          imagePullPolicy: IfNotPresent
+          args:
+            - -m
+            - /models/Qwen2.5-1.5B-Instruct-Q4_K_M.gguf
+            - -ngl
+            - "99"            # all layers on the GPU (Vulkan); no CPU fallback
+            - -c
+            - "4096"          # >= 4096: 2048 overflowed the correlate prompt (HTTP 400)
+            - --threads
+            - "4"
+            - --host
+            - 0.0.0.0
+            - --port
+            - "8000"
+          ports:
+            - name: http
+              containerPort: 8000
+          resources:
+            # The single Vulkan render device. Required: without amd.com/render
+            # the scheduler cannot place the pod (see the header note).
+            limits:
+              amd.com/render: 1
+              cpu: "4"
+              memory: 4Gi
+            requests:
+              amd.com/render: 1
+              cpu: "1"
+              memory: 2Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          startupProbe:
+            tcpSocket:
+              port: http
+            periodSeconds: 3
+            failureThreshold: 60      # Vulkan init + 1.5B load can take a while
+          readinessProbe:
+            tcpSocket:
+              port: http
+            periodSeconds: 5
+            failureThreshold: 3
+          volumeMounts:
+            - name: models
+              mountPath: /models
+              readOnly: true
+      volumes:
+        - name: models
+          persistentVolumeClaim:
+            claimName: gpu-models
+            readOnly: true
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: llm-gpu
+  namespace: gpu-exp
+spec:
+  selector:
+    app: llm-gpu
+  ports:
+    - name: http
+      port: 8000
+      targetPort: http

@@ -1,0 +1,23 @@
+apiVersion: kargo.akuity.io/v1alpha1
+kind: Warehouse
+metadata:
+  name: pilot
+  namespace: pilot
+spec:
+  subscriptions:
+    # A public, TLS-served, immutably-tagged image: no loopback registry, no
+    # plain-HTTP discovery, no build step.
+    - image:
+        repoURL: docker.io/library/busybox
+        imageSelectionStrategy: SemVer
+        semverConstraint: ">=1.36.0 <1.39.0"
+        allowTagsRegexes:
+          - '^1\.[0-9]+\.[0-9]+$'
+        # Cache metadata by tag: these tags never move.
+        cacheByTag: true
+    # Pair every image with the chart/manifest revision it was discovered with.
+    - git:
+        repoURL: https://github.com/Schywi/experiments.git
+        branch: feat/kargo
+        includePaths:
+          - config/kargo/pilot/**

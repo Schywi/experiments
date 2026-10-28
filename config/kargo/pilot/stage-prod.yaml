@@ -1,0 +1,52 @@
+apiVersion: kargo.akuity.io/v1alpha1
+kind: Stage
+metadata:
+  name: prod
+  namespace: pilot
+spec:
+  requestedFreight:
+    - origin:
+        kind: Warehouse
+        name: pilot
+      # Only freight that already reached staging may be promoted to prod.
+      sources:
+        stages:
+          - staging
+
+  promotionTemplate:
+    spec:
+      steps:
+        - uses: git-clone
+          config:
+            repoURL: https://github.com/Schywi/experiments.git
+            checkout:
+              - branch: feat/kargo
+                path: ./repo
+
+        - uses: kustomize-set-image
+          as: update-image
+          config:
+            path: ./repo/config/kargo/pilot/app/overlays/prod
+            images:
+              - image: docker.io/library/busybox
+                tag: ${{ imageFrom("docker.io/library/busybox").Tag }}
+
+        - uses: git-commit
+          as: commit
+          config:
+            path: ./repo
+            message: "chore(kargo): promote busybox ${{ imageFrom('docker.io/library/busybox').Tag }} to prod"
+
+        - uses: git-push
+          config:
+            path: ./repo
+
+        - uses: argocd-update
+          config:
+            apps:
+              - name: kargo-pilot-prod
+                namespace: argocd
+                sources:
+                  - repoURL: https://github.com/Schywi/experiments.git
+                    desiredRevision: ${{ outputs.commit.commit }}
+                    updateTargetRevision: true

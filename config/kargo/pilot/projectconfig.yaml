@@ -1,0 +1,12 @@
+apiVersion: kargo.akuity.io/v1alpha1
+kind: ProjectConfig
+metadata:
+  name: pilot
+  namespace: pilot
+spec:
+  # Auto-promotion moved off the Project resource in Kargo v1.12; the policy
+  # lives here. Staging promotes new Freight on its own; prod has no policy
+  # entry, so it only moves when a Promotion is created for it.
+  promotionPolicies:
+    - stage: staging
+      autoPromotionEnabled: true

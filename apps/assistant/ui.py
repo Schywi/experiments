@@ -71,6 +71,8 @@ _PAGE = """<!doctype html>
              border-radius: 6px; cursor: pointer; }
     .speak:disabled { opacity: .5; cursor: default; }
     audio { display: block; margin-top: 6px; width: 100%; height: 32px; }
+    .md img { max-width: 100%; border-radius: 6px; display: block; margin: 8px 0;
+              border: 1px solid #30363d; }
     form { display: flex; gap: 8px; padding: 12px 16px; border-top: 1px solid #21262d; }
     select, input, button { font: inherit; border-radius: 8px; border: 1px solid #30363d;
            background: #0d1117; color: #e6edf3; padding: 8px 10px; }
@@ -250,8 +252,28 @@ def _fmt_fact(fact: dict) -> str:
         line += (f'<button class="copy" data-copy="{html.escape(str(copyable), quote=True)}"'
                  ' title="Copy">copy</button>')
     for name, url in (fact.get("links") or {}).items():
+        if name == "sandbox":
+            continue                       # rendered from the payload below
         line += (f' <a href="{html.escape(str(url), quote=True)}" target="_blank"'
                  f' rel="noopener">Open in {html.escape(str(name).title())}</a>')
+    if fact.get("ok") and str(fact.get("tool", "")).startswith("sandbox"):
+        try:
+            payload = json.loads(fact.get("evidence") or "{}")
+        except (ValueError, TypeError):
+            payload = {}
+        image = payload.get("image_url") if isinstance(payload, dict) else None
+        deep = payload.get("deep_link") if isinstance(payload, dict) else None
+        if image:
+            safe = html.escape(str(image), quote=True)
+            line += f'<br><img src="{safe}" alt="sandbox frame" style="{_IMG_STYLE}">'
+        if deep:
+            page = html.escape(str(deep), quote=True)
+            line += (f' <a href="{page}" target="_blank" rel="noopener">Open in sandbox</a>'
+                     f' <a href="{html.escape(str(deep) + "?shot=1", quote=True)}"'
+                     ' target="_blank" rel="noopener">Open frame</a>')
+        elif image:
+            line += (f' <a href="{html.escape(str(image), quote=True)}" target="_blank"'
+                     ' rel="noopener">Open frame</a>')
     return f"<li>{line}</li>"
 
 
@@ -305,10 +327,23 @@ def user_bubble(text: str) -> str:
 
 _HEADING = re.compile(r"^(#{1,4})\s+(.*)$")
 _BULLET = re.compile(r"^\s*[-*]\s+(.*)$")
+_IMAGE = re.compile(r"!\[([^\]]*)\]\((https?://[^\s)]+)\)")
 _LINK = re.compile(r"\[([^\]]+)\]\((https?://[^\s)]+)\)")
 _BOLD = re.compile(r"\*\*([^*]+)\*\*")
 _ITALIC = re.compile(r"(?<!\*)\*([^*]+)\*(?!\*)")
 _INLINE_CODE = re.compile(r"`([^`]+)`")
+
+
+_IMG_STYLE = ("max-width:100%;max-height:320px;object-fit:contain;"
+              "border:1px solid #30363d;border-radius:6px;display:block;margin:8px 0")
+
+
+def strip_url_lines(text: str) -> str:
+    """Drop lines that are only a URL or 'Image URL: …' — the client renders those."""
+    pattern = re.compile(r"^\s*(?:[-*]\s*)?(?:image\s*url|deep\s*link|url|source)?\s*:?\s*"
+                         r"<?https?://\S+>?\s*$", re.IGNORECASE)
+    kept = [line for line in (text or "").splitlines() if not pattern.match(line)]
+    return "\n".join(kept).strip()
 
 
 def _inline(text: str) -> str:
@@ -316,6 +351,10 @@ def _inline(text: str) -> str:
     text = _INLINE_CODE.sub(r"<code>\1</code>", text)
     text = _BOLD.sub(r"<strong>\1</strong>", text)
     text = _ITALIC.sub(r"<em>\1</em>", text)
+    text = _IMAGE.sub(
+        lambda m: (f'<img src="{m.group(2)}" alt="{m.group(1)}" loading="lazy"'
+                   f' referrerpolicy="no-referrer" style="{_IMG_STYLE}">'),
+        text)
     text = _LINK.sub(
         lambda m: f'<a href="{m.group(2)}" target="_blank" rel="noopener">{m.group(1)}</a>',
         text)

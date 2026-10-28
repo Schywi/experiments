@@ -1,16 +1,16 @@
-"""Evidence provenance for the UI — deliberately kept OUT of the LLM context.
+"""Evidence provenance for the UI — kept OUT of the LLM context.
 
-Each pipeline fact is `{tool, args, ok, evidence, ms}`. This module enriches a
-fact with the metadata a human needs to *reproduce* what the agent saw:
+A fact is enriched with what a human needs to reproduce it and, **only when the
+question needs one**, a single deep link. Each link kind fires for exactly one
+intent, so an answer never carries unrelated buttons:
 
-    at         UTC timestamp
-    source     which system answered (kubernetes / victoriametrics / ...)
-    reproduce  a copyable command or PromQL
-    links      resolvable deep links (Grafana direct; Hubble namespace-only)
+    intent "prometheus"  -> grafana   (query_prometheus, only if ok == true)
+    intent "kube"        -> hubble    (a fact that carries args.namespace)
+    intent "cartography" -> neo4j     (get_topology_snapshot, only if env is set)
+    intent "sandbox"     -> sandbox   (a fact carrying a sandbox id)
+    anything else        -> no links
 
-Nothing here is passed to plan/correlate — it rides alongside, so it costs the
-model zero tokens. Hosts come from env and are bare LoadBalancer IPs, e.g.
-http://192.168.0.245 (Grafana) and http://192.168.0.241 (Hubble UI).
+Hosts come from env; an unset env drops that kind. No host is written here.
 """
 
 import json
@@ -20,14 +20,13 @@ import shlex
 import urllib.parse
 from datetime import datetime, timezone
 
+from sandbox import CONSOLE_URL as SANDBOX_URL
+
 GRAFANA_URL = os.environ.get("GRAFANA_URL", "").rstrip("/")
 HUBBLE_URL = os.environ.get("HUBBLE_URL", "").rstrip("/")
 GRAFANA_DATASOURCE_UID = os.environ.get("GRAFANA_DATASOURCE_UID", "")
 GRAFANA_DATASOURCE_NAME = os.environ.get("GRAFANA_DATASOURCE_NAME", "victoriametrics")
-NEO4J_UI = os.environ.get(
-    "NEO4J_UI_URL",
-    "http://neo4j.home.arpa/browser/?dbms=bolt%3A%2F%2Fneo4j.home.arpa%3A7687&db=neo4j&preselectAuthMethod=NO_AUTH",
-).rstrip("/")
+NEO4J_UI = os.environ.get("NEO4J_UI_URL", "").rstrip("/")
 
 _SOURCE = {
     "get_pods": "kubernetes",
@@ -76,39 +75,68 @@ def _grafana_explore(promql: str):
     return f"{GRAFANA_URL}/explore?{query}"
 
 
-def _hubble_link(args: dict):
-    """Hubble UI is namespace-scoped only (verified: no flow-query deep link)."""
-    ns = args.get("namespace")
-    if not (HUBBLE_URL and ns):
+def _hubble_link(namespace):
+    """Hubble is Cilium's UI; namespace-scoped only (no flow-query route)."""
+    if not (HUBBLE_URL and namespace):
         return None
-    return f"{HUBBLE_URL}/?namespace={urllib.parse.quote(str(ns))}"
+    return f"{HUBBLE_URL}/?namespace={urllib.parse.quote(str(namespace))}"
 
 
-def enrich(fact: dict) -> dict:
+def grafana_url(query: str):
+    """Public form of the explore URL, for recipes that need the handoff value."""
+    return _grafana_explore(query)
+
+
+def hubble_url(namespace: str):
+    """Public form of the namespace-scoped Cilium UI URL."""
+    return _hubble_link(namespace)
+
+
+_TILE_ID = re.compile(r'"(?:sandbox|sandbox_id|id)"\s*:\s*"([A-Za-z0-9][A-Za-z0-9._-]{2,})"')
+
+
+def _sandbox_id(args: dict, evidence: str):
+    """The sandbox a fact is about: from its args, else from the tool's tile."""
+    for key in ("sandbox_id", "sandbox", "id"):
+        value = args.get(key)
+        if isinstance(value, str) and value:
+            return value
+    match = _TILE_ID.search(evidence or "")
+    return match.group(1) if match else None
+
+
+def _sandbox_link(sandbox_id: str):
+    """The console's deep link: a full document with that sandbox dialog open."""
+    if not SANDBOX_URL:
+        return None
+    return f"{SANDBOX_URL}/s/{urllib.parse.quote(sandbox_id)}"
+
+
+def enrich(fact: dict, intent: str = "general") -> dict:
     out = dict(fact or {})
     tool = out.get("tool")
     args = out.get("args") or {}
     if not isinstance(args, dict):
         args = {}
+    evidence = out.get("evidence") or ""
 
     out["at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
     out["source"] = _SOURCE.get(tool, "unknown")
+    intent = out.get("intent") or intent        # a fact carries its own task intent
 
-    # The Cartography snapshot reports its own ingest time -- its real age.
     if tool == "get_topology_snapshot":
-        # The pipeline truncates each fact's evidence, so parse leniently with a
-        # regex rather than json.loads (which fails on a truncated object).
-        ev = out.get("evidence") or ""
-        cm = re.search(r'"cypher"\s*:\s*"((?:[^"\\]|\\.)*)"', ev)
+        # The snapshot reports its own ingest time -- its real age. Evidence is
+        # truncated, so parse leniently rather than json.loads.
+        cm = re.search(r'"cypher"\s*:\s*"((?:[^"\\]|\\.)*)"', evidence)
         if cm:
             try:
                 out["reproduce"] = {"cypher": json.loads(f'"{cm.group(1)}"')}
             except ValueError:
                 out["reproduce"] = {"cypher": cm.group(1)}
-        im = re.search(r'"ingest_time"\s*:\s*"([^"]+)"', ev)
+        im = re.search(r'"ingest_time"\s*:\s*"([^"]+)"', evidence)
         if im:
             out["snapshot_ingest_time"] = im.group(1)
-        if NEO4J_UI:
+        if NEO4J_UI and intent == "cartography":
             out["links"] = {"neo4j": NEO4J_UI}
         return out
 
@@ -122,18 +150,25 @@ def enrich(fact: dict) -> dict:
         out["reproduce"] = reproduce
 
     links = {}
-    if tool == "query_prometheus":
+    if tool == "query_prometheus" and out.get("ok") and intent == "prometheus":
         grafana = _grafana_explore(args.get("query", ""))
         if grafana:
             links["grafana"] = grafana
-    hubble = _hubble_link(args)
-    if hubble:
-        links["hubble"] = hubble
+    ns = args.get("namespace")
+    if intent == "kube" and isinstance(ns, str) and ns:
+        hubble = _hubble_link(ns)
+        if hubble:
+            links["hubble"] = hubble
+    if intent == "sandbox":
+        sandbox_id = _sandbox_id(args, evidence)
+        link = _sandbox_link(sandbox_id) if sandbox_id else None
+        if link:
+            links["sandbox"] = link
     if links:
         out["links"] = links
 
     return out
 
 
-def enrich_all(facts) -> list:
-    return [enrich(f) for f in (facts or [])]
+def enrich_all(facts, intent: str = "general") -> list:
+    return [enrich(f, intent) for f in (facts or [])]

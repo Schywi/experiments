@@ -241,6 +241,8 @@ from actions import request as request_action  # M9
 from knowledge import search_knowledge  # M6
 from memory import recall as recall_notes, remember  # M10
 from observability import query_prometheus, search_logs  # M5
+from sandbox import (sandbox_create, sandbox_list, sandbox_open,  # console API
+                     sandbox_shot)
 
 
 def propose_action(action: str, args: Optional[dict] = None) -> dict:
@@ -291,6 +293,24 @@ REGISTRY: dict = {
     "recall": Tool(
         "recall", 1,
         "Recall stored notes relevant to a query", recall_notes,
+    ),
+    "sandbox_list": Tool(
+        "sandbox_list", 1,
+        "List sandboxes with the console's own ready/phase/route state "
+        "(the assistant never recomputes routability)", sandbox_list,
+    ),
+    "sandbox_open": Tool(
+        "sandbox_open", 1,
+        "Navigate a sandbox to a URL through the console (navigate then frame)", sandbox_open,
+    ),
+    "sandbox_shot": Tool(
+        "sandbox_shot", 1,
+        "Current frame of one sandbox, as a renderable image URL", sandbox_shot,
+    ),
+    "sandbox_create": Tool(
+        "sandbox_create", 1,
+        "Create one sandbox through the console (kind: claim|sandbox) and return "
+        "its id and deep link", sandbox_create,
     ),
 }
 

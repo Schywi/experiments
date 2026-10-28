@@ -19,13 +19,20 @@ import concurrent.futures as futures
 import inspect
 import json
 import os
+import re
 import time
 
 import httpx
 
 import llm_metrics
+import observability
+import tool_schema
 from k8sutil import audit
+import intent as intent_eval
+import recipes
+from sandbox import extract_id
 from tools import REGISTRY
+from ui import strip_url_lines
 
 MAX_FACTS = 6
 PER_FACT_CHARS = 600      # evidence kept per fact
@@ -78,15 +85,23 @@ _CRITERIA[_DEFAULT_LABEL] = "anything else / a general cluster question"
 
 _PLAN_SYS = (
     "You choose read-only tools to answer a question about a Kubernetes cluster. "
-    'Reply with ONLY JSON: {"tools": [{"tool": "<name>", "args": {}}]}. '
+    "Reply with ONLY a JSON object whose key is tools: an array of objects, each "
+    "having the keys tool (a tool name) and args (an object of arguments). "
+    "query_prometheus takes a PromQL query in args.query: write the query yourself, "
+    "choosing the metric, the rate window, and any by(...) grouping that answers the "
+    "question. "
     "Pick at most 4 independent tools. Available tools:\n"
 )
 _CORRELATE_SYS = (
-    "You are an SRE assistant. Using ONLY the evidence, answer the question. "
-    'Reply with ONLY JSON: {"screen_md": "<rich markdown>", '
-    '"speech": "<1-2 short conversational sentences, no markdown, no paths>"}. '
-    "In screen_md separate OBSERVED FACTS from HYPOTHESES and name the tool each "
-    "fact came from. If evidence is insufficient, say so. speech <= 240 chars."
+    "You are an SRE assistant. Answer the question using ONLY the evidence. "
+    "Reply with ONLY a JSON object with exactly two string fields: screen_md and speech. "
+    "Write screen_md as Markdown for a human reading a screen: one short lead sentence, "
+    "then a bullet list, labelling each point OBSERVED (naming the tool it came from) "
+    "or HYPOTHESIS. "
+    "Write speech as one or two short spoken sentences in plain words, with no markdown "
+    "and no paths, at most 240 characters. "
+    "State the actual findings from the evidence. Never repeat these instructions and "
+    "never answer with placeholder text."
 )
 
 
@@ -112,14 +127,40 @@ def _looks_like_json(text: str) -> bool:
     return t.startswith("{") or t.startswith("[") or '"screen_md"' in t
 
 
+_PLACEHOLDER_WORDS = {
+    "<rich markdown>", "rich markdown", "<screen_md>", "<speech>",
+    "<name>", "<answer>", "<text>", "...", "…",
+}
+
+
+def _is_placeholder(text: str) -> bool:
+    """Reject template output — the model echoing the prompt instead of answering."""
+    t = (text or "").strip().strip('"').strip("'").strip()
+    if not t:
+        return True
+    if t.lower() in _PLACEHOLDER_WORDS:
+        return True
+    return t.startswith("<") and t.endswith(">") and len(t) < 80
+
+
 def _parse_tools(obj) -> list:
     if not isinstance(obj, dict):
         return []
     batch = []
     for item in (obj.get("tools") or [])[:MAX_FACTS]:
-        if isinstance(item, dict) and item.get("tool"):
-            batch.append((str(item["tool"]), item.get("args") or {}))
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("tool") or "").strip()
+        if not name or _is_placeholder(name):
+            continue
+        batch.append((name, item.get("args") or {}))
     return batch
+
+
+def _screen_has_prose(screen: str) -> bool:
+    """True when the body has a sentence that is not just an image or a link."""
+    stripped = re.sub(r"!\[[^\]]*\]\([^)]*\)|\[[^\]]*\]\([^)]*\)", " ", screen)
+    return len(re.sub(r"[#*`>\-\s]", "", stripped)) >= 20
 
 
 def _parse_answer(raw: str):
@@ -128,9 +169,15 @@ def _parse_answer(raw: str):
     if not isinstance(obj, dict):
         return None, None
     screen = str(obj.get("screen_md") or "").strip()
-    if not screen or _looks_like_json(screen):     # reject a leaked/nested JSON blob
-        return None, None
-    speech = str(obj.get("speech") or "").strip() or screen[:200]
+    if not screen or _looks_like_json(screen) or _is_placeholder(screen):
+        return None, None                     # leaked JSON or a placeholder is not an answer
+    speech = str(obj.get("speech") or "").strip()
+    if _is_placeholder(speech):
+        speech = screen[:200]
+    if not _screen_has_prose(screen):
+        # An image-only or link-only body reads as a blank answer: lead with prose.
+        screen = f"{speech or 'Here is what the evidence shows.'}\n\n{screen}".strip()
+    screen = strip_url_lines(screen) or screen
     return screen, speech
 
 
@@ -184,6 +231,65 @@ def _catalog() -> str:
     return "\n".join(f"- {n}: {t.description}" for n, t in sorted(READ_TOOLS.items()))
 
 
+# --- deterministic Prometheus route -----------------------------------------
+# Metric questions go straight to a PromQL specialist: it is told the live metric
+# names for that intent, writes one query, and gets one repair attempt with the
+# parser's error. The general planner never sees these questions.
+
+_METRIC_INTENTS = None   # retired: the evaluator decides, see intent.py
+
+_PROM_SYS = (
+    "You write exactly one PromQL query for VictoriaMetrics. "
+    "Reply with ONLY a JSON object with the key query. "
+    "Use only these metric names: "
+)
+
+
+def _metric_keywords(question: str) -> tuple:
+    q = question.lower()
+    keys = []
+    for word, found in (("traffic", ("flow",)), ("network", ("flow",)),
+                        ("flow", ("flow",)), ("throughput", ("flow",)),
+                        ("drop", ("drop",)), ("dropped", ("drop",)),
+                        ("packet", ("drop", "flow")), ("dns", ("dns",)),
+                        ("latency", ("http", "duration")), ("slow", ("http", "duration")),
+                        ("http", ("http",)), ("requests", ("http",)),
+                        ("rate", ("flow",))):
+        if word in q:
+            keys.extend(found)
+    return tuple(dict.fromkeys(keys)) or ("flow", "drop")
+
+
+def _write_promql(question, llm_url, model, timeout):
+    names = observability.metric_names(_metric_keywords(question))
+    if not names:
+        return "", 0.0
+    messages = [{"role": "system", "content": _PROM_SYS + ", ".join(names)},
+                {"role": "user", "content": question}]
+    try:
+        raw, ms = _llm(llm_url, model, messages, timeout, "plan",
+                       max_tokens=120, json_mode=True)
+    except _LLMError:
+        return "", 0.0
+    return str((_extract_json(raw) or {}).get("query") or "").strip(), ms
+
+
+def _repair_promql(question, bad_query, error, llm_url, model, timeout):
+    names = observability.metric_names(_metric_keywords(question))
+    messages = [
+        {"role": "system", "content": _PROM_SYS + ", ".join(names)},
+        {"role": "user", "content": (f"Question: {question}\nThe query below failed.\n"
+                                     f"Query: {bad_query}\nError: {error}\n"
+                                     "Write the corrected query.")},
+    ]
+    try:
+        raw, _ms = _llm(llm_url, model, messages, timeout, "plan",
+                        max_tokens=120, json_mode=True)
+    except _LLMError:
+        return ""
+    return str((_extract_json(raw) or {}).get("query") or "").strip()
+
+
 def plan(question, llm_url, model, timeout, history=None, kind=None):
     """Return (batch, source, plan_ms).
 
@@ -209,9 +315,6 @@ def plan(question, llm_url, model, timeout, history=None, kind=None):
             return bundle[1], f"laya-fallback:{bundle[0]}", ms
         return _DEFAULT_BUNDLE, "laya-fallback:default", ms
 
-    bundle = _bundle_for(question)
-    if bundle is not None:
-        return bundle[1], f"bundle:{bundle[0]}", 0.0
     messages = [{"role": "system", "content": _PLAN_SYS + _catalog()},
                 *(history or []),
                 {"role": "user", "content": question}]
@@ -231,32 +334,26 @@ def plan(question, llm_url, model, timeout, history=None, kind=None):
 
 # --- FAN-OUT -----------------------------------------------------------------
 
-def _validate_args(tool, args) -> dict:
-    """Keep only kwargs the tool actually accepts (fixes bogus args)."""
-    if not isinstance(args, dict):
-        return {}
-    params = inspect.signature(tool.fn).parameters
-    if any(p.kind == p.VAR_KEYWORD for p in params.values()):
-        return dict(args)
-    return {k: v for k, v in args.items() if k in params}
-
-
-def _run_one(name: str, args: dict) -> dict:
+def _run_one(name: str, args: dict, intent: str = "general") -> dict:
     tool = READ_TOOLS.get(name)
-    if tool is None:
-        return {"tool": name, "args": args, "ok": False,
-                "evidence": f"unknown tool {name}", "ms": None}
-    clean = _validate_args(tool, args)
+    clean, err = tool_schema.check_args(name, args)
+    if tool is None or err:
+        message = err or f"unknown tool {name!r}"
+        audit({"event": "tool_rejected", "tool": name, "args": args, "error": message})
+        return {"tool": name, "args": args if isinstance(args, dict) else {},
+                "ok": False, "error": message, "evidence": message, "ms": None,
+                "intent": intent}
     audit({"event": "tool_call", "tool": name, "args": clean, "level": tool.level})
     t0 = time.perf_counter()
     try:
-        result, ok = json.dumps(tool.fn(**clean)), True
+        result, ok, error = json.dumps(tool.fn(**clean)), True, None
     except Exception as exc:                     # a failed tool is evidence, not a crash
-        result, ok = f"{type(exc).__name__}: {exc}", False
+        result, error = f"{type(exc).__name__}: {exc}", f"{type(exc).__name__}: {exc}"
+        ok = False
     ms = (time.perf_counter() - t0) * 1000
     llm_metrics.record_tool(name, ms)
-    return {"tool": name, "args": clean, "ok": ok,
-            "evidence": result[:PER_FACT_CHARS], "ms": round(ms, 1)}
+    return {"tool": name, "args": clean, "ok": ok, "error": error,
+            "evidence": result[:PER_FACT_CHARS], "ms": round(ms, 1), "intent": intent}
 
 
 def run_batch(batch) -> list:
@@ -265,8 +362,11 @@ def run_batch(batch) -> list:
     if not batch:
         return facts
     with futures.ThreadPoolExecutor(max_workers=max(1, len(batch))) as pool:
-        submitted = {pool.submit(_run_one, name, args): (name, args)
-                     for name, args in batch[:MAX_FACTS]}
+        submitted = {}
+        for item in batch[:MAX_FACTS]:
+            name, args = item[0], item[1]
+            intent_name = item[2] if len(item) > 2 else "general"
+            submitted[pool.submit(_run_one, name, args, intent_name)] = (name, args)
         collected = set()
         try:
             for fut in futures.as_completed(submitted, timeout=TOOL_TIMEOUT + 2):
@@ -314,11 +414,173 @@ def correlate(question, facts, llm_url, model, timeout):
     return out
 
 
+# Sandbox routing is the evaluator's job now (intent.py): a phrase table decided
+# the whole turn here, so "dropped packets, and a screenshot of X" lost half its
+# sentence. Recipes cover the ordered chains; see recipes.py.
+
+
+def _intent(facts) -> str:
+    """The intent of the answer: the first specific one a fact carries."""
+    for fact in facts or []:
+        intent = fact.get("intent")
+        if intent in ("cartography", "sandbox", "prometheus", "kube"):
+            return intent
+    tools = {f.get("tool") for f in (facts or [])}
+    if "get_topology_snapshot" in tools:
+        return "cartography"
+    if tools & {"sandbox_list", "sandbox_open", "sandbox_shot", "sandbox_get"}:
+        return "sandbox"
+    if "query_prometheus" in tools:
+        return "prometheus"
+    if tools & {"get_pods", "get_pod_logs", "get_events", "search_logs", "get_topology"}:
+        return "kube"
+    return "general"
+
+
+_INTENT_BY_TOOL = {
+    "query_prometheus": "prometheus",
+    "get_topology_snapshot": "cartography",
+    "sandbox_list": "sandbox", "sandbox_get": "sandbox", "sandbox_open": "sandbox",
+    "sandbox_shot": "sandbox", "sandbox_create": "sandbox",
+    "get_pods": "kube", "get_pod_logs": "kube", "get_events": "kube",
+    "search_logs": "kube", "get_topology": "kube",
+}
+
+
+def _intent_for(tool: str, claimed=None) -> str:
+    """Intent from the tool, not from the model's label (it mislabels them)."""
+    if claimed in ("prometheus", "kube", "cartography", "sandbox") \
+            and _INTENT_BY_TOOL.get(tool, claimed) == claimed:
+        return claimed
+    return _INTENT_BY_TOOL.get(tool, "general")
+
+
+def _fact_sandbox_id(fact) -> str:
+    try:
+        payload = json.loads(fact.get("evidence") or "{}")
+    except (ValueError, TypeError):
+        return ""
+    return str(payload.get("sandbox_id") or "") if isinstance(payload, dict) else ""
+
+
+def _task_batch(tasks, question, llm_url, model, timeout):
+    """Create first when a later task needs the id; then fan out the rest."""
+    needs_id = any(t["tool"] in ("sandbox_shot", "sandbox_open", "sandbox_get")
+                   and not (t["args"] or {}).get("sandbox_id") for t in tasks)
+    creates = [t for t in tasks if t["tool"] == "sandbox_create"]
+    if not (needs_id and creates):
+        return [(t["tool"], _fill_args(t["tool"], t["args"], question,
+                                       llm_url, model, timeout),
+                 _intent_for(t["tool"], t.get("intent"))) for t in tasks], None
+    return None, creates[0]
+
+
+
+_NS_RE = re.compile(r"\b(?:in|namespace|ns)[\s:]+([a-z0-9][a-z0-9-]{2,})\b")
+
+
+def _fill_args(name, args, question, llm_url, model, timeout):
+    """Fill the arguments a small model tends to omit, from the question itself."""
+    filled = dict(args or {})
+    if name in ("sandbox_shot", "sandbox_open", "sandbox_get") and not filled.get("sandbox_id"):
+        sandbox_id = extract_id(question)
+        if sandbox_id:
+            filled["sandbox_id"] = sandbox_id
+    if name == "query_prometheus" and not filled.get("query"):
+        query, _ms = _write_promql(question, llm_url, model, timeout)
+        if query:
+            filled["query"] = query
+    if name in ("get_pods", "get_events", "search_logs", "get_pod_logs") \
+            and not filled.get("namespace"):
+        match = _NS_RE.search(question.lower())
+        if match:
+            filled["namespace"] = match.group(1)
+    if name == "search_logs" and not filled.get("contains"):
+        filled["contains"] = "error"
+    return filled
+
+
 def run(question, llm_url, model, timeout=60.0, history=None, max_rounds=1):
-    """plan -> fan-out -> correlate. Two LLM calls (one, with a bundle)."""
+    """evaluate -> (recipe | fan-out) -> correlate. Two LLM calls."""
     t0 = time.perf_counter()
-    batch, source, plan_ms = plan(question, llm_url, model, timeout, history)
-    facts = run_batch(batch)
+
+    def ask(messages, max_tokens):
+        raw, _ms = _llm(llm_url, model, messages, timeout, "plan",
+                        max_tokens=max_tokens, json_mode=True)
+        return raw
+
+    plan_ms = 0.0
+    eval_start = time.perf_counter()
+    names = observability.metric_names(("hubble_", "cilium_"), 40)
+    decision = intent_eval.evaluate(question, ask, names)
+    if not decision.get("tasks") and not decision.get("recipe"):
+        decision = intent_eval.evaluate(question, ask, names)   # one retry: it answers prose
+    plan_ms += (time.perf_counter() - eval_start) * 1000
+
+    def call(name, args, intent_name="general"):
+        fact = _run_one(name, args, intent_name)
+        if name == "query_prometheus" and not fact.get("ok"):
+            bad = (args or {}).get("query", "")
+            fixed = _repair_promql(question, bad, fact.get("error") or "",
+                                   llm_url, model, timeout)
+            if fixed:
+                fact = _run_one("query_prometheus", {"query": fixed}, intent_name)
+        return fact
+
+    stopped = "answer"
+    if decision.get("recipe"):
+        source = f"recipe:{decision['recipe']}"
+        facts, stopped = recipes.run(
+            decision["recipe"], question, decision.get("recipe_args") or {}, call,
+            lambda q: _write_promql(q, llm_url, model, timeout)[0])
+    elif decision.get("tasks") and recipes.is_chain(t["tool"] for t in decision["tasks"]):
+        # A flat list shaped like one chain: run it as observe_url so the metrics
+        # URL and the created id are handed forward instead of guessed by the model.
+        source = "recipe:observe_url"
+        hinted = {}
+        for task in decision["tasks"]:
+            if task["tool"] == "query_prometheus" and (task["args"] or {}).get("query"):
+                hinted["query"] = task["args"]["query"]
+                break
+        facts, stopped = recipes.run(
+            "observe_url", question, hinted, call,
+            lambda q: _write_promql(q, llm_url, model, timeout)[0])
+    elif decision.get("tasks"):
+        source = "evaluator"
+        batch, create_task = _task_batch(decision["tasks"], question,
+                                        llm_url, model, timeout)
+        if create_task is None:
+            facts = run_batch(batch)
+        else:                                    # the screenshot needs the sandbox we create
+            created = call("sandbox_create",
+                           _fill_args("sandbox_create", create_task["args"], question,
+                                      llm_url, model, timeout),
+                           _intent_for("sandbox_create"))
+            facts = [created]
+            sandbox_id = _fact_sandbox_id(created)
+            rest = []
+            for task in decision["tasks"]:
+                if task is create_task:
+                    continue
+                args = _fill_args(task["tool"], task["args"], question,
+                                  llm_url, model, timeout)
+                if task["tool"] in ("sandbox_shot", "sandbox_open", "sandbox_get") \
+                        and not args.get("sandbox_id") and sandbox_id:
+                    args["sandbox_id"] = sandbox_id
+                rest.append((task["tool"], args, _intent_for(task["tool"], task.get("intent"))))
+            facts += run_batch(rest)
+    else:                                            # evaluator failed: keep the old path
+        batch, source, fallback_ms = plan(question, llm_url, model, timeout, history)
+        plan_ms += fallback_ms
+        facts = run_batch(batch)
+        if source.startswith(("route:prometheus", "bundle:", "laya")):
+            for index, fact in enumerate(facts):
+                if fact.get("tool") == "query_prometheus" and not fact.get("ok"):
+                    fixed = _repair_promql(question, (fact.get("args") or {}).get("query", ""),
+                                           fact.get("error") or "", llm_url, model, timeout)
+                    if fixed:
+                        facts[index] = _run_one("query_prometheus", {"query": fixed},
+                                                fact.get("intent", "prometheus"))
     corr = correlate(question, facts, llm_url, model, timeout)
     metrics = {
         "elapsed_ms": round((time.perf_counter() - t0) * 1000, 1),
@@ -328,4 +590,5 @@ def run(question, llm_url, model, timeout=60.0, history=None, max_rounds=1):
         "rounds": 1, "planner": source, "facts": len(facts),
     }
     return {"screen_md": corr["screen_md"], "speech": corr["speech"],
-            "facts": facts, "metrics": metrics, "stopped": "answer"}
+            "facts": facts, "metrics": metrics, "intent": _intent(facts),
+            "stopped": stopped}
