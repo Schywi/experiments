@@ -531,6 +531,13 @@ def run(question, llm_url, model, timeout=60.0, history=None, max_rounds=1):
         facts, stopped = recipes.run(
             decision["recipe"], question, decision.get("recipe_args") or {}, call,
             lambda q: _write_promql(q, llm_url, model, timeout)[0])
+    elif decision.get("tasks") and recipes.is_chain(t["tool"] for t in decision["tasks"]):
+        # A flat list shaped like one chain: run it as observe_url so the metrics
+        # URL and the created id are handed forward instead of guessed by the model.
+        source = "recipe:observe_url"
+        facts, stopped = recipes.run(
+            "observe_url", question, {}, call,
+            lambda q: _write_promql(q, llm_url, model, timeout)[0])
     elif decision.get("tasks"):
         source = "evaluator"
         batch, create_task = _task_batch(decision["tasks"], question,

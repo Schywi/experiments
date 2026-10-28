@@ -96,6 +96,14 @@ def test_unknown_recipe_reports_itself():
     assert stopped == "unknown-recipe:nope" and facts == []
 
 
+def test_is_chain_upgrades_a_metrics_to_sandbox_list():
+    assert recipes.is_chain(["query_prometheus", "sandbox_create", "sandbox_shot"])
+    assert recipes.is_chain(["sandbox_open", "query_prometheus"])
+    assert not recipes.is_chain(["query_prometheus", "get_pods"])
+    assert not recipes.is_chain(["sandbox_create", "sandbox_shot"])
+    assert not recipes.is_chain(["sandbox_shot"])
+
+
 if __name__ == "__main__":
     failures = 0
     names = sorted(k for k in list(globals()) if k.startswith("test_"))

@@ -63,6 +63,20 @@ def observe_cilium(question, args, call, write_promql):
     return _create_and_frame(facts, call, url)
 
 
+def is_chain(tool_names) -> bool:
+    """True when a flat task list is really one ordered chain.
+
+    metrics + (create or open) + (shot or open) means the frame needs a URL the
+    metrics step produces, and the sandbox needs an id the create produces. Running
+    those as parallel tasks drops both handoffs, so the caller runs observe_url
+    instead and ignores the arguments the model guessed.
+    """
+    names = set(tool_names)
+    return ("query_prometheus" in names
+            and bool(names & {"sandbox_create", "sandbox_open"})
+            and bool(names & {"sandbox_shot", "sandbox_open"}))
+
+
 def run(name, question, args, call, write_promql=None):
     """Return (facts, stopped). `call(tool, args, intent) -> fact`."""
     if name == "observe_url":
