@@ -437,6 +437,45 @@ def _intent(facts) -> str:
     return "general"
 
 
+_INTENT_BY_TOOL = {
+    "query_prometheus": "prometheus",
+    "get_topology_snapshot": "cartography",
+    "sandbox_list": "sandbox", "sandbox_get": "sandbox", "sandbox_open": "sandbox",
+    "sandbox_shot": "sandbox", "sandbox_create": "sandbox",
+    "get_pods": "kube", "get_pod_logs": "kube", "get_events": "kube",
+    "search_logs": "kube", "get_topology": "kube",
+}
+
+
+def _intent_for(tool: str, claimed=None) -> str:
+    """Intent from the tool, not from the model's label (it mislabels them)."""
+    if claimed in ("prometheus", "kube", "cartography", "sandbox") \
+            and _INTENT_BY_TOOL.get(tool, claimed) == claimed:
+        return claimed
+    return _INTENT_BY_TOOL.get(tool, "general")
+
+
+def _fact_sandbox_id(fact) -> str:
+    try:
+        payload = json.loads(fact.get("evidence") or "{}")
+    except (ValueError, TypeError):
+        return ""
+    return str(payload.get("sandbox_id") or "") if isinstance(payload, dict) else ""
+
+
+def _task_batch(tasks, question, llm_url, model, timeout):
+    """Create first when a later task needs the id; then fan out the rest."""
+    needs_id = any(t["tool"] in ("sandbox_shot", "sandbox_open", "sandbox_get")
+                   and not (t["args"] or {}).get("sandbox_id") for t in tasks)
+    creates = [t for t in tasks if t["tool"] == "sandbox_create"]
+    if not (needs_id and creates):
+        return [(t["tool"], _fill_args(t["tool"], t["args"], question,
+                                       llm_url, model, timeout),
+                 _intent_for(t["tool"], t.get("intent"))) for t in tasks], None
+    return None, creates[0]
+
+
+
 _NS_RE = re.compile(r"\b(?:in|namespace|ns)[\s:]+([a-z0-9][a-z0-9-]{2,})\b")
 
 
@@ -494,11 +533,28 @@ def run(question, llm_url, model, timeout=60.0, history=None, max_rounds=1):
             lambda q: _write_promql(q, llm_url, model, timeout)[0])
     elif decision.get("tasks"):
         source = "evaluator"
-        facts = run_batch([(t["tool"],
-                            _fill_args(t["tool"], t["args"], question,
-                                       llm_url, model, timeout),
-                            t["intent"])
-                           for t in decision["tasks"]])
+        batch, create_task = _task_batch(decision["tasks"], question,
+                                        llm_url, model, timeout)
+        if create_task is None:
+            facts = run_batch(batch)
+        else:                                    # the screenshot needs the sandbox we create
+            created = call("sandbox_create",
+                           _fill_args("sandbox_create", create_task["args"], question,
+                                      llm_url, model, timeout),
+                           _intent_for("sandbox_create"))
+            facts = [created]
+            sandbox_id = _fact_sandbox_id(created)
+            rest = []
+            for task in decision["tasks"]:
+                if task is create_task:
+                    continue
+                args = _fill_args(task["tool"], task["args"], question,
+                                  llm_url, model, timeout)
+                if task["tool"] in ("sandbox_shot", "sandbox_open", "sandbox_get") \
+                        and not args.get("sandbox_id") and sandbox_id:
+                    args["sandbox_id"] = sandbox_id
+                rest.append((task["tool"], args, _intent_for(task["tool"], task.get("intent"))))
+            facts += run_batch(rest)
     else:                                            # evaluator failed: keep the old path
         batch, source, fallback_ms = plan(question, llm_url, model, timeout, history)
         plan_ms += fallback_ms
