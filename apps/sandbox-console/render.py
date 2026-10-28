@@ -1194,6 +1194,9 @@ PAGE_JS = """
     if (dialog) dialog.classList.add("is-broken");
   }, true);
 
+  // A deep link (/s/{id}) renders this page with the dialog already open.
+  if (document.body.dataset.open) openDialog(document.body.dataset.open);
+
   connect();
   window.addEventListener("beforeunload", function () {
     if (source) source.close();
@@ -1213,7 +1216,7 @@ PAGE = """<!doctype html>
 <script>__UNO_CONFIG__</script>
 <script src="/static/unocss.js"></script>
 </head>
-<body>
+<body data-open="__OPEN__">
 <header class="app-header">
   <div class="brand"><span class="brand-mark"></span><h1>sandbox-console</h1></div>
   <div class="meta">
@@ -1238,8 +1241,13 @@ PAGE = """<!doctype html>
 """
 
 
-def page(report: inventory.Report) -> str:
-    """Fill the shell by token replacement so CSS and JS braces stay literal."""
+def page(report: inventory.Report, open_id: str | None = None) -> str:
+    """Fill the shell by token replacement so CSS and JS braces stay literal.
+
+    `open_id` renders the page with that sandbox's dialog already open, which is
+    what makes `/s/{id}` a deep link: one URL, the styled page, that tile's frame
+    and its controls, no client-side injection from outside.
+    """
     replacements = {
         "__BASE_CSS__": BASE_CSS,
         "__NAMESPACE__": esc(config.SANDBOX_NAMESPACE),
@@ -1247,6 +1255,7 @@ def page(report: inventory.Report) -> str:
         "__GRID__": grid(report),
         "__PAGE_JS__": PAGE_JS,
         "__UNO_CONFIG__": UNO_CONFIG,
+        "__OPEN__": esc(open_id or ""),
     }
     html_text = PAGE
     for token, value in replacements.items():

@@ -25,7 +25,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from fastapi import FastAPI, HTTPException, Request, Response
-from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from pydantic import BaseModel
 from starlette.concurrency import run_in_threadpool
 
@@ -48,9 +48,15 @@ LIMITER = BoundedFIFO(config.CDP_CONCURRENCY, config.CDP_QUEUE_SIZE)
 
 
 class CreateRequest(BaseModel):
-    """M4: what to create. `claim` inherits pool warmth; `sandbox` is bare."""
+    """M4: what to create. `claim` inherits pool warmth; `sandbox` is bare.
+
+    `url` points the new browser at a page. A claim adopts a pod that booted
+    before the request, so the page cannot be part of its environment: the url is
+    opened right after adoption, with the same navigate the edit box uses.
+    """
 
     kind: str = "claim"
+    url: str | None = None
 
 
 class ClickRequest(BaseModel):
@@ -266,6 +272,31 @@ class Screen:
         report.tiles = decorated
         return report
 
+    async def tile_by_claim(self, claim_name: str) -> inventory.Tile | None:
+        """The tile a claim adopted, once the controller has bound it."""
+        report = await self.report()
+        for tile in report.tiles:
+            if tile.claim == claim_name:
+                return tile
+        return None
+
+    async def wait_for_sandbox(self, created: lifecycle.Created) -> str | None:
+        """The sandbox name a fresh create produced, or None if it never appeared.
+
+        A bare Sandbox is named by the request. A claim is not: the controller
+        binds it to a warm pod a moment later, and `status.sandbox.name` is the
+        only place that answer exists. `report()` already joins the two.
+        """
+        if created.kind == "sandbox":
+            return created.name
+        deadline = time.monotonic() + config.CREATE_ADOPT_SECONDS
+        while time.monotonic() < deadline:
+            tile = await self.tile_by_claim(created.name)
+            if tile is not None:
+                return tile.id
+            await asyncio.sleep(0.25)
+        return None
+
     async def tile(self, sandbox_id: str) -> tuple[inventory.Tile | None, inventory.Report]:
         report = await self.report()
         for tile in report.tiles:
@@ -430,6 +461,24 @@ async def static_file(name: str) -> Response:
 async def index() -> HTMLResponse:
     """The one screen: counters, tiles, isolation badges, links out."""
     return HTMLResponse(render.page(await SCREEN.report()))
+
+
+@app.get("/s/{sandbox_id}")
+async def deep_link(sandbox_id: str, shot: int = 0) -> Response:
+    """One sandbox as a page: the grid with that sandbox's dialog already open.
+
+    This is the link form: it is a real document, so the browser's back button,
+    a bookmark and an <iframe> all behave. `?shot=1` answers the frame instead of
+    the page, for a client that only wants the pixels.
+    """
+    if shot:
+        return RedirectResponse(
+            url=f"/sandboxes/{sandbox_id}/shot?fresh=1", status_code=307
+        )
+    tile, report = await SCREEN.tile(sandbox_id)
+    if tile is None:
+        raise HTTPException(status_code=404, detail=f"no sandbox {sandbox_id}")
+    return HTMLResponse(render.page(report, open_id=sandbox_id))
 
 
 @app.get("/events")
@@ -634,12 +683,42 @@ async def expanded(sandbox_id: str) -> HTMLResponse:
 # --------------------------------------------------------------------------- #
 @app.post("/sandboxes")
 async def create_sandbox(payload: CreateRequest) -> JSONResponse:
-    """Create a Claim (default) or a bare Sandbox (allowRawSandbox only)."""
+    """Create a Claim (default) or a bare Sandbox, optionally on a page.
+
+    The url is validated before anything is created: a refused url leaves no
+    sandbox behind. When adoption does not finish inside CREATE_ADOPT_SECONDS the
+    sandbox still exists, so the answer says so rather than failing the create.
+    """
+    url = clean_url(payload.url) if payload.url else None
     created = await SCREEN.create((payload.kind or "claim").lower())
-    return JSONResponse(
-        status_code=202,
-        content={"kind": created.kind, "name": created.name, "namespace": created.namespace},
-    )
+    content: dict = {
+        "kind": created.kind,
+        "name": created.name,
+        "namespace": created.namespace,
+    }
+    if url:
+        sandbox_id = await SCREEN.wait_for_sandbox(created)
+        if sandbox_id is None:
+            content.update(
+                {
+                    "sandbox": None,
+                    "url": None,
+                    "note": (
+                        f"created; not adopted within {config.CREATE_ADOPT_SECONDS:.0f}s, "
+                        "navigate it once it appears"
+                    ),
+                }
+            )
+        else:
+            try:
+                await _run_action(sandbox_id, "navigate", SCREEN.navigate(sandbox_id, url), url=url)
+                tile = await SCREEN.tile(sandbox_id)
+                content.update({"sandbox": sandbox_id, "url": (tile[0].url if tile[0] else url)})
+            except HTTPException as error:
+                content.update(
+                    {"sandbox": sandbox_id, "url": None, "navigate_error": str(error.detail)}
+                )
+    return JSONResponse(status_code=202, content=content)
 
 
 @app.delete("/sandboxes/{sandbox_id}")
@@ -839,3 +918,112 @@ async def healthz(request: Request) -> dict:
         "errors": report.errors,
         "durable_timings": records.durable(),
     }
+
+
+# --------------------------------------------------------------------------- #
+# Machine interface: the same actions, JSON instead of card fragments
+#
+# The pane answers a person with HTML fragments. An assistant's tools are not a
+# browser, so these routes return the tile projection, the frame URL and the
+# outcome of the action. Same limiter, same audit log, same transport: there is
+# one implementation of routing, readiness and frame freshness.
+# --------------------------------------------------------------------------- #
+def _tile_payload(tile: inventory.Tile) -> dict:
+    """A tile as JSON, plus the URL that fetches its frame."""
+    payload = tile.to_dict()
+    payload["shot"] = f"/sandboxes/{tile.id}/shot?v={tile.screenshot_ts}"
+    return payload
+
+
+async def _known_tile(sandbox_id: str) -> inventory.Tile:
+    tile, _ = await SCREEN.tile(sandbox_id)
+    if tile is None:
+        raise HTTPException(status_code=404, detail=f"no sandbox {sandbox_id}")
+    return tile
+
+
+async def _run_action(sandbox_id: str, action: str, work, **fields) -> None:
+    """Run one CDP action under the limiter, mapping failures like the pane does."""
+    try:
+        async with LIMITER.slot():
+            await work
+    except QueueFull:
+        raise HTTPException(
+            status_code=429,
+            detail="at capacity",
+            headers={"Retry-After": str(config.RETRY_AFTER_SECONDS)},
+        )
+    except Exception as error:  # noqa: BLE001 - a transport failure is a tool result
+        SCREEN.note(sandbox_id, f"{action} failed: {error}")
+        audit.record(config.AUDIT_LOG, f"{action}_failed", sandbox=sandbox_id, error=str(error), **fields)
+        raise _http_error(error)
+
+
+@app.get("/api/sandboxes")
+async def api_sandboxes() -> JSONResponse:
+    """Every claimed sandbox the pane would draw, with the counters behind it."""
+    report = await SCREEN.report()
+    return JSONResponse(
+        content={
+            "ok": True,
+            "namespace": config.SANDBOX_NAMESPACE,
+            "tiles": [_tile_payload(tile) for tile in report.tiles],
+            "running": report.running,
+            "pending": report.pending,
+            "pool_ready": report.pool_ready,
+            "pool_idle": report.pool_idle,
+            "errors": list(report.errors or []),
+            "max_tiles": config.MAX_TILES,
+        }
+    )
+
+
+@app.get("/api/sandboxes/{sandbox_id}")
+async def api_sandbox(sandbox_id: str) -> JSONResponse:
+    """One tile. Poll this after an action instead of re-listing everything."""
+    return JSONResponse(content={"ok": True, "tile": _tile_payload(await _known_tile(sandbox_id))})
+
+
+@app.post("/api/sandboxes/{sandbox_id}/url")
+async def api_open_url(sandbox_id: str, payload: UrlRequest) -> JSONResponse:
+    """Open a url in the sandbox and return where it landed."""
+    await _known_tile(sandbox_id)
+    url = clean_url(payload.url)
+    await _run_action(sandbox_id, "navigate", SCREEN.navigate(sandbox_id, url), url=url)
+    tile = await _known_tile(sandbox_id)
+    return JSONResponse(content={"ok": True, "url": tile.url or url, "tile": _tile_payload(tile)})
+
+
+@app.post("/api/sandboxes/{sandbox_id}/click")
+async def api_click(sandbox_id: str, payload: ClickRequest) -> JSONResponse:
+    """Dispatch a real mouse press/release at a viewport coordinate."""
+    await _known_tile(sandbox_id)
+    await _run_action(sandbox_id, "click", SCREEN.click(sandbox_id, payload), scale=payload.scale)
+    tile = await _known_tile(sandbox_id)
+    return JSONResponse(content={"ok": True, "tile": _tile_payload(tile)})
+
+
+@app.post("/api/sandboxes/{sandbox_id}/scroll")
+async def api_scroll(sandbox_id: str, payload: ScrollRequest) -> JSONResponse:
+    """Scroll the page one wheel notch; `dy` positive scrolls down."""
+    await _known_tile(sandbox_id)
+    dy = max(-MAX_SCROLL, min(MAX_SCROLL, payload.dy))
+    if dy == 0:
+        raise HTTPException(status_code=400, detail="dy is zero, nothing to scroll")
+    await _run_action(sandbox_id, "scroll", SCREEN.scroll(sandbox_id, dy), dy=dy)
+    tile = await _known_tile(sandbox_id)
+    return JSONResponse(content={"ok": True, "dy": dy, "tile": _tile_payload(tile)})
+
+
+@app.post("/api/sandboxes/{sandbox_id}/reachability")
+async def api_reachability(sandbox_id: str) -> JSONResponse:
+    """The isolation evidence, measured from inside the sandbox's own browser."""
+    tile = await _known_tile(sandbox_id)
+    evidence: dict = {}
+
+    async def probe() -> None:
+        evidence.update(await SCREEN.probe(sandbox_id, tile))
+
+    await _run_action(sandbox_id, "probe", probe())
+    refreshed = await _known_tile(sandbox_id)
+    return JSONResponse(content={"ok": True, "reachability": evidence, "tile": _tile_payload(refreshed)})

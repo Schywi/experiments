@@ -610,3 +610,209 @@ def test_the_dialog_declares_its_refresh_interval_and_the_script_honours_it():
     assert "startFrameRefresh" in html
     assert "?fresh=1" in html
     assert "stopFrameRefresh" in html
+
+
+# --------------------------------------------------------------------------- #
+# the machine interface the assistant's tools call
+# --------------------------------------------------------------------------- #
+def test_api_lists_tiles_as_json(client):
+    body = client.get("/api/sandboxes").json()
+    assert body["ok"] is True
+    assert [tile["id"] for tile in body["tiles"]] == ["sb-4f2a"]
+    assert body["tiles"][0]["shot"] == "/sandboxes/sb-4f2a/shot?v=0"
+    assert body["namespace"] == server.config.SANDBOX_NAMESPACE
+
+
+def test_api_tile_is_404_for_an_unknown_sandbox(client):
+    assert client.get("/api/sandboxes/nope").status_code == 404
+    assert client.post("/api/sandboxes/nope/click", json={"x": 1, "y": 1}).status_code == 404
+
+
+def test_api_navigate_returns_where_it_landed(client, monkeypatch):
+    async def fake_navigate(sandbox_id, url):
+        server.SCREEN.store_url(sandbox_id, url)
+        return url
+
+    monkeypatch.setattr(server.SCREEN, "navigate", fake_navigate)
+    try:
+        body = client.post("/api/sandboxes/sb-4f2a/url", json={"url": "https://example.com/"}).json()
+        assert body["ok"] is True
+        assert body["url"] == "https://example.com/"
+        assert body["tile"]["url"] == "https://example.com/"
+    finally:
+        server.SCREEN._urls.pop("sb-4f2a", None)
+
+
+def test_api_navigate_still_refuses_a_non_http_scheme(client):
+    assert client.post("/api/sandboxes/sb-4f2a/url", json={"url": "file:///etc/passwd"}).status_code == 400
+
+
+def test_api_click_and_scroll_pass_their_payloads(client, monkeypatch):
+    seen = {}
+
+    async def fake_click(sandbox_id, payload):
+        seen["click"] = (payload.x, payload.y, payload.scale)
+
+    async def fake_scroll(sandbox_id, dy):
+        seen["scroll"] = dy
+
+    monkeypatch.setattr(server.SCREEN, "click", fake_click)
+    monkeypatch.setattr(server.SCREEN, "scroll", fake_scroll)
+    assert client.post("/api/sandboxes/sb-4f2a/click", json={"x": 640, "y": 300}).status_code == 200
+    assert client.post("/api/sandboxes/sb-4f2a/scroll", json={"dy": 400}).status_code == 200
+    assert seen == {"click": (640.0, 300.0, 1.0), "scroll": 400}
+
+
+def test_api_reachability_returns_the_evidence(client, monkeypatch):
+    async def fake_probe(sandbox_id, tile):
+        return {"cluster": "blocked", "egress_public_ok": True}
+
+    monkeypatch.setattr(server.SCREEN, "probe", fake_probe)
+    body = client.post("/api/sandboxes/sb-4f2a/reachability").json()
+    assert body["ok"] is True
+    assert body["reachability"]["cluster"] == "blocked"
+
+
+def test_the_html_routes_are_still_there_for_the_pane(client):
+    assert client.get("/sandboxes").status_code == 200
+    assert client.get("/sandboxes/sb-4f2a/expanded").status_code == 200
+
+
+# --------------------------------------------------------------------------- #
+# the deep link
+# --------------------------------------------------------------------------- #
+def test_a_deep_link_renders_the_page_with_that_dialog_open(client):
+    response = client.get("/s/sb-4f2a")
+    assert response.status_code == 200
+    assert 'data-open="sb-4f2a"' in response.text
+    # The page, not the fragment: it carries its own stylesheet and script.
+    assert "<style>" in response.text
+    assert "/static/unocss.js" in response.text
+
+
+def test_the_grid_has_no_dialog_open_by_default(client):
+    assert 'data-open=""' in client.get("/").text
+
+
+def test_a_deep_link_to_an_unknown_sandbox_is_404(client):
+    assert client.get("/s/nope").status_code == 404
+
+
+def test_a_deep_link_can_ask_for_the_frame_instead(client):
+    response = client.get("/s/sb-4f2a?shot=1", follow_redirects=False)
+    assert response.status_code == 307
+    assert response.headers["location"] == "/sandboxes/sb-4f2a/shot?fresh=1"
+
+
+# --------------------------------------------------------------------------- #
+# create, then navigate
+# --------------------------------------------------------------------------- #
+async def _async(value):
+    """Awaitable stand-in for a monkeypatched coroutine."""
+    return value
+
+
+def _fake_created(kind="claim", name="claim-1"):
+    import lifecycle
+
+    return lifecycle.Created(kind, name, "sandbox-demo", 0.0)
+
+
+def test_create_with_a_url_navigates_the_adopted_sandbox(client, monkeypatch):
+    import lifecycle
+
+    seen = {}
+
+    monkeypatch.setattr(
+        server.SCREEN, "create", lambda kind: _async(_fake_created("claim", "claim-1"))
+    )
+    monkeypatch.setattr(
+        server.SCREEN,
+        "wait_for_sandbox",
+        lambda created: _async("browser-pool-zz1"),
+    )
+
+    async def fake_navigate(sandbox_id, url):
+        seen["navigate"] = (sandbox_id, url)
+        server.SCREEN.store_url(sandbox_id, url)
+        return url
+
+    monkeypatch.setattr(server.SCREEN, "navigate", fake_navigate)
+    try:
+        response = client.post(
+            "/sandboxes", json={"kind": "claim", "url": "http://192.168.0.250:8080/"}
+        )
+        assert response.status_code == 202
+        body = response.json()
+        assert body["sandbox"] == "browser-pool-zz1"
+        assert body["url"] == "http://192.168.0.250:8080/"
+        assert seen["navigate"] == ("browser-pool-zz1", "http://192.168.0.250:8080/")
+    finally:
+        server.SCREEN._urls.pop("browser-pool-zz1", None)
+
+
+def test_a_refused_url_creates_nothing(client, monkeypatch):
+    called = {}
+
+    async def fake_create(kind):
+        called["create"] = True
+        return _fake_created()
+
+    monkeypatch.setattr(server.SCREEN, "create", fake_create)
+    response = client.post("/sandboxes", json={"kind": "claim", "url": "file:///etc/passwd"})
+    assert response.status_code == 400
+    assert "create" not in called
+
+
+def test_create_with_a_url_that_never_adopts_still_returns_the_claim(client, monkeypatch):
+    monkeypatch.setattr(
+        server.SCREEN, "create", lambda kind: _async(_fake_created("claim", "claim-2"))
+    )
+    monkeypatch.setattr(server.SCREEN, "wait_for_sandbox", lambda created: _async(None))
+    response = client.post("/sandboxes", json={"kind": "claim", "url": "http://192.168.0.245/"})
+    assert response.status_code == 202
+    body = response.json()
+    assert body["sandbox"] is None
+    assert body["url"] is None
+    assert "not adopted" in body["note"]
+
+
+def test_a_bare_sandbox_needs_no_polling(client, monkeypatch, monkeypatch_env=None):
+    seen = {}
+
+    async def fake_create(kind):
+        return _fake_created("sandbox", "bare-1")
+
+    async def fake_wait(created):
+        seen["kind"] = created.kind
+        return created.name
+
+    async def fake_navigate(sandbox_id, url):
+        seen["navigate"] = sandbox_id
+        return url
+
+    monkeypatch.setattr(server.SCREEN, "create", fake_create)
+    monkeypatch.setattr(server.SCREEN, "wait_for_sandbox", fake_wait)
+    monkeypatch.setattr(server.SCREEN, "navigate", fake_navigate)
+    monkeypatch.setattr(server.config, "ALLOW_RAW_SANDBOX", True)
+    response = client.post("/sandboxes", json={"kind": "sandbox", "url": "http://192.168.0.247/"})
+    assert response.status_code == 202
+    assert seen["kind"] == "sandbox"
+    assert seen["navigate"] == "bare-1"
+
+
+def test_create_without_a_url_does_not_navigate(client, monkeypatch):
+    nav = {}
+
+    async def fake_create(kind):
+        return _fake_created()
+
+    async def fake_navigate(sandbox_id, url):
+        nav["called"] = True
+
+    monkeypatch.setattr(server.SCREEN, "create", fake_create)
+    monkeypatch.setattr(server.SCREEN, "navigate", fake_navigate)
+    response = client.post("/sandboxes", json={"kind": "claim"})
+    assert response.status_code == 202
+    assert "sandbox" not in response.json()
+    assert "called" not in nav

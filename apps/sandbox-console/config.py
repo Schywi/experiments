@@ -62,6 +62,9 @@ MAX_CONCURRENT_SANDBOXES = _int("MAX_CONCURRENT_SANDBOXES", 9)
 
 # How long a create may take before its timers are reported as partial.
 CREATE_TIMEOUT_SECONDS = _float("CREATE_TIMEOUT_SECONDS", 120.0)
+# How long a claim may take to be bound to a warm pod before a create-with-url
+# gives up and says so. Adoption is ~1.5 s; the budget is slack for a busy node.
+CREATE_ADOPT_SECONDS = _float("CREATE_ADOPT_SECONDS", 10.0)
 
 # Stamped on every object the pane creates, so teardown removes only its own.
 MANAGED_LABEL = "sandbox-console"
