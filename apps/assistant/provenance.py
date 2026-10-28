@@ -7,6 +7,7 @@ intent, so an answer never carries unrelated buttons:
     intent "prometheus"  -> grafana   (query_prometheus, only if ok == true)
     intent "kube"        -> hubble    (a fact that carries args.namespace)
     intent "cartography" -> neo4j     (get_topology_snapshot, only if env is set)
+    intent "sandbox"     -> sandbox   (a fact carrying a sandbox id)
     anything else        -> no links
 
 Hosts come from env; an unset env drops that kind. No host is written here.
@@ -18,6 +19,8 @@ import re
 import shlex
 import urllib.parse
 from datetime import datetime, timezone
+
+from sandbox import CONSOLE_URL as SANDBOX_URL
 
 GRAFANA_URL = os.environ.get("GRAFANA_URL", "").rstrip("/")
 HUBBLE_URL = os.environ.get("HUBBLE_URL", "").rstrip("/")
@@ -79,6 +82,26 @@ def _hubble_link(namespace):
     return f"{HUBBLE_URL}/?namespace={urllib.parse.quote(str(namespace))}"
 
 
+_TILE_ID = re.compile(r'"(?:sandbox|sandbox_id|id)"\s*:\s*"([A-Za-z0-9][A-Za-z0-9._-]{2,})"')
+
+
+def _sandbox_id(args: dict, evidence: str):
+    """The sandbox a fact is about: from its args, else from the tool's tile."""
+    for key in ("sandbox_id", "sandbox", "id"):
+        value = args.get(key)
+        if isinstance(value, str) and value:
+            return value
+    match = _TILE_ID.search(evidence or "")
+    return match.group(1) if match else None
+
+
+def _sandbox_link(sandbox_id: str):
+    """The console's deep link: a full document with that sandbox dialog open."""
+    if not SANDBOX_URL:
+        return None
+    return f"{SANDBOX_URL}/s/{urllib.parse.quote(sandbox_id)}"
+
+
 def enrich(fact: dict, intent: str = "general") -> dict:
     out = dict(fact or {})
     tool = out.get("tool")
@@ -125,6 +148,11 @@ def enrich(fact: dict, intent: str = "general") -> dict:
         hubble = _hubble_link(ns)
         if hubble:
             links["hubble"] = hubble
+    if intent == "sandbox":
+        sandbox_id = _sandbox_id(args, evidence)
+        link = _sandbox_link(sandbox_id) if sandbox_id else None
+        if link:
+            links["sandbox"] = link
     if links:
         out["links"] = links
 
