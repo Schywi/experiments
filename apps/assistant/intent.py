@@ -37,18 +37,27 @@ _SYS = (
     "guessing. Never invent a sandbox id, a namespace or a metric name: omit the argument "
     "when the request does not contain it. At most " + str(MAX_TASKS) + " tasks. "
     "A bare host such as google.com is a valid url argument; do not add a scheme. "
-    "Available tools (name: arguments):\n"
+    "Pick the tool whose description matches what is being asked. Questions about drops, "
+    "flows, traffic, latency, DNS or request rates are answered by query_prometheus. A "
+    "screenshot of a sandbox that is already named is sandbox_shot. "
+    "Example: 'any dropped packets in worm-lab, and a screenshot of browser-pool-x' returns "
+    "tasks query_prometheus and sandbox_shot. "
+    "Available tools (name(arguments): description):\n"
 )
 
 
 def _catalog() -> str:
+    try:
+        from tools import READ_TOOLS          # descriptions live with the tools
+    except Exception:                        # tooling absent (unit tests): schema only
+        READ_TOOLS = {}
     lines = []
-    for name, spec in sorted(tool_schema.SCHEMAS.items()):
-        if not spec:
-            lines.append(f"- {name}: no arguments")
-            continue
+    for name in sorted(tool_schema.SCHEMAS):
+        spec = tool_schema.SCHEMAS[name] or {}
         args = ", ".join(f"{key}{'*' if req else ''}" for key, (_t, req) in spec.items())
-        lines.append(f"- {name}: {args}")
+        tool = READ_TOOLS.get(name)
+        described = getattr(tool, "description", "") if tool else ""
+        lines.append(f"- {name}({args or 'no arguments'}): {described}")
     return "\n".join(lines)
 
 

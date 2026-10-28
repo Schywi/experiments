@@ -136,6 +136,7 @@ def shot(sandbox_id: str, fresh: bool = False) -> dict:
 
 
 def create_sandbox(kind: str = "claim") -> dict:
+    kind = kind or "claim"                  # the model often omits it; claim is the default
     if kind not in CREATE_KINDS:
         raise ConsoleError(f"kind must be one of {CREATE_KINDS}, got {kind!r}")
     return _request("POST", "/sandboxes", {"kind": kind})
