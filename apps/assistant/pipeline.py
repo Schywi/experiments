@@ -28,7 +28,8 @@ import llm_metrics
 import observability
 import tool_schema
 from k8sutil import audit
-from sandbox import extract_id
+import intent as intent_eval
+import recipes
 from tools import REGISTRY
 from ui import strip_url_lines
 
@@ -234,8 +235,7 @@ def _catalog() -> str:
 # names for that intent, writes one query, and gets one repair attempt with the
 # parser's error. The general planner never sees these questions.
 
-_METRIC_INTENTS = ("traffic", "network", "flow", "throughput", "latency", "slow",
-                   "drop", "dropped", "dns", "packet", "http", "rate", "requests")
+_METRIC_INTENTS = None   # retired: the evaluator decides, see intent.py
 
 _PROM_SYS = (
     "You write exactly one PromQL query for VictoriaMetrics. "
@@ -314,17 +314,6 @@ def plan(question, llm_url, model, timeout, history=None, kind=None):
             return bundle[1], f"laya-fallback:{bundle[0]}", ms
         return _DEFAULT_BUNDLE, "laya-fallback:default", ms
 
-    lowered = question.lower()
-    if any(p in lowered for p in _SANDBOX_ROUTE):
-        sandbox = _sandbox_batch(lowered, question)
-        if sandbox:
-            return sandbox, "route:sandbox", 0.0
-
-    if any(k in lowered for k in _METRIC_INTENTS):
-        query, ms = _write_promql(question, llm_url, model, timeout)
-        if query:
-            return [("query_prometheus", {"query": query})], "route:prometheus", ms
-
     messages = [{"role": "system", "content": _PLAN_SYS + _catalog()},
                 *(history or []),
                 {"role": "user", "content": question}]
@@ -344,14 +333,15 @@ def plan(question, llm_url, model, timeout, history=None, kind=None):
 
 # --- FAN-OUT -----------------------------------------------------------------
 
-def _run_one(name: str, args: dict) -> dict:
+def _run_one(name: str, args: dict, intent: str = "general") -> dict:
     tool = READ_TOOLS.get(name)
     clean, err = tool_schema.check_args(name, args)
     if tool is None or err:
         message = err or f"unknown tool {name!r}"
         audit({"event": "tool_rejected", "tool": name, "args": args, "error": message})
         return {"tool": name, "args": args if isinstance(args, dict) else {},
-                "ok": False, "error": message, "evidence": message, "ms": None}
+                "ok": False, "error": message, "evidence": message, "ms": None,
+                "intent": intent}
     audit({"event": "tool_call", "tool": name, "args": clean, "level": tool.level})
     t0 = time.perf_counter()
     try:
@@ -362,7 +352,7 @@ def _run_one(name: str, args: dict) -> dict:
     ms = (time.perf_counter() - t0) * 1000
     llm_metrics.record_tool(name, ms)
     return {"tool": name, "args": clean, "ok": ok, "error": error,
-            "evidence": result[:PER_FACT_CHARS], "ms": round(ms, 1)}
+            "evidence": result[:PER_FACT_CHARS], "ms": round(ms, 1), "intent": intent}
 
 
 def run_batch(batch) -> list:
@@ -371,8 +361,11 @@ def run_batch(batch) -> list:
     if not batch:
         return facts
     with futures.ThreadPoolExecutor(max_workers=max(1, len(batch))) as pool:
-        submitted = {pool.submit(_run_one, name, args): (name, args)
-                     for name, args in batch[:MAX_FACTS]}
+        submitted = {}
+        for item in batch[:MAX_FACTS]:
+            name, args = item[0], item[1]
+            intent_name = item[2] if len(item) > 2 else "general"
+            submitted[pool.submit(_run_one, name, args, intent_name)] = (name, args)
         collected = set()
         try:
             for fut in futures.as_completed(submitted, timeout=TOOL_TIMEOUT + 2):
@@ -420,32 +413,17 @@ def correlate(question, facts, llm_url, model, timeout):
     return out
 
 
-_SANDBOX_ROUTE = ("open a sandbox", "create a sandbox", "launch a sandbox",
-                  "destroy the sandbox", "delete the sandbox", "screenshot", "screen shot")
-_URL_RE = re.compile(r"https?://[^\s,]+")
-
-
-def _sandbox_batch(lowered: str, question: str):
-    """Explicit sandbox phrases only. No autonomous sandbox use."""
-    sandbox_id = extract_id(question)
-    url = (_URL_RE.search(question).group(0) if _URL_RE.search(question) else "")
-    if "destroy the sandbox" in lowered or "delete the sandbox" in lowered:
-        return [("propose_action",
-                 {"action": "destroy_sandbox", "args": {"sandbox_id": sandbox_id}})]
-    if any(p in lowered for p in ("open a sandbox", "create a sandbox", "launch a sandbox")):
-        return [("propose_action", {"action": "create_sandbox", "args": {}})]
-    if "screenshot" in lowered or "screen shot" in lowered:
-        if sandbox_id and url:
-            return [("sandbox_open", {"sandbox_id": sandbox_id, "url": url}),
-                    ("sandbox_shot", {"sandbox_id": sandbox_id})]
-        if sandbox_id:
-            return [("sandbox_shot", {"sandbox_id": sandbox_id})]
-        return [("sandbox_list", {})]
-    return None
+# Sandbox routing is the evaluator's job now (intent.py): a phrase table decided
+# the whole turn here, so "dropped packets, and a screenshot of X" lost half its
+# sentence. Recipes cover the ordered chains; see recipes.py.
 
 
 def _intent(facts) -> str:
-    """Which single link kind this answer may use, derived from the facts used."""
+    """The intent of the answer: the first specific one a fact carries."""
+    for fact in facts or []:
+        intent = fact.get("intent")
+        if intent in ("cartography", "sandbox", "prometheus", "kube"):
+            return intent
     tools = {f.get("tool") for f in (facts or [])}
     if "get_topology_snapshot" in tools:
         return "cartography"
@@ -459,16 +437,52 @@ def _intent(facts) -> str:
 
 
 def run(question, llm_url, model, timeout=60.0, history=None, max_rounds=1):
-    """plan -> fan-out -> correlate. Two LLM calls (one, with a bundle)."""
+    """evaluate -> (recipe | fan-out) -> correlate. Two LLM calls."""
     t0 = time.perf_counter()
-    batch, source, plan_ms = plan(question, llm_url, model, timeout, history)
-    facts = run_batch(batch)
-    if source.startswith("route:prometheus") and facts and not facts[0].get("ok"):
-        bad = (batch[0][1] or {}).get("query", "") if batch else ""
-        error = facts[0].get("error") or facts[0].get("evidence") or ""
-        fixed = _repair_promql(question, bad, error, llm_url, model, timeout)
-        if fixed:
-            facts = run_batch([("query_prometheus", {"query": fixed})])
+
+    def ask(messages, max_tokens):
+        raw, _ms = _llm(llm_url, model, messages, timeout, "plan",
+                        max_tokens=max_tokens, json_mode=True)
+        return raw
+
+    plan_ms = 0.0
+    eval_start = time.perf_counter()
+    decision = intent_eval.evaluate(
+        question, ask, observability.metric_names(("hubble_", "cilium_"), 40))
+    plan_ms += (time.perf_counter() - eval_start) * 1000
+
+    def call(name, args, intent_name="general"):
+        fact = _run_one(name, args, intent_name)
+        if name == "query_prometheus" and not fact.get("ok"):
+            bad = (args or {}).get("query", "")
+            fixed = _repair_promql(question, bad, fact.get("error") or "",
+                                   llm_url, model, timeout)
+            if fixed:
+                fact = _run_one("query_prometheus", {"query": fixed}, intent_name)
+        return fact
+
+    stopped = "answer"
+    if decision.get("recipe"):
+        source = f"recipe:{decision['recipe']}"
+        facts, stopped = recipes.run(
+            decision["recipe"], question, decision.get("recipe_args") or {}, call,
+            lambda q: _write_promql(q, llm_url, model, timeout)[0])
+    elif decision.get("tasks"):
+        source = "evaluator"
+        facts = run_batch([(t["tool"], t["args"], t["intent"])
+                           for t in decision["tasks"]])
+    else:                                            # evaluator failed: keep the old path
+        batch, source, fallback_ms = plan(question, llm_url, model, timeout, history)
+        plan_ms += fallback_ms
+        facts = run_batch(batch)
+        if source.startswith(("route:prometheus", "bundle:", "laya")):
+            for index, fact in enumerate(facts):
+                if fact.get("tool") == "query_prometheus" and not fact.get("ok"):
+                    fixed = _repair_promql(question, (fact.get("args") or {}).get("query", ""),
+                                           fact.get("error") or "", llm_url, model, timeout)
+                    if fixed:
+                        facts[index] = _run_one("query_prometheus", {"query": fixed},
+                                                fact.get("intent", "prometheus"))
     corr = correlate(question, facts, llm_url, model, timeout)
     metrics = {
         "elapsed_ms": round((time.perf_counter() - t0) * 1000, 1),
@@ -479,4 +493,4 @@ def run(question, llm_url, model, timeout=60.0, history=None, max_rounds=1):
     }
     return {"screen_md": corr["screen_md"], "speech": corr["speech"],
             "facts": facts, "metrics": metrics, "intent": _intent(facts),
-            "stopped": "answer"}
+            "stopped": stopped}

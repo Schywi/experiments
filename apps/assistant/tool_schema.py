@@ -25,6 +25,7 @@ SCHEMAS = {
     "sandbox_open": {"sandbox_id": (str, True), "url": (str, True)},
     "sandbox_shot": {"sandbox_id": (str, True)},
     "sandbox_get": {"sandbox_id": (str, True)},
+    "sandbox_create": {"kind": (str, False)},
     "propose_action": {"action": (str, True), "args": (dict, False)},
 }
 

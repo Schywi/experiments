@@ -82,6 +82,16 @@ def _hubble_link(namespace):
     return f"{HUBBLE_URL}/?namespace={urllib.parse.quote(str(namespace))}"
 
 
+def grafana_url(query: str):
+    """Public form of the explore URL, for recipes that need the handoff value."""
+    return _grafana_explore(query)
+
+
+def hubble_url(namespace: str):
+    """Public form of the namespace-scoped Cilium UI URL."""
+    return _hubble_link(namespace)
+
+
 _TILE_ID = re.compile(r'"(?:sandbox|sandbox_id|id)"\s*:\s*"([A-Za-z0-9][A-Za-z0-9._-]{2,})"')
 
 
@@ -112,6 +122,7 @@ def enrich(fact: dict, intent: str = "general") -> dict:
 
     out["at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
     out["source"] = _SOURCE.get(tool, "unknown")
+    intent = out.get("intent") or intent        # a fact carries its own task intent
 
     if tool == "get_topology_snapshot":
         # The snapshot reports its own ingest time -- its real age. Evidence is

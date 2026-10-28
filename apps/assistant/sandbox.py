@@ -17,6 +17,7 @@ Contract consumed:
 
 import os
 import re
+import time
 
 import httpx
 
@@ -146,6 +147,23 @@ def destroy_sandbox(sandbox_id: str) -> dict:
 
 
 # --- tool-facing wrappers (structured results, no exceptions escaping) ------
+
+def sandbox_create(kind: str = "claim") -> dict:
+    """Create one sandbox, then resolve the tile id the console reports for it."""
+    created = create_sandbox(kind)
+    name = created.get("name") if isinstance(created, dict) else None
+    sandbox_id = ""
+    for _ in range(6):                       # the tile appears a moment after the claim
+        for tile in (list_sandboxes().get("tiles") or []):
+            if isinstance(tile, dict) and name and tile.get("claim") == name:
+                sandbox_id = str(tile.get("id") or "")
+                break
+        if sandbox_id:
+            break
+        time.sleep(1.5)
+    return {"created": created, "sandbox_id": sandbox_id,
+            "deep_link": deep_link(sandbox_id) if sandbox_id else None}
+
 
 def sandbox_list() -> dict:
     """List sandboxes with the console's own ready/phase/route state."""
