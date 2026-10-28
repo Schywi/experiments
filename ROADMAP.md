@@ -18,19 +18,20 @@ Ground rules that shaped it (from [`AGENTS.md`](AGENTS.md)):
 
 ---
 
-## 0. TL;DR — state on 2026-10-22
+## 0. TL;DR — state on 2026-10-28
 
 | | |
 |---|---|
 | Execution model | **Bare metal on the physical Fedora 44 host** — not a VM, Vagrant, QEMU/libvirt, or container (`systemd-detect-virt` → `none`). The GPU is the host's display card; a passthrough bind would remove it from the host. |
 | Running profile | **Native k3s** on one Fedora 44 host (node `192.168.0.28`), not `k3d` |
 | Networking | **Cilium only** — eBPF, kube-proxy replacement, Cilium Ingress, Cilium LB-IPAM + L2 announcements on the LAN (`192.168.0.240-250`). MetalLB is **k3d-era only**. |
-| GitOps | Argo CD `10.8.0`, 12 Applications `Synced/Healthy`, **anonymous read-only**, pinned at `192.168.0.247` |
+| GitOps | Argo CD `10.8.0`, 17 Applications registered, **anonymous read-only**, pinned at `192.168.0.247`. Four of them are Kargo's and are `Synced/Healthy`; measured 2026-10-28: `cartography` `OutOfSync/Degraded`, `grafana` and `victoriametrics` `OutOfSync` |
+| Promotion | Kargo `1.12.0` in namespace `kargo`, UI at `http://192.168.0.249/` behind a token-injecting gateway. The busybox pilot promoted staging → prod as two real commits (`5c5d204`, `ced5f89`) |
 | Models | Qwen2.5-1.5B (llama.cpp, CPU) and Kokoro TTS running; Laya scaled to 0 |
 | GPU | AMD RX 570 (`gfx803`) reachable as `amd.com/render` through a Go device plugin; Vulkan path proven, **no ROCm/CUDA, no VRAM enforcement** |
-| AI Ops | `apps/assistant` — 10 read-only tools, 2 LLM calls per answer, evidence attached server-side |
+| AI Ops | `apps/assistant` — 15 tools, one evaluator call reads the sentence and returns the task list, evidence attached server-side |
 | Worm lab | Complete on `trackc`, merged here, and **scaled to 0** — it is preserved history, not a live workload |
-| Branches | `main` (public face, not a deploy source) · `native-k3s-gpu-models` (live Argo target) · `trackc` (worm-lab + registry backports) · **`cluster-evolution` (this branch, unifies all three)** |
+| Branches | `main` (public face, not a deploy source) · `native-k3s-gpu-models` (live Argo target) · `trackc` (worm-lab + registry backports) · `cluster-evolution` (unifies all three) · `feat/kargo` (Phase 6: Kargo + assistant evaluator) |
 
 ---
 
@@ -41,7 +42,7 @@ Ground rules that shaped it (from [`AGENTS.md`](AGENTS.md)):
    │
    │  Phase 1 — bounded Worm on k3d  (86 commits, blog/ + Tilt + MetalLB)
    ▼
-4ba7b97  docs(experiments-8g7): describe bounded worm lab  2026-09-07  ← where main sits until the promotion PR merges
+4ba7b97  docs(experiments-8g7): describe bounded worm lab  2026-09-07
    │
    │  Phase 2-4 — native k3s, CPU models, GPU, AI Ops  (101 commits after main)
    ▼
@@ -53,16 +54,27 @@ ab05883  docs(experiments-csn): E3 GPU single-pod probe    2026-10-18  ← nativ
    │               │
    ▼               ▼
 e6a4852  merge(experiments-5yi): fold the trackc worm-lab track into cluster-evolution
-         └── cluster-evolution (this branch)
+   │
+   ▼
+2404f70  Merge pull request #1 from Schywi/cluster-evolution   2026-10-25
+         ├── main (identical tree; the public face)
+         └── cluster-evolution
+   │
+   │  Phase 6 — Kargo promotion + assistant evaluator  (40 commits)
+   ▼
+45d5001  fix(experiments-sl1): observe_url falls back to the evaluator's query
+         └── feat/kargo
 ```
 
-Measured divergence (after the cv purge, which removed 4 commits from this
-branch's history; see `evolution/evidence.md`):
+Measured divergence (after the cv purge, which removed 4 commits from
+`cluster-evolution`'s history; see `evolution/evidence.md`):
 
 | Pair | Merge base | Left-only | Right-only |
 |---|---|---|---|
 | `main` ↔ `native-k3s-gpu-models` | `4ba7b97` | 0 | 101 |
 | `trackc` ↔ `native-k3s-gpu-models` | `1ed3b42` | 13 | 85 |
+| `cluster-evolution` ↔ `feat/kargo` | `2404f70` | 0 | 40 |
+| `main` ↔ `cluster-evolution` | `2404f70` | 0 | 0 |
 
 `trackc`'s 13 commits are worm-lab/backport work; its assistant files were the
 superseded Milestone 1–3 prototype, which is why the merge resolved all 10
@@ -173,6 +185,32 @@ Neo4j Browser reachable read-only, and **Argo CD anonymous read-only pinned to
 permissive CORS change (`e415607`) is documented as a known exposure in
 `research/`/`bd experiments-yc4`, not as an oversight.
 
+### Phase 6 — Promotion with Kargo, and a planner that reads the whole sentence (2026-10-24 → 10-28)
+
+**Branch:** `feat/kargo`, forked from `cluster-evolution` at `2404f70`; 40
+commits, tip `45d5001`. **Tracked docs:** `config/kargo/README.md`,
+`research/features/assistant/`,
+[`evolution/06-kargo-promotion-pipeline.md`](evolution/06-kargo-promotion-pipeline.md).
+
+Kargo `1.12.0` turns a promotion into a commit: the pilot Warehouse watches
+`docker.io/library/busybox`, staging auto-promotes, production needs a manual
+`Promotion`, and both stages end as real commits in this repository pointed at by
+Argo CD (`5c5d204`, `ced5f89`). The install runs without cert-manager
+(`gen-certs.sh` signs the API and webhooks certificates with a local CA) and
+without anonymous access (Kargo has none; `kargo-gateway` logs in and injects
+the token, at `192.168.0.249`).
+
+The same branch replaces the assistant's keyword router with one evaluator call
+that reads the sentence and returns the task list (`4ca2dd5`), adds recipes for
+ordered chains that hand a URL between steps (`e58ee40`), and adds a sandbox
+specialist that is a thin client over the console API (`5508da9`). Strict tool
+schemas reject a malformed call before it runs (`436563f`).
+
+What breaks is in the phase document: `.248` was allocated to a
+`default/kargo-gateway` Service and did not come back when it was deleted, and
+anything that reaches `.249` holds Kargo admin, including the credential that
+pushes to this repository.
+
 ---
 
 ## 3. What is actually deployed (verified against the cluster)
@@ -182,7 +220,12 @@ permissive CORS change (`e415607`) is documented as a known exposure in
 | `assistant` | `assistant` | `native-k3s-gpu-models` | `192.168.0.243` |
 | `assistant-laya` | `assistant` | `native-k3s-gpu-models` | scaled to 0 |
 | `cartography` | `cartography` | `native-k3s-gpu-models` | `192.168.0.242` (Neo4j, no auth) |
+| `fuwa` | `fuwa` | `k3s-integration` of `github.com/Schywi/fuwa.git` | `192.168.0.244` |
 | `grafana` | `observability` | `native-k3s-gpu-models` | `192.168.0.245` |
+| `kargo-gateway` | `kargo` | `feat/kargo` | `192.168.0.249` |
+| `kargo-pilot-resources` | `pilot` | `feat/kargo` | internal |
+| `kargo-pilot-staging` | `kargo-pilot-staging` | commit `5c5d204` | internal |
+| `kargo-pilot-prod` | `kargo-pilot-prod` | commit `ced5f89` | internal |
 | `victoriametrics` | `observability` | `native-k3s-gpu-models` | `192.168.0.246` |
 | `models-llm` | `models` | `trackc` | internal |
 | `models-kokoro` | `models` | `native-k3s-gpu-models` | internal |
@@ -192,13 +235,19 @@ permissive CORS change (`e415607`) is documented as a known exposure in
 | `worm-worker` | `worm-lab` | `trackc` | scaled to 0 |
 | `worm-regression` | `worm-lab` | `trackc` | scaled to 0 |
 
-Shared ingress and UI: `cilium-ingress` `192.168.0.240`, Hubble UI
-`192.168.0.241`, Argo CD `192.168.0.247`.
+Measured 2026-10-28 with `kubectl -n argocd get app -o
+custom-columns=...`. Three Applications are not `Synced/Healthy`: `cartography`
+is `OutOfSync/Degraded`, `grafana` and `victoriametrics` are `OutOfSync`. The two
+Kargo environment Applications are pinned by `argocd-update` at the promotion
+commits, so they do not follow a branch.
 
-Two things deploy **outside** Argo and are therefore not reproducible from a
-clean checkout: the `fuwa` namespace (UI + loki/otel/tempo at `192.168.0.244`)
-and the E4 A/B assistant (`assistant-e4-gpu`). Registering them as Applications
-is tracked in §4.
+Shared ingress and UI: `cilium-ingress` `192.168.0.240`, Hubble UI
+`192.168.0.241`, Kargo `192.168.0.249`, Argo CD `192.168.0.247`.
+
+One thing deploys **outside** Argo and is therefore not reproducible from a
+clean checkout: the E4 A/B assistant (`assistant-e4-gpu`, tracked as
+`config/gpu-exp/assistant-e4-gpu.yaml`). Registering it as an Application is
+tracked in §4.
 
 `config/argocd/applications/stable/` holds four Applications pinned to a full
 commit (`592d7f51…`) with manual sync only. Per
@@ -213,42 +262,55 @@ Grouped from `bd ready`; run `bd ready` for the live list.
 
 **Promotion (do first after this branch lands)**
 1. Point the 12 live Applications at the unified branch — today 7 read
-   `native-k3s-gpu-models`, 6 read `trackc`. Flipping `targetRevision` is what
+   `native-k3s-gpu-models`, 5 read `trackc`, and `fuwa` reads its own repository
+   (`k3s-integration` of `Schwyi/fuwa.git`). Flipping `targetRevision` is what
    makes "one branch, one cluster" real; it is deliberately **not** done in this
    commit because it changes what the running cluster reconciles from.
-2. Decide the fate of `main` and `trackc` once `cluster-evolution` is the
+2. Re-point `kargo-gateway` and `kargo-pilot-resources` from `feat/kargo` to
+   `cluster-evolution` before this branch is retired. The two environment
+   Applications do not need it: `argocd-update` pinned them to the promotion
+   commits `5c5d204` and `ced5f89`.
+3. Decide the fate of `main` and `trackc` once `cluster-evolution` is the
    working branch (keep as archives, or tag and freeze).
 
 **Legacy drift**
-3. `experiments-wz1` — `config/ci/validate.sh` pins an old Cilium chart and
+4. `experiments-wz1` — `config/ci/validate.sh` pins an old Cilium chart and
    fails on `kubeProxyReplacement`; CI does not validate the k3s profile.
-4. `experiments-c6f` — wire the model and GPU charts into CI and Argo CD
+5. `experiments-c6f` — wire the model and GPU charts into CI and Argo CD
    (`gpu-device-plugin.yaml` exists but is not registered in the cluster).
-5. `AGENTS.md` refreshed for the native profile (`experiments-47n`): bare-metal
+6. `AGENTS.md` refreshed for the native profile (`experiments-47n`): bare-metal
    execution model with the GPU prohibition, real repository layout, current
    `targetRevision` examples, testing commands. Remaining drift there is only
    the generated Beads/Codex blocks, which are owned by `bd setup codex`.
-6. `README.md`-era leftover: `start.sh`, `Tiltfile` and `scripts/deploy-worm.sh`
+7. `README.md`-era leftover: `start.sh`, `Tiltfile` and `scripts/deploy-worm.sh`
    only work against `k3d-cilium-lab`. They are Phase-1 artifacts; either gate
    them behind an explicit "k3d profile" banner or retire them.
+8. `cartography` is `OutOfSync/Degraded`, `grafana` and `victoriametrics` are
+   `OutOfSync` (measured 2026-10-28). An `OutOfSync` Application is not a
+   promotion candidate; find out why before the next `targetRevision` flip.
 
 **Platform**
-7. `experiments-ice` / `mfh` / `ckq` — Track A/B/C follow-ups still open in bd.
-8. Register `fuwa` and the E4 A/B assistant as Applications (or document them
-   as intentionally manual).
-9. VPS/public showcase profile (`config/vps/` + Cloudflare Tunnel) remains a
-   plan, not code. The Fedora LAN profile stays private.
-10. Cloud hosting on GKE/GCE: Cilium LB IPAM and L2 announcements **cannot work
+9. `experiments-ice` / `mfh` / `ckq` — Track A/B/C follow-ups still open in bd.
+10. Register the E4 A/B assistant (`assistant-e4-gpu`) as an Application, or
+    document it as intentionally manual.
+11. VPS/public showcase profile (`config/vps/` + Cloudflare Tunnel) remains a
+    plan, not code. The Fedora LAN profile stays private.
+12. Cloud hosting on GKE/GCE: Cilium LB IPAM and L2 announcements **cannot work
     there** (routed VPC; Cilium is managed on GKE). The full inventory, exposure
     matrix and migration checklist live in
     [`research/production-hosting-gke-gce.md`](research/production-hosting-gke-gce.md);
     no code exists yet (`bd experiments-9q0`).
 
 **Assistant**
-10. `experiments-yc4` (permissive CORS on an unauthenticated API),
+13. `experiments-yc4` (permissive CORS on an unauthenticated API),
     `experiments-vf4` (chat tool call off the event loop), `experiments-oon`
     (drop planned tools missing required args), `experiments-qib` (pin the
     output contract with pytest).
+14. `apps/assistant` full-suite ordering: `pytest -q` fails
+    `test_recipes.py::test_observe_cilium_uses_the_namespace_url` because
+    `test_guardrails.py` reloads the `provenance` module with
+    `HUBBLE_URL=http://h` and leaves it reloaded. The file passes alone (8
+    passed); the suite does not.
 
 ---
 
@@ -292,6 +354,9 @@ apps/                 executable software (assistant, models, worm lab, GPU plug
 config/               deployable configuration
   k3d/                Phase 1 profile (archived, still runnable on Docker)
   k3s/                Phase 2+ profile (the live one)
+  kargo/              Phase 6 promotion: install, gateway, pilot Warehouse/Stages
+  gpu-exp/            E4/A-B GPU manifests (tracked, not yet Applications)
+  argocd/             values and Applications (incl. the four kargo-* ones)
 scripts/              host-side helpers
 Tiltfile*             Phase 1 entrypoints (k3d only)
 docs/                 gitignored, machine-specific runbooks
