@@ -32,10 +32,14 @@ _ID_NAMED = re.compile(r"sandbox[\s:]+([a-z0-9][a-z0-9.-]{2,})")
 
 
 def extract_id(text: str) -> str:
-    """The sandbox id a question names, or ''."""
+    """The sandbox id a question names, or ''.
+
+    Ids in this platform always carry a hyphen (browser-pool-x, claim-x, bare-x),
+    so a bare word after the word "sandbox" ("sandbox with google.com") is not an id.
+    """
     for pattern in (_ID_PREFIXED, _ID_NAMED):
         match = pattern.search((text or "").lower())
-        if match:
+        if match and "-" in match.group(1):
             return match.group(1).rstrip(".")
     return ""
 
@@ -136,9 +140,8 @@ def shot(sandbox_id: str, fresh: bool = False) -> dict:
 
 
 def create_sandbox(kind: str = "claim") -> dict:
-    kind = kind or "claim"                  # the model often omits it; claim is the default
     if kind not in CREATE_KINDS:
-        raise ConsoleError(f"kind must be one of {CREATE_KINDS}, got {kind!r}")
+        kind = "claim"                      # a misread kind is not worth failing the create
     return _request("POST", "/sandboxes", {"kind": kind})
 
 

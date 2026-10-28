@@ -42,6 +42,9 @@ _SYS = (
     "screenshot of a sandbox that is already named is sandbox_shot. "
     "Example: 'any dropped packets in worm-lab, and a screenshot of browser-pool-x' returns "
     "tasks query_prometheus and sandbox_shot. "
+    "Example: 'create a sandbox with google.com and take a screenshot' returns recipe "
+    "observe_url with recipe_args {url: google.com} and no tasks, because the screenshot "
+    "needs the sandbox that is created first. "
     "Available tools (name(arguments): description):\n"
 )
 

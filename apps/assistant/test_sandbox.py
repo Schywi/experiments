@@ -89,15 +89,10 @@ def test_create_bare_sandbox_kind():
     server.shutdown()
 
 
-def test_create_rejects_bad_kind_without_calling():
+def test_create_coerces_a_bad_kind_to_claim():
     server, s, calls = _client()
-    try:
-        s.create_sandbox(kind="bogus")
-    except s.ConsoleError as exc:
-        assert "kind must be one of" in str(exc), exc
-    else:
-        raise AssertionError("expected ConsoleError")
-    assert calls == [], calls
+    s.create_sandbox(kind="with")          # a misread word must not fail the create
+    assert ("POST", "/sandboxes", {"kind": "claim"}) in calls, calls
     server.shutdown()
 
 
