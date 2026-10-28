@@ -511,8 +511,10 @@ def run(question, llm_url, model, timeout=60.0, history=None, max_rounds=1):
 
     plan_ms = 0.0
     eval_start = time.perf_counter()
-    decision = intent_eval.evaluate(
-        question, ask, observability.metric_names(("hubble_", "cilium_"), 40))
+    names = observability.metric_names(("hubble_", "cilium_"), 40)
+    decision = intent_eval.evaluate(question, ask, names)
+    if not decision.get("tasks") and not decision.get("recipe"):
+        decision = intent_eval.evaluate(question, ask, names)   # one retry: it answers prose
     plan_ms += (time.perf_counter() - eval_start) * 1000
 
     def call(name, args, intent_name="general"):
