@@ -1,6 +1,8 @@
 # E5 — VLM grounding on Chromium screenshots
 
-- **Status:** docs written; no image built, nothing deployed, no measurement taken.
+- **Status:** complete. See [`RESULTS.md`](RESULTS.md): Qwen3-VL-2B answered 1/7
+  tasks correctly and in valid JSON every time, SmolVLM2-500M and Moondream 1.9B
+  0/7.
 - **Scope:** one new namespace (`vlm-exp`), one new experiment directory
   (`benchmark/experiments/e5-vlm-grounding/`). Nothing under `apps/` or `config/`
   changes. No Argo CD Application, no Helm chart, no NetworkPolicy.
@@ -58,7 +60,7 @@ mmproj projector, `temperature: 0`.
 |---|---|---|---|
 | `smolvlm2` | `ggml-org/SmolVLM2-500M-Video-Instruct-GGUF`, `SmolVLM2-500M-Video-Instruct-Q8_0.gguf` | `mmproj-SmolVLM2-500M-Video-Instruct-Q8_0.gguf` | `-ngl 99 -c 4096 --threads 4` |
 | `moondream` | `ggml-org/moondream2-20250414-GGUF`, `moondream2-text-model-f16_ct-vicuna.gguf` | `moondream2-mmproj-f16-20250414.gguf` | `-ngl 99 -c 4096 --threads 4` |
-| `qwen3vl` | `ggml-org/Qwen3-VL-2B-Instruct-GGUF`, `Qwen3-VL-2B-Instruct-Q4_K_M.gguf` | `mmproj-Qwen3-VL-2B-Instruct-Q8_0.gguf` | `-ngl 99 -c 4096 --threads 4 --jinja` |
+| `qwen3vl` | `ggml-org/Qwen3-VL-2B-Instruct-GGUF`, `Qwen3-VL-2B-Instruct-Q8_0.gguf` | `mmproj-Qwen3-VL-2B-Instruct-Q8_0.gguf` | `-ngl 99 -c 4096 --threads 4 --jinja` |
 
 `--jinja` is required for Qwen3-VL's chat template; the same prompt text is used
 for all three arms so the comparison is not shifted by prompt wording.
@@ -93,32 +95,44 @@ navigates to are addressed by LB IP.
 
 - `fixtures/tasks.json` — the prompt set: four task classes x two page states,
   fixed text, fixed target names.
-- `fixtures/labels.json` — ground truth: the target's viewport pixel centre per
-  task, annotated by hand from the captured PNGs, plus `tolerance_px: 32`.
+- `fixtures/labels.json` — ground truth: the target element, its viewport pixel
+  centre read from the page's own DOM, and the labels accepted as correct, plus
+  `tolerance_px: 32`.
 - `results/frames/` — the exact PNG bytes each arm was shown, so a label can be
-  audited against the frame it refers to.
+  audited against the frame it refers to. `run_arm.sh` copies them onto the
+  `vlm-frames` PVC, because three 1280x600 PNGs are over the 256 KiB a ConfigMap
+  can carry.
 
-Labels are hand-annotated, which is the main caveat in the write-up. A 32 px hit
-radius on a 1280x600 frame is generous for a control-sized target and strict for
-"somewhere on the page"; both the hit rate and the raw distance distribution are
-reported.
+Ground truth is `getBoundingClientRect()` from the live page, captured through the
+console's CDP bridge in the same second as the PNG and re-verified afterwards with
+`document.elementFromPoint` at every labelled point. The 32 px hit radius is
+generous for a control-sized target and strict for "somewhere on the page"; both
+the hit rate and the raw distance are reported. `RESULTS.md` carries the numbers.
 
 ## Build and run
 
 ```bash
-# image: llama.cpp + Vulkan + libmtmd vision, in-cluster, no host root
-kubectl apply -f benchmark/experiments/e5-vlm-grounding/manifests/kaniko-vlm-server.yaml
-kubectl -n registry wait --for=condition=complete job/kaniko-vlm-server --timeout=900s
-kubectl -n registry logs job/kaniko-vlm-server | grep -i pushed
+cd benchmark/experiments/e5-vlm-grounding
 
-# namespace + weights PVC
-kubectl apply -f benchmark/experiments/e5-vlm-grounding/manifests/namespace.yaml
+# image: llama.cpp + Vulkan + libmtmd vision, built in-cluster, no host root
+kubectl -n registry create configmap ctx-vlm-server \
+  --from-file=Containerfile=vlm-server/Containerfile
+kubectl apply -f manifests/kaniko-vlm-server.yaml
+kubectl -n registry wait --for=condition=complete job/kaniko-vlm-server --timeout=1800s
+
+# namespace, weights PVC, frames PVC, the one-grant quota, the three arms at 0
+kubectl apply -f manifests/namespace.yaml
+kubectl apply -f manifests/vlm-arms.yaml
 
 # one arm, then the next, never together
-kubectl apply -f benchmark/experiments/e5-vlm-grounding/manifests/vlm-arm.yaml   # ARM=smolvlm2
-kubectl -n vlm-exp rollout status deploy/vlm-smolvlm2
-kubectl apply -f benchmark/experiments/e5-vlm-grounding/manifests/runner-job.yaml # MODEL_URL=http://vlm-smolvlm2:8000
+bash run_arm.sh smolvlm2
+bash run_arm.sh moondream
+bash run_arm.sh qwen3vl
 ```
+
+`run_arm.sh` refuses to start while another arm's Pod is Running, scales its own
+arm to 1, waits for Ready, runs the runner Job, writes `results/<arm>.log`, and
+scales back to 0 even when it fails.
 
 ## Teardown
 
@@ -127,8 +141,9 @@ kubectl -n registry delete job kaniko-vlm-server
 kubectl delete ns vlm-exp
 ```
 
-The pushed image `192.168.0.28:5000/vlm-server:local` and its Kaniko cache repo
-stay in the registry, and are the one thing teardown does not remove.
+The pushed image `127.0.0.1:5000/vlm-server:local` and its Kaniko cache repo
+`kaniko-cache-vlm` stay in the registry, and are the one thing teardown does not
+remove.
 
 ## Related
 
