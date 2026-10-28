@@ -35,9 +35,12 @@ def _create_and_frame(facts, call, url):
 def observe_url(question, args, call, write_promql):
     """metrics (optional) -> grafana url -> sandbox -> open -> shot."""
     facts = []
-    url = str((args or {}).get("url") or "").strip()
+    args = args or {}
+    url = str(args.get("url") or "").strip()
     if not url:
-        query = write_promql(question)
+        query = write_promql(question) if write_promql else ""
+        if not query:
+            query = str(args.get("query") or "").strip()   # the evaluator's own query
         if not query:
             return facts, "no-promql"
         fact = call("query_prometheus", {"query": query}, "prometheus")

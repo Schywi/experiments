@@ -537,8 +537,13 @@ def run(question, llm_url, model, timeout=60.0, history=None, max_rounds=1):
         # A flat list shaped like one chain: run it as observe_url so the metrics
         # URL and the created id are handed forward instead of guessed by the model.
         source = "recipe:observe_url"
+        hinted = {}
+        for task in decision["tasks"]:
+            if task["tool"] == "query_prometheus" and (task["args"] or {}).get("query"):
+                hinted["query"] = task["args"]["query"]
+                break
         facts, stopped = recipes.run(
-            "observe_url", question, {}, call,
+            "observe_url", question, hinted, call,
             lambda q: _write_promql(q, llm_url, model, timeout)[0])
     elif decision.get("tasks"):
         source = "evaluator"
