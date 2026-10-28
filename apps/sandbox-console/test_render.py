@@ -334,3 +334,23 @@ def test_the_dialog_offers_both_scroll_directions():
     assert 'data-act="scroll"' in markup
     assert 'data-dy="-400"' in markup
     assert 'data-dy="400"' in markup
+
+
+def test_the_frame_queue_puts_actions_before_the_cadence():
+    """One writer at a time: the 2 s cadence must yield to a click.
+
+    Without this the timer's capture (started before the click) could paint after
+    the click's frame, which reads as "no feedback for two seconds".
+    """
+    page = render.page(report_with())
+    script = page.split("<script>")[-1]
+
+    # one request helper, carrying an epoch so a late capture cannot win
+    assert "function requestFrame(" in script
+    assert '&e=" + frameEpoch' in script
+    # the cadence stands down while an action is pending and for one interval after
+    assert "if (inFlight > 0) return;" in script
+    assert "Date.now() - lastActionAt < every" in script
+    # an action timestamps itself and claims the frame
+    assert script.count("lastActionAt = Date.now();") >= 4   # tap, compare, probe, refire
+    assert 'requestFrame(id, "action")' in script

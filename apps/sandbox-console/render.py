@@ -920,9 +920,23 @@ PAGE_JS = """
   }
 
   var frameTimer = null;
+  var frameEpoch = 0;      // every frame request carries one; older ones lose
+  var lastActionAt = 0;    // the last on-demand action (tap, compare, probe)
 
   function stopFrameRefresh() {
     if (frameTimer) { clearInterval(frameTimer); frameTimer = null; }
+  }
+
+  // The single place a frame is requested. Bumping the epoch is what stops a
+  // timer capture that was already in flight from painting over an action's
+  // result: the browser cancels the older load, and a late response is ignored.
+  function requestFrame(id, why) {
+    var dialog = document.getElementById("dialog");
+    var image = dialog && dialog.querySelector("img.big");
+    if (!image) return;
+    frameEpoch += 1;
+    image.dataset.epoch = String(frameEpoch);
+    image.src = "/sandboxes/" + id + "/shot?fresh=1&e=" + frameEpoch + "&v=" + Date.now();
   }
 
   // The picture is a PNG, so "live" means replacing it on a timer. `fresh=1` is
@@ -930,16 +944,23 @@ PAGE_JS = """
   function startFrameRefresh(id, everyMs) {
     stopFrameRefresh();
     if (!id) return;
+    var every = everyMs || 2000;
     frameTimer = setInterval(function () {
-      if (document.hidden) return;                       // background tab: do nothing
       var dialog = document.getElementById("dialog");
       var image = dialog && dialog.querySelector("img.big");
       if (!image) { stopFrameRefresh(); return; }
-      image.src = "/sandboxes/" + id + "/shot?fresh=1&v=" + Date.now();
-    }, everyMs || 2000);
+      // The queue: the cadence never competes with an action. It waits while a
+      // request is in flight and for one full interval after the last action, so
+      // the frame the action produced stays on screen long enough to be seen.
+      if (document.hidden) return;
+      if (inFlight > 0) return;
+      if (Date.now() - lastActionAt < every) return;
+      requestFrame(id, "cadence");
+    }, every);
   }
 
   async function compareFromDialog(id, node) {
+    lastActionAt = Date.now();
     var body = document.getElementById("dialog-body");
     if (!body) return;
     if (node) { node.setAttribute("aria-busy", "true"); node.disabled = true; }
@@ -986,6 +1007,7 @@ PAGE_JS = """
   }
 
   async function probe(id, node) {
+    lastActionAt = Date.now();
     if (node) node.setAttribute("aria-busy", "true");
     var body = await mutate("/sandboxes/" + id + "/reachability", {method: "POST"}, "probed " + id);
     if (body) { closeDialog(); await refreshNow(); }
@@ -1010,16 +1032,17 @@ PAGE_JS = """
 
   async function tap(id, base, rect, clientX, clientY) {
     var scale = rect.width / VIEWPORT.w;
+    lastActionAt = Date.now();
     var body = await mutate("/sandboxes/" + id + "/click", {
       method: "POST",
       headers: {"Content-Type": "application/json"},
       body: JSON.stringify({x: clientX - rect.left, y: clientY - rect.top, scale: scale})
     }, "clicked " + id);
     if (body) {
-      // fresh=1 asks for a capture rather than the cached frame: the click has
-      // just changed the page, so whatever is in the cache predates it.
-      var image = document.querySelector(".dialog img.big");
-      if (image) image.src = base + "?fresh=1&v=" + Date.now();
+      // The click's own capture is already stored server-side, so this asks for a
+      // capture and wins the epoch: the frame shows the click, immediately.
+      lastActionAt = Date.now();
+      requestFrame(id, "action");
       await refreshNow();
     }
   }
@@ -1150,6 +1173,17 @@ PAGE_JS = """
       openUrlEditor(event.target.dataset.id);
     }
   });
+
+  // A late response for an epoch we have moved past must not paint.
+  document.addEventListener("load", function (event) {
+    var image = event.target;
+    if (!image || image.tagName !== "IMG" || !image.dataset.epoch) return;
+    if (image.dataset.epoch !== String(frameEpoch)) {
+      image.dataset.stale = "1";
+    } else {
+      delete image.dataset.stale;
+    }
+  }, true);
 
   document.addEventListener("error", function (event) {
     var image = event.target;
