@@ -30,6 +30,7 @@ import tool_schema
 from k8sutil import audit
 import intent as intent_eval
 import recipes
+from sandbox import extract_id
 from tools import REGISTRY
 from ui import strip_url_lines
 
@@ -436,6 +437,30 @@ def _intent(facts) -> str:
     return "general"
 
 
+_NS_RE = re.compile(r"\b(?:in|namespace|ns)[\s:]+([a-z0-9][a-z0-9-]{2,})\b")
+
+
+def _fill_args(name, args, question, llm_url, model, timeout):
+    """Fill the arguments a small model tends to omit, from the question itself."""
+    filled = dict(args or {})
+    if name in ("sandbox_shot", "sandbox_open", "sandbox_get") and not filled.get("sandbox_id"):
+        sandbox_id = extract_id(question)
+        if sandbox_id:
+            filled["sandbox_id"] = sandbox_id
+    if name == "query_prometheus" and not filled.get("query"):
+        query, _ms = _write_promql(question, llm_url, model, timeout)
+        if query:
+            filled["query"] = query
+    if name in ("get_pods", "get_events", "search_logs", "get_pod_logs") \
+            and not filled.get("namespace"):
+        match = _NS_RE.search(question.lower())
+        if match:
+            filled["namespace"] = match.group(1)
+    if name == "search_logs" and not filled.get("contains"):
+        filled["contains"] = "error"
+    return filled
+
+
 def run(question, llm_url, model, timeout=60.0, history=None, max_rounds=1):
     """evaluate -> (recipe | fan-out) -> correlate. Two LLM calls."""
     t0 = time.perf_counter()
@@ -469,7 +494,10 @@ def run(question, llm_url, model, timeout=60.0, history=None, max_rounds=1):
             lambda q: _write_promql(q, llm_url, model, timeout)[0])
     elif decision.get("tasks"):
         source = "evaluator"
-        facts = run_batch([(t["tool"], t["args"], t["intent"])
+        facts = run_batch([(t["tool"],
+                            _fill_args(t["tool"], t["args"], question,
+                                       llm_url, model, timeout),
+                            t["intent"])
                            for t in decision["tasks"]])
     else:                                            # evaluator failed: keep the old path
         batch, source, fallback_ms = plan(question, llm_url, model, timeout, history)
