@@ -81,8 +81,10 @@ asked*, never *how a tool behaves*.
 ## Scope
 
 1. Add `evaluate(question)` — one JSON-mode LLM call returning
-   `{"tasks": [{"tool", "args", "why"}], "uncovered": [...]}`. Args may be empty; when they are,
-   the tool's existing schema decides whether the call is legal.
+   `{"tasks": [{"tool", "args", "why"}], "uncovered": [...]}` for independent asks, or
+   `{"recipe": "<name>", "args": {...}}` when the sentence is one ordered chain with a handoff.
+   Args may be empty; when they are, the tool's existing schema decides whether the call is legal.
+   Recipes are specified in `recipes.md`.
 2. Delete the two `if ... return` blocks (`_SANDBOX_ROUTE`, `_METRIC_INTENTS`) from `plan()`, and
    the `route:sandbox` / `route:prometheus` sources with them.
 3. Run the returned tasks through the existing machinery: same `tools.REGISTRY`, same
