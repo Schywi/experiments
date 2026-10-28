@@ -1,0 +1,68 @@
+{
+  "viewport": {
+    "width": 1280,
+    "height": 600
+  },
+  "source": {
+    "sandbox": "browser-pool-sthfr",
+    "console": "http://192.168.0.250:8080",
+    "captured": "2026-10-26",
+    "note": "Three states of the sandbox console, captured once with GET /sandboxes/{id}/shot?fresh=1 and stored as PNG bytes under results/frames/. Every arm is shown these exact files."
+  },
+  "frames": {
+    "home": "console-home.png",
+    "home-scrolled": "console-home-scrolled.png",
+    "deeplink": "console-deeplink.png"
+  },
+  "tasks": [
+    {
+      "id": "t1-identify-claim-button",
+      "frame": "home",
+      "kind": "label",
+      "task_class": "1-identify",
+      "ask": "Find the toolbar button that creates a new claim sandbox, the one labelled \"+ claim\". Name that control."
+    },
+    {
+      "id": "t2-point-claim-button",
+      "frame": "home",
+      "kind": "point",
+      "task_class": "2-coordinates",
+      "ask": "Locate the toolbar button labelled \"+ claim\"."
+    },
+    {
+      "id": "t3-similar-delete-button",
+      "frame": "home",
+      "kind": "label+point",
+      "task_class": "3-discriminate",
+      "ask": "This page shows several sandbox cards, each with its own delete button. Locate the delete button of the card whose sandbox id is \"browser-pool-65l7z\", not the delete button of any other card."
+    },
+    {
+      "id": "t4-after-scroll-probe-button",
+      "frame": "home-scrolled",
+      "kind": "point",
+      "task_class": "4-after-scroll",
+      "ask": "Locate the probe button of the sandbox card whose id is \"browser-pool-sthfr\"."
+    },
+    {
+      "id": "t5-after-scroll-delete-button",
+      "frame": "home-scrolled",
+      "kind": "label+point",
+      "task_class": "4-after-scroll",
+      "ask": "Locate the delete button of the sandbox card whose id is \"browser-pool-ww79w\"."
+    },
+    {
+      "id": "t6-after-navigate-scroll-down",
+      "frame": "deeplink",
+      "kind": "point",
+      "task_class": "4-after-navigate",
+      "ask": "A dialog is open over the page. Locate the down-arrow button in that dialog's header, the one that scrolls the page inside the dialog down."
+    },
+    {
+      "id": "t7-after-navigate-which-dialog",
+      "frame": "deeplink",
+      "kind": "label",
+      "task_class": "4-after-navigate",
+      "ask": "A dialog is open over the page. Which sandbox does that dialog belong to?"
+    }
+  ]
+}
