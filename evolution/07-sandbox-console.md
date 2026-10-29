@@ -1,10 +1,13 @@
-# Phase 6 — agent-sandbox and the console that proves it (2026-10-18 → )
+# Phase 7 — agent-sandbox and the console that proves it (2026-10-18 → )
 
 **Branch:** `feat/sandbox-console` · **tracked paths:**
 [`../apps/sandbox-console/`](../apps/sandbox-console/README.md),
 [`../apps/browser-sandbox/`](../apps/browser-sandbox/README.md),
 [`../config/sandbox/`](../config/sandbox/README.md) · **design note:**
 [`../research/rfc-sandbox-console.md`](../research/rfc-sandbox-console.md)
+
+Renumbered from 6: `cluster-evolution` already carries
+`evolution/06-kargo-promotion-pipeline.md`.
 
 ## The question
 
@@ -27,9 +30,9 @@ What the cluster runs comes from two places:
 | Piece | Source | Applied by |
 |---|---|---|
 | Four CRDs + controller `v1.0.7` | upstream release manifest, verified by sha256 `136c10c9…` | `config/sandbox/install.sh` |
-| Router, browser `SandboxTemplate`, warm pool | `config/sandbox/` (this repo) | the same script, or the Argo Application |
+| Router, browser `SandboxTemplate`, warm pool | `config/sandbox/` (this repo) | Helm release `sandbox` (rev 7, ns `agent-sandbox-system`), or the same script |
 | Chromium-with-CDP image | `apps/browser-sandbox/` (this repo) | `buildah` + `config/registry/push-image.sh` |
-| The pane | `apps/sandbox-console/` (this repo) | `helm upgrade --install` or Argo |
+| The pane | `apps/sandbox-console/` (this repo) | Helm release `sandbox-console` (rev 5) |
 
 Pinning the controller by release and digest keeps upstream's generated RBAC out
 of this repo's review surface; the objects that are ours (the router flags, the
@@ -101,12 +104,13 @@ no write verb.
 |---|---|
 | Concurrent Chromium by idle memory | ~28 (250 MiB each, ~9 GiB free) |
 | Concurrent Chromium by **active** CPU | **~9.1** (experiment 02, 0.3 vCPU per driven browser) |
-| Warm pool | 8 (`config/sandbox/values.yaml`) |
-| Grid ceiling | 12 tiles (`MAX_TILES`) |
+| Warm pool | 8 (`config/sandbox/values.yaml`; 8/8 ready on 2026-10-28) |
+| Grid ceiling | 8 tiles (`MAX_TILES=8`, chart `maxTiles: "8"`) |
 
-The RFC's 12 tiles sit above what a 6-core desktop can drive at once. The pool
-is 8 so the demo has headroom; `MAX_TILES` stays 12 so the pane can show what
-happens past the line rather than hiding it.
+The RFC sized the grid at 12 tiles. The shipped ceiling is 8, matching the warm
+pool, so a demo can fill every tile without waiting on a cold start; 9.1 is what
+a 6-core desktop actually drives, and the create path refuses past 9 live
+sandboxes.
 
 ## M4-M7: the pane drives, compares and tears down
 
@@ -128,9 +132,11 @@ reconciler.
 ## Verify it
 
 ```bash
-cd apps/sandbox-console && python3 -m pytest -q     # 60 tests, no cluster
+cd apps/sandbox-console && python3 -m pytest -q     # 169 tests, no cluster
 bash config/ci/validate.sh                          # charts + kubeconform
-curl -sS http://192.168.0.249/sandboxes | head      # the grid fragment
+curl -sS http://192.168.0.250/sandboxes | head      # the grid fragment
+
+kubectl -n agent-sandbox-system port-forward svc/sandbox-router-svc 8080:8080 &
 curl -sS -H 'X-Sandbox-ID: <claimed>' -H 'X-Sandbox-Port: 9222' \
-     http://192.168.0.248/json/version              # CDP answers through the router
+     http://127.0.0.1:8080/json/version             # CDP answers through the router
 ```
