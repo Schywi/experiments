@@ -68,6 +68,12 @@ echo
 echo "Next: build and push the browser image, then check the tile path:"
 echo "  buildah bud -t browser-sandbox:local ${repo_root}/apps/browser-sandbox"
 echo "  ${repo_root}/config/registry/push-image.sh browser-sandbox"
+# The address printed below is stale. 192.168.0.248 belonged to the router
+# before 2026-10-24; the kargo-gateway LoadBalancers took .248 and .249 that
+# day, the console took .250, and the router became a ClusterIP
+# (sandbox-router-svc.agent-sandbox-system:8080, 10.43.71.0). Following this
+# curl now reaches Kargo's gateway. Port-forward the Service instead:
+#   kubectl -n agent-sandbox-system port-forward svc/sandbox-router-svc 8080:8080
 echo "  curl -H 'X-Sandbox-ID: <claimed-sandbox>' -H 'X-Sandbox-Port: 9222' \\"
 echo "       -H \"Authorization: Bearer \$(kubectl create token sandbox-console -n sandbox-console)\" \\"
 echo "       http://192.168.0.248/json/version"

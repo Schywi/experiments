@@ -26,6 +26,15 @@ def _float(name: str, default: float) -> float:
 SANDBOX_NAMESPACE = os.environ.get("SANDBOX_NAMESPACE", "sandbox-demo")
 # The router's LoadBalancer address (Cilium LB-IPAM, lan-pool). All sandbox
 # traffic goes through it: template-derived pods drop every other ingress peer.
+#
+# KNOWN STALE DEFAULT: 192.168.0.248 is no longer the router. The two
+# kargo-gateway LoadBalancers took .248 (default/kargo-gateway) and .249
+# (kargo/kargo-gateway) on 2026-10-24, the console took the last free address
+# .250, and the router has been a ClusterIP ever since
+# (sandbox-router-svc.agent-sandbox-system:8080, 10.43.71.0). Nothing in the
+# cluster sets this default: the chart passes ROUTER_URL explicitly, so the
+# running console never dials .248. A run outside the chart does, and reaches
+# Kargo instead of the router.
 ROUTER_URL = os.environ.get("ROUTER_URL", "http://192.168.0.248").rstrip("/")
 # CDP port inside the sandbox. Chromium's default is 9222, but the router's own
 # default for X-Sandbox-Port is 8888, so the header is always sent explicitly.
