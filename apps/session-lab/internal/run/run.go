@@ -242,6 +242,12 @@ func (r *Runner) preflight(ctx context.Context) error {
 	if r.cfg.PoolReplicas == nil {
 		return nil
 	}
+	// Tell any autoscaler this pool is owned by the experiment. Without this the
+	// runner and the scaler would both write spec.replicas, and whichever ran
+	// last would win.
+	if err := r.ad.SetPoolPaused(ctx, r.cfg.Namespace, r.cfg.Pool, true); err != nil {
+		r.log.Printf("preflight: cannot claim the pool: %v", err)
+	}
 	original := pool.Desired
 	r.originalReplicas = &original
 	r.log.Printf("preflight: setting pool replicas %d -> %d", original, *r.cfg.PoolReplicas)
@@ -808,6 +814,9 @@ func (r *Runner) restorePool(ctx context.Context) error {
 	r.log.Printf("restore: pool replicas %d -> %d", *r.cfg.PoolReplicas, *r.originalReplicas)
 	if err := r.ad.SetPoolReplicas(ctx, r.cfg.Namespace, r.cfg.Pool, *r.originalReplicas); err != nil {
 		return err
+	}
+	if err := r.ad.SetPoolPaused(ctx, r.cfg.Namespace, r.cfg.Pool, false); err != nil {
+		r.log.Printf("restore: release the pool: %v", err)
 	}
 	state, err := r.ad.Pool(ctx, r.cfg.Namespace, r.cfg.Pool)
 	if err == nil {

@@ -47,7 +47,13 @@ type PoolState struct {
 	Desired  int32
 	Ready    int32
 	Template string
+	// Paused is true when the pool carries the annotation that tells an
+	// autoscaler to leave its replica count alone.
+	Paused bool
 }
+
+// AnnotationAutoscalerPaused marks a pool whose replica count an experiment owns.
+const AnnotationAutoscalerPaused = "session-lab.io/autoscaler"
 
 // NodeCapacity is the node's allocatable budget, read from the API.
 type NodeCapacity struct {
@@ -109,6 +115,8 @@ type Adapter interface {
 	// Pool reports the warm pool's desired and ready counts.
 	Pool(ctx context.Context, namespace, name string) (PoolState, error)
 	// SetPoolReplicas writes the pool's replica count.
+	// SetPoolPaused puts the pool under experiment ownership or releases it.
+	SetPoolPaused(ctx context.Context, namespace, name string, paused bool) error
 	SetPoolReplicas(ctx context.Context, namespace, name string, replicas int32) error
 	// Template reads the requests and limits the sandbox template applies.
 	Template(ctx context.Context, namespace, name string) (TemplateLimits, error)
@@ -263,6 +271,14 @@ func (f *Fake) SetPoolReplicas(ctx context.Context, namespace, name string, repl
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.pool.Desired = replicas
+	return nil
+}
+
+// SetPoolPaused implements Adapter.
+func (f *Fake) SetPoolPaused(ctx context.Context, namespace, name string, paused bool) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.pool.Paused = paused
 	return nil
 }
 

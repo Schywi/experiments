@@ -20,6 +20,11 @@ sandbox:
   pool: browser-pool
 
 autoscaler:
+  # Supported off switch: enabled=false scales the Deployment to 0 without
+  # uninstalling the chart, its RBAC or its Service. An experiment that wants a
+  # fixed pool either sets this, or annotates the pool with
+  # session-lab.io/autoscaler=disabled for the duration of a run.
+  enabled: true
   # Configured bounds. These are the limits the autoscaler enforces; the observed
   # capacity of the platform is whatever an experiment measures, and the two are
   # reported separately.

@@ -7,8 +7,9 @@ metadata:
     {{- include "session-lab.labels" . | nindent 4 }}
 spec:
   # One replica: two autoscalers patching the same pool would fight, which is the
-  # same reason the runner refuses to run two experiments at once.
-  replicas: 1
+  # same reason the runner refuses to run two experiments at once. Zero is the
+  # supported off switch — the chart, RBAC and Service stay installed.
+  replicas: {{ if .Values.autoscaler.enabled }}1{{ else }}0{{ end }}
   selector:
     matchLabels:
       {{- include "session-lab.selector" . | nindent 6 }}

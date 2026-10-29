@@ -347,6 +347,9 @@ func (k *Kube) Pool(ctx context.Context, namespace, name string) (PoolState, err
 	if template, ok, _ := unstructured.NestedString(pool.Object, "spec", "sandboxTemplateRef", "name"); ok {
 		state.Template = template
 	}
+	if value, ok, _ := unstructured.NestedString(pool.Object, "metadata", "annotations", AnnotationAutoscalerPaused); ok && value == "disabled" {
+		state.Paused = true
+	}
 	return state, nil
 }
 
@@ -435,6 +438,27 @@ func quantityBytes(resources map[string]any, kind, key string) int64 {
 		return 0
 	}
 	return quantity.Value()
+}
+
+// SetPoolPaused annotates the pool so an autoscaler leaves it alone, or removes
+// the annotation. An experiment that owns the replica count uses this instead of
+// racing the scaler.
+func (k *Kube) SetPoolPaused(ctx context.Context, namespace, name string, paused bool) error {
+	value := ""
+	if paused {
+		value = "disabled"
+	}
+	patch, err := json.Marshal(map[string]any{
+		"metadata": map[string]any{"annotations": map[string]any{AnnotationAutoscalerPaused: value}},
+	})
+	if err != nil {
+		return err
+	}
+	if _, err := k.dyn.Resource(gvrPools).Namespace(namespace).
+		Patch(ctx, name, types.MergePatchType, patch, metav1.PatchOptions{}); err != nil {
+		return fmt.Errorf("set pool %s/%s paused=%v: %w", namespace, name, paused, err)
+	}
+	return nil
 }
 
 // Node reads the allocatable budget of the node that holds the sandboxes.

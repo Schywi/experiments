@@ -46,6 +46,7 @@ type Settings struct {
 	Ready     int32   `json:"ready"`
 	Pending   int32   `json:"pending"`
 	Failed    int32   `json:"failed,omitempty"`
+	Paused    bool    `json:"paused,omitempty"`
 	Desired   int32   `json:"desired"`
 }
 
@@ -99,6 +100,27 @@ func (s *Scaler) Step(ctx context.Context) (Settings, error) {
 	}
 	if target > s.cfg.Max {
 		target = s.cfg.Max
+	}
+
+	if pool.Paused {
+		// The pool belongs to an experiment: publish what was seen, change
+		// nothing. This is the supported way to run a fixed-pool experiment
+		// while the autoscaler stays deployed.
+		settings := Settings{
+			Min: s.cfg.Min, Max: s.cfg.Max, IntervalS: s.cfg.Interval.Seconds(),
+			Namespace: s.cfg.Namespace, Pool: s.cfg.Pool, UpdatedNS: time.Now().UnixNano(),
+			Target: pool.Desired, Ready: stats.Ready, Pending: stats.Pending,
+			Failed: stats.Failed, Desired: pool.Desired, Paused: true,
+		}
+		if s.pub != nil && s.cfg.ConfigMap != "" {
+			if err := s.pub.Publish(ctx, s.cfg.ConfigMap, settings); err != nil {
+				return settings, fmt.Errorf("publish settings: %w", err)
+			}
+		}
+		if s.rec != nil {
+			s.rec.Observe(settings, false, "")
+		}
+		return settings, nil
 	}
 
 	settings := Settings{

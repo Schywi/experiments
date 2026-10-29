@@ -95,3 +95,28 @@ func TestNoChangeIsNotACounter(t *testing.T) {
 		t.Fatalf("second step still wants to move: target %d desired %d", settings.Target, settings.Desired)
 	}
 }
+
+func TestPausedPoolIsLeftAlone(t *testing.T) {
+	// An experiment owns the replica count: the autoscaler must publish what it
+	// sees and change nothing, or the two writers fight over spec.replicas.
+	scaler, fake := newScaler(t, 1, 40)
+	if err := fake.SetPoolReplicas(context.Background(), "sandbox-demo", "browser-pool", 7); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	if err := fake.SetPoolPaused(context.Background(), "sandbox-demo", "browser-pool", true); err != nil {
+		t.Fatalf("pause: %v", err)
+	}
+	fake.Stats = adapter.ClaimStats{Pending: 12, Ready: 3}
+
+	settings, err := scaler.Step(context.Background())
+	if err != nil {
+		t.Fatalf("step: %v", err)
+	}
+	if !settings.Paused {
+		t.Fatalf("settings do not report the pool as paused")
+	}
+	state, _ := fake.Pool(context.Background(), "sandbox-demo", "browser-pool")
+	if state.Desired != 7 {
+		t.Fatalf("paused pool was resized to %d, want the experiment's 7", state.Desired)
+	}
+}
