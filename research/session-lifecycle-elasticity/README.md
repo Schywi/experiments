@@ -26,6 +26,7 @@
 | [08 — Requirement status](08-requirement-status.md) | What is implemented, deployed, configured, verified? | Eight requirements with the four columns kept separate, and the unsupported claims corrected |
 | [09 — Results: three runs](09-results-three-runs.md) | What changes with lifecycle policy and with an autoscaler? | One workload, three runs: reuse resets in 35 ms, destroy pays 374 ms + cold start, autoscaling cuts queue wait 2× and reaches its 40-replica ceiling, where the API server becomes the boundary |
 | [10 — Autoscaler deployed](10-autoscaler-deployed.md) | Is elasticity a workload or a shell script? | The chart, RBAC, in-cluster image build and label-based scrape; live scaling 2 → 22 → 2 with 84.9 s scale-out, and the API outage that followed |
+| [11 — Verification](11-verification.md) | What is actually running, and what is not? | Five areas labelled implemented/deployed/configured/verified with commands, two defects found by comparing image digests, the claim-cleanup paths that fail, and the observability layer that is exposed but never scraped |
 
 Read 04 for what is being built and under which rules, 03 for the baseline, 02 for the experiment
 shape, 01 for the instrument.
