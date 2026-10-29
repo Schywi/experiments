@@ -55,6 +55,8 @@ type Options struct {
 	Plan    schedule.Plan
 	Log     *log.Logger
 	Clock   func() time.Time
+	// HostMemory reports the node's memory; nil disables the host series.
+	HostMemory func() (total, available, swapTotal, swapFree int64)
 }
 
 // Runner executes one plan.
@@ -77,6 +79,14 @@ type Runner struct {
 
 	// originalReplicas is the pool's desired count before the run changed it.
 	originalReplicas *int32
+
+	// hostMemory reports the node's memory, when a reader was supplied.
+	hostMemory func() (total, available, swapTotal, swapFree int64)
+
+	// minAvailable and memTotal are the node memory extremes the run saw.
+	minAvailable   int64
+	minAvailableAt int64
+	memTotal       int64
 }
 
 // New assembles a runner.
@@ -92,6 +102,7 @@ func New(cfg model.RunConfig, opts Options) *Runner {
 	return &Runner{
 		cfg: cfg, ad: opts.Adapter, st: opts.Store, smp: opts.Sampler, plan: opts.Plan,
 		log: logger, now: now, all: map[string]*adapter.Instance{}, counts: map[model.Outcome]int{},
+		hostMemory: opts.HostMemory,
 	}
 }
 
@@ -585,6 +596,7 @@ func (r *Runner) sampleReplicas(ctx context.Context) func() {
 		defer close(done)
 		ticker := time.NewTicker(2 * time.Second)
 		defer ticker.Stop()
+		r.recordHost()
 		for {
 			select {
 			case <-stop:
@@ -593,10 +605,10 @@ func (r *Runner) sampleReplicas(ctx context.Context) func() {
 				return
 			case <-ticker.C:
 				state, err := r.ad.Pool(context.WithoutCancel(ctx), r.cfg.Namespace, r.cfg.Pool)
-				if err != nil {
-					continue
+				if err == nil {
+					r.recordReplicas(state, "")
 				}
-				r.recordReplicas(state, "")
+				r.recordHost()
 			}
 		}
 	}()
@@ -612,6 +624,32 @@ func (r *Runner) recordReplicas(state adapter.PoolState, note string) {
 	r.reps = append(r.reps, store.ReplicaSample{
 		AtNS: r.now().UnixNano(), Desired: state.Desired, Ready: state.Ready, Note: note,
 	})
+}
+
+// recordHost appends one node-memory reading, which is what shows the run
+// approaching the node's limit rather than the platform's.
+func (r *Runner) recordHost() {
+	if r.hostMemory == nil {
+		return
+	}
+	total, available, swapTotal, swapFree := r.hostMemory()
+	if total == 0 && available == 0 {
+		return
+	}
+	sample := model.HostSample{
+		AtNS: r.now().UnixNano(), MemTotal: total, MemAvailable: available,
+		SwapTotal: swapTotal, SwapFree: swapFree,
+	}
+	if err := r.st.AddHostSample(sample); err != nil {
+		r.log.Printf("host sample: %v", err)
+	}
+	if r.minAvailable == 0 || available < r.minAvailable {
+		r.minAvailable = available
+		r.minAvailableAt = sample.AtNS
+	}
+	if r.memTotal == 0 {
+		r.memTotal = total
+	}
 }
 
 // restorePool puts the warm pool back to the replica count it had before the

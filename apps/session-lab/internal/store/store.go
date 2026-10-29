@@ -97,6 +97,15 @@ CREATE TABLE IF NOT EXISTS events (
     detail     TEXT NOT NULL DEFAULT ''
 );
 
+CREATE TABLE IF NOT EXISTS host_samples (
+    seq           INTEGER PRIMARY KEY AUTOINCREMENT,
+    at_ns         INTEGER NOT NULL,
+    mem_total     INTEGER NOT NULL DEFAULT 0,
+    mem_available INTEGER NOT NULL DEFAULT 0,
+    swap_total    INTEGER NOT NULL DEFAULT 0,
+    swap_free     INTEGER NOT NULL DEFAULT 0
+);
+
 CREATE INDEX IF NOT EXISTS events_session ON events(session_id);
 `
 
@@ -221,6 +230,32 @@ func (s *Store) AddEvent(event model.Event) error {
 	_, err := s.db.Exec(`INSERT INTO events (session_id, at_ns, kind, detail) VALUES (?, ?, ?, ?)`,
 		event.SessionID, event.AtNS, event.Kind, event.Detail)
 	return err
+}
+
+// AddHostSample appends one node-memory reading.
+func (s *Store) AddHostSample(sample model.HostSample) error {
+	_, err := s.db.Exec(
+		`INSERT INTO host_samples (at_ns, mem_total, mem_available, swap_total, swap_free) VALUES (?, ?, ?, ?, ?)`,
+		sample.AtNS, sample.MemTotal, sample.MemAvailable, sample.SwapTotal, sample.SwapFree)
+	return err
+}
+
+// HostSamples returns the node-memory series in time order.
+func (s *Store) HostSamples() ([]model.HostSample, error) {
+	rows, err := s.db.Query(`SELECT at_ns, mem_total, mem_available, swap_total, swap_free FROM host_samples ORDER BY seq`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]model.HostSample, 0, 128)
+	for rows.Next() {
+		var sample model.HostSample
+		if err := rows.Scan(&sample.AtNS, &sample.MemTotal, &sample.MemAvailable, &sample.SwapTotal, &sample.SwapFree); err != nil {
+			return nil, err
+		}
+		out = append(out, sample)
+	}
+	return out, rows.Err()
 }
 
 // Sessions returns every session row in id order.

@@ -130,6 +130,16 @@ type Event struct {
 	Detail    string `json:"detail,omitempty"`
 }
 
+// HostSample is one reading of the node's memory while the run was in progress.
+// It is what says whether the run reached the node's limit, and when.
+type HostSample struct {
+	AtNS           int64 `json:"at_ns"`
+	MemTotal       int64 `json:"mem_total"`
+	MemAvailable   int64 `json:"mem_available"`
+	SwapTotal      int64 `json:"swap_total,omitempty"`
+	SwapFree       int64 `json:"swap_free,omitempty"`
+}
+
 // Bucket is one session-length class: a hold duration and how many sessions of
 // that length the run should generate.
 type Bucket struct {

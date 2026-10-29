@@ -72,6 +72,20 @@ func realMain() error {
 	if err != nil {
 		return err
 	}
+	logger.Printf("%s", sampler.String())
+
+	// The platform's own numbers are a cross-check on the cgroup readings, and
+	// their absence is worth recording: it changes what a report can claim.
+	metricsAPI, err := measure.NewMetricsAPI(cfg.Kubeconfig, cfg.Context)
+	if err != nil {
+		logger.Printf("metrics.k8s.io: %v", err)
+	} else if err := metricsAPI.Answering(context.Background(), cfg.Namespace); err != nil {
+		logger.Printf("metrics.k8s.io unavailable: %v", err)
+		_ = st.AddEvent(model.Event{AtNS: time.Now().UnixNano(), Kind: "metrics_api_unavailable", Detail: err.Error()})
+	} else {
+		logger.Printf("metrics.k8s.io: answering in %s", cfg.Namespace)
+		_ = st.AddEvent(model.Event{AtNS: time.Now().UnixNano(), Kind: "metrics_api_available", Detail: cfg.Namespace})
+	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -82,6 +96,10 @@ func realMain() error {
 		Sampler: sampler,
 		Plan:    plan,
 		Log:     logger,
+		HostMemory: func() (int64, int64, int64, int64) {
+			memory := measure.ReadHostMemory()
+			return memory.TotalBytes, memory.AvailableBytes, memory.SwapTotalBytes, memory.SwapFreeBytes
+		},
 	})
 	runErr := runner.Run(ctx)
 	if runErr != nil && ctx.Err() == nil {

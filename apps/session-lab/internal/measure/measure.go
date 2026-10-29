@@ -73,7 +73,10 @@ func (s *Sampler) Sample(ctx context.Context, podUID, node string) (run.Reading,
 	}
 	dir, err := s.dirFor(podUID)
 	if err != nil {
-		return run.Reading{}, false, err
+		// A pod whose cgroup is not there yet is a miss, not a failure: the run
+		// keeps its lifecycle timings and the report says how many sessions had
+		// samples.
+		return run.Reading{}, false, nil
 	}
 	reading := run.Reading{}
 

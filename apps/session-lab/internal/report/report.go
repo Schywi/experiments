@@ -40,6 +40,7 @@ type Report struct {
 	Buckets        map[string]Bucket  `json:"buckets"`
 	Resources      Resources          `json:"resources"`
 	Instances      InstanceSummary    `json:"instances"`
+	Host           HostMemory         `json:"host_memory"`
 	Replicas       []store.ReplicaSample `json:"replicas,omitempty"`
 	Boundary       string             `json:"first_boundary,omitempty"`
 	BoundaryEv     []string           `json:"boundary_evidence,omitempty"`
@@ -84,6 +85,18 @@ type Resources struct {
 	ThrottledSessions   int     `json:"throttled_sessions"`
 	OOMKills            int     `json:"oom_kills"`
 	RefaultSessions     int     `json:"refault_sessions"`
+}
+
+// HostMemory is the node's memory story for the run: the floor it reached and
+// when, which is the difference between "the platform refused" and "the node ran
+// out".
+type HostMemory struct {
+	Samples          int     `json:"samples"`
+	TotalMiB         float64 `json:"total_mib"`
+	MinAvailableMiB  float64 `json:"min_available_mib"`
+	MinAtNS          int64   `json:"min_at_ns,omitempty"`
+	MinRatioPct      float64 `json:"min_ratio_pct"`
+	SwapUsedMiB      float64 `json:"swap_used_mib"`
 }
 
 // InstanceSummary counts instance reuse and rebuild cost.
@@ -205,6 +218,24 @@ func Build(cfg model.RunConfig, plan schedule.Plan, st *store.Store) (*Report, e
 
 	rep.Instances = summariseInstances(instances)
 
+	hostSamples, err := st.HostSamples()
+	if err == nil {
+		rep.Host = summariseHost(hostSamples)
+	}
+
+	// Every counter that says the platform or the node pushed back becomes
+	// evidence next to the first boundary.
+	for _, session := range sessions {
+		if session.OOMKill > 0 {
+			rep.BoundaryEv = append(rep.BoundaryEv,
+				fmt.Sprintf("session %d: oom_kill=%d", session.ID, session.OOMKill))
+		}
+		if session.ThrottledUsec > 0 {
+			rep.BoundaryEv = append(rep.BoundaryEv,
+				fmt.Sprintf("session %d: throttled_usec=%d (cpu limit reached)", session.ID, session.ThrottledUsec))
+		}
+	}
+
 	// The boundary: the first session that the platform refused or that never
 	// became ready, plus the event evidence the adapter saw.
 	for _, session := range sessions {
@@ -275,6 +306,10 @@ func (r *Report) Print(w io.Writer) {
 		r.Resources.MemPeakP50MiB, r.Resources.MemPeakMaxMiB, r.Resources.WorkingSetPeakMaxMiB)
 	fmt.Fprintf(w, "throttled sessions %d, oom kills %d, sessions with refaults %d\n",
 		r.Resources.ThrottledSessions, r.Resources.OOMKills, r.Resources.RefaultSessions)
+	if r.Host.Samples > 0 {
+		fmt.Fprintf(w, "node memory       min available %.0f MiB of %.0f MiB (%.1f%%), swap used %.0f MiB, %d samples\n",
+			r.Host.MinAvailableMiB, r.Host.TotalMiB, r.Host.MinRatioPct, r.Host.SwapUsedMiB, r.Host.Samples)
+	}
 	fmt.Fprintf(w, "\ninstances %d, sessions/instance max %d mean %.2f",
 		r.Instances.Total, r.Instances.MaxSessions, r.Instances.MeanSessions)
 	if r.Instances.RebuildP50Ms > 0 {
@@ -381,6 +416,28 @@ func peakConcurrency(sessions []model.Session) Concurrency {
 		mean = float64(busyNanos) / float64(last-first)
 	}
 	return Concurrency{Mean: mean, Peak: peak}
+}
+
+func summariseHost(samples []model.HostSample) HostMemory {
+	summary := HostMemory{Samples: len(samples)}
+	if len(samples) == 0 {
+		return summary
+	}
+	summary.TotalMiB = float64(samples[0].MemTotal) / (1 << 20)
+	for _, sample := range samples {
+		if summary.MinAvailableMiB == 0 || float64(sample.MemAvailable)/(1<<20) < summary.MinAvailableMiB {
+			summary.MinAvailableMiB = float64(sample.MemAvailable) / (1 << 20)
+			summary.MinAtNS = sample.AtNS
+		}
+		used := float64(sample.SwapTotal-sample.SwapFree) / (1 << 20)
+		if used > summary.SwapUsedMiB {
+			summary.SwapUsedMiB = used
+		}
+	}
+	if summary.TotalMiB > 0 {
+		summary.MinRatioPct = summary.MinAvailableMiB / summary.TotalMiB * 100
+	}
+	return summary
 }
 
 func summariseInstances(instances []model.Instance) InstanceSummary {
