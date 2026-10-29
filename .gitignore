@@ -33,3 +33,6 @@ __pycache__/
 # Handoff notes for the sandbox-console commits; never published.
 commit_message.txt
 commit_message.sh
+
+# Handoff notes for a specialised agent; never published.
+handoff/
