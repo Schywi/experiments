@@ -33,6 +33,9 @@ sessionLab:
   metricsPath: /metrics
   targets:
     - 192.168.0.28:9109
+  # The pool autoscaler serves its own series on a second port, same host.
+  autoscalerTargets:
+    - 192.168.0.28:9110
 
 storage:
   size: 5Gi

@@ -67,6 +67,13 @@ type TemplateLimits struct {
 	MemLimitBytes   int64  `json:"mem_limit_bytes"`
 }
 
+// ClaimStats is the demand signal a pool autoscaler needs: claims waiting for an
+// instance and claims that already hold one.
+type ClaimStats struct {
+	Pending int32
+	Ready   int32
+}
+
 // Boundary is one observation that the platform refused or degraded something:
 // an OOM kill, an eviction, a scheduling refusal.
 type Boundary struct {
@@ -93,6 +100,9 @@ type Adapter interface {
 	Resume(ctx context.Context, instance *Instance) error
 	// Release deletes the instance and its claim.
 	Release(ctx context.Context, instance *Instance) error
+	// ClaimStats counts the claims that are waiting and the claims that hold an
+	// instance, for the given pool.
+	ClaimStats(ctx context.Context, namespace, pool string) (ClaimStats, error)
 	// Pool reports the warm pool's desired and ready counts.
 	Pool(ctx context.Context, namespace, name string) (PoolState, error)
 	// SetPoolReplicas writes the pool's replica count.
@@ -137,6 +147,8 @@ type Fake struct {
 	node     NodeCapacity
 	// Limits is what Template reports.
 	Limits TemplateLimits
+	// Stats is what ClaimStats reports.
+	Stats ClaimStats
 }
 
 // NewFake returns a fake adapter.
@@ -249,6 +261,13 @@ func (f *Fake) SetPoolReplicas(ctx context.Context, namespace, name string, repl
 	defer f.mu.Unlock()
 	f.pool.Desired = replicas
 	return nil
+}
+
+// ClaimStats implements Adapter.
+func (f *Fake) ClaimStats(ctx context.Context, namespace, pool string) (ClaimStats, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.Stats, nil
 }
 
 // Template implements Adapter.

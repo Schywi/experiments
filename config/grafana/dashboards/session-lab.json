@@ -390,6 +390,100 @@
           "legendFormat": "{{kind}}"
         }
       ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Scaling \u2014 pool desired vs ready vs demand",
+      "description": "Pending claims are the demand signal; target is what the autoscaler asked for after clamping to its configured min and max.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "victoriametrics"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 40
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "fillOpacity": 10,
+            "lineWidth": 2
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "session_lab_pool_desired",
+          "legendFormat": "pool desired"
+        },
+        {
+          "refId": "B",
+          "expr": "session_lab_pool_ready",
+          "legendFormat": "pool ready"
+        },
+        {
+          "refId": "C",
+          "expr": "session_lab_autoscaler_target_replicas",
+          "legendFormat": "autoscaler target"
+        },
+        {
+          "refId": "D",
+          "expr": "session_lab_autoscaler_pending_claims",
+          "legendFormat": "pending claims"
+        },
+        {
+          "refId": "E",
+          "expr": "session_lab_autoscaler_max_replicas",
+          "legendFormat": "configured max"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Scale-out delay and replica changes",
+      "description": "Time from a scale-out decision until the pool was ready and the queue empty, plus how often the autoscaler moved the replica count.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "victoriametrics"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 40
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "fillOpacity": 0,
+            "lineWidth": 2
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(session_lab_autoscaler_scale_out_seconds_bucket[$__rate_interval])))",
+          "legendFormat": "scale-out p50"
+        },
+        {
+          "refId": "B",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(session_lab_autoscaler_scale_out_seconds_bucket[$__rate_interval])))",
+          "legendFormat": "scale-out p95"
+        },
+        {
+          "refId": "C",
+          "expr": "sum by (direction) (rate(session_lab_autoscaler_changes_total[$__rate_interval]))",
+          "legendFormat": "changes/s {{direction}}"
+        }
+      ]
     }
   ]
 }

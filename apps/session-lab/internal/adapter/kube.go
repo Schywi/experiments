@@ -283,6 +283,30 @@ func (k *Kube) Release(ctx context.Context, instance *Instance) error {
 	return nil
 }
 
+// ClaimStats counts claims by readiness for one pool.
+func (k *Kube) ClaimStats(ctx context.Context, namespace, pool string) (ClaimStats, error) {
+	claims, err := k.dyn.Resource(gvrClaims).Namespace(namespace).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return ClaimStats{}, fmt.Errorf("list claims %s: %w", namespace, err)
+	}
+	var stats ClaimStats
+	for i := range claims.Items {
+		claim := &claims.Items[i]
+		if pool != "" {
+			ref, _, _ := unstructured.NestedString(claim.Object, "spec", "warmPoolRef", "name")
+			if ref != "" && ref != pool {
+				continue
+			}
+		}
+		if ready, _ := claimState(claim); ready {
+			stats.Ready++
+		} else {
+			stats.Pending++
+		}
+	}
+	return stats, nil
+}
+
 // Pool reports the warm pool's replica counts and template.
 func (k *Kube) Pool(ctx context.Context, namespace, name string) (PoolState, error) {
 	pool, err := k.dyn.Resource(gvrPools).Namespace(namespace).Get(ctx, name, metav1.GetOptions{})

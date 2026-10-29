@@ -104,13 +104,19 @@ func realMain() error {
 		}()
 	}
 
+	info, err := autoscalerInfo(cfg.Kubeconfig, cfg.Context, cfg.Namespace, "session-lab-autoscaler")
+	if err != nil {
+		logger.Printf("autoscaler info: %v", err)
+	}
+
 	runner := run.New(cfg.RunConfig, run.Options{
 		Adapter: kube,
 		Store:   st,
 		Sampler: sampler,
 		Plan:    plan,
 		Log:     logger,
-		Recorder: recorder,
+		Recorder:       recorder,
+		AutoscalerInfo: info,
 		HostMemory: func() (int64, int64, int64, int64) {
 			memory := measure.ReadHostMemory()
 			return memory.TotalBytes, memory.AvailableBytes, memory.SwapTotalBytes, memory.SwapFreeBytes

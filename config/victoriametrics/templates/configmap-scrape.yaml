@@ -95,4 +95,11 @@ data:
         static_configs:
           - targets:
               {{- toYaml .Values.sessionLab.targets | nindent 14 }}
+      # The pool autoscaler: demand, computed target, configured bounds and the
+      # scale-out delay it measured.
+      - job_name: session-lab-autoscaler
+        metrics_path: {{ .Values.sessionLab.metricsPath }}
+        static_configs:
+          - targets:
+              {{- toYaml .Values.sessionLab.autoscalerTargets | nindent 14 }}
       {{- end }}

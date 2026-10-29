@@ -43,6 +43,7 @@ type Report struct {
 	Instances      InstanceSummary    `json:"instances"`
 	Host           HostMemory         `json:"host_memory"`
 	Template       *TemplateLimits    `json:"template_limits,omitempty"`
+	Autoscaler     *AutoscalerState   `json:"autoscaler,omitempty"`
 	Replicas       []store.ReplicaSample `json:"replicas,omitempty"`
 	Boundary       string             `json:"first_boundary,omitempty"`
 	BoundaryEv     []string           `json:"boundary_evidence,omitempty"`
@@ -97,6 +98,18 @@ type TemplateLimits struct {
 	CPULimitMilli   int64   `json:"cpu_limit_milli"`
 	MemRequestMiB   float64 `json:"mem_request_mib"`
 	MemLimitMiB     float64 `json:"mem_limit_mib"`
+}
+
+// AutoscalerState is what was scaling the pool while the run executed.
+type AutoscalerState struct {
+	HPACount    int     `json:"hpa_count"`
+	KEDA        bool    `json:"keda_crd_present"`
+	PoolScaler *bool    `json:"session_lab_autoscaler_present,omitempty"`
+	Min         int32   `json:"min,omitempty"`
+	Max         int32   `json:"max,omitempty"`
+	IntervalS   float64 `json:"interval_s,omitempty"`
+	HeartbeatS  float64 `json:"heartbeat_age_s,omitempty"`
+	Stale       bool    `json:"heartbeat_stale,omitempty"`
 }
 
 // HostMemory is the node's memory story for the run: the floor it reached and
@@ -234,6 +247,13 @@ func Build(cfg model.RunConfig, plan schedule.Plan, st *store.Store) (*Report, e
 
 	rep.Instances = summariseInstances(instances)
 
+	if raw, err := st.Autoscaler(cfg.RunID); err == nil && raw != "" {
+		var state AutoscalerState
+		if json.Unmarshal([]byte(raw), &state) == nil {
+			rep.Autoscaler = &state
+		}
+	}
+
 	if replicas, err := st.RunReplicas(cfg.RunID); err == nil {
 		rep.Replicas = replicas
 	}
@@ -346,6 +366,17 @@ func (r *Report) Print(w io.Writer) {
 		r.Resources.CPUCoreSecondsP50, r.Resources.CPUCoreSecondsMax)
 	fmt.Fprintf(w, "memory peak       p50 %.0f MiB  max %.0f MiB  working-set max %.0f MiB\n",
 		r.Resources.MemPeakP50MiB, r.Resources.MemPeakMaxMiB, r.Resources.WorkingSetPeakMaxMiB)
+	if r.Autoscaler != nil {
+		scalerState := "none"
+		if r.Autoscaler.PoolScaler != nil && *r.Autoscaler.PoolScaler {
+			scalerState = fmt.Sprintf("session-lab-autoscaler min=%d max=%d every %.0fs (heartbeat %.0fs ago)",
+				r.Autoscaler.Min, r.Autoscaler.Max, r.Autoscaler.IntervalS, r.Autoscaler.HeartbeatS)
+			if r.Autoscaler.Stale {
+				scalerState += " STALE"
+			}
+		}
+		fmt.Fprintf(w, "autoscaling       hpa=%d keda=%v %s\n", r.Autoscaler.HPACount, r.Autoscaler.KEDA, scalerState)
+	}
 	if r.Template != nil {
 		fmt.Fprintf(w, "template %s      requests cpu=%dm mem=%.0fMiB, limits cpu=%dm mem=%.0fMiB\n",
 			r.Template.Container, r.Template.CPURequestMilli, r.Template.MemRequestMiB,

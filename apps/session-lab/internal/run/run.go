@@ -79,6 +79,9 @@ type Options struct {
 	HostMemory func() (total, available, swapTotal, swapFree int64)
 	// Recorder exports run progress; nil disables the export.
 	Recorder Recorder
+	// AutoscalerInfo returns what autoscaling exists for this run, as JSON. The
+	// runner records it rather than being told what to assume.
+	AutoscalerInfo func(ctx context.Context) (string, error)
 }
 
 // Runner executes one plan.
@@ -105,6 +108,7 @@ type Runner struct {
 	// hostMemory reports the node's memory, when a reader was supplied.
 	hostMemory func() (total, available, swapTotal, swapFree int64)
 	rec        Recorder
+	autoscaler func(ctx context.Context) (string, error)
 
 	// minAvailable and memTotal are the node memory extremes the run saw.
 	minAvailable   int64
@@ -127,6 +131,7 @@ func New(cfg model.RunConfig, opts Options) *Runner {
 		log: logger, now: now, all: map[string]*adapter.Instance{}, counts: map[model.Outcome]int{},
 		hostMemory: opts.HostMemory,
 		rec:        opts.Recorder,
+		autoscaler: opts.AutoscalerInfo,
 	}
 }
 
@@ -199,6 +204,19 @@ func (r *Runner) preflight(ctx context.Context) error {
 	r.log.Printf("preflight: node %s allocatable cpu=%dm memory=%dMiB pods=%d",
 		node.Name, node.CPUMilli, node.MemBytes/(1<<20), node.Pods)
 	r.recordReplicas(pool, "preflight")
+
+	// Whether anything scales this pool is part of the run's configuration.
+	if r.autoscaler != nil {
+		info, err := r.autoscaler(ctx)
+		if err != nil {
+			r.log.Printf("preflight: autoscaler info unavailable: %v", err)
+		} else if info != "" {
+			if err := r.st.SaveAutoscaler(r.cfg.RunID, info); err != nil {
+				r.log.Printf("preflight: record autoscaler: %v", err)
+			}
+			r.log.Printf("preflight: autoscaler %s", info)
+		}
+	}
 
 	// What the sandbox is held to belongs with the run: a throttling count
 	// without its limit is not a finding.

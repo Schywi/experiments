@@ -27,7 +27,8 @@ CREATE TABLE IF NOT EXISTS runs (
     started_ns  INTEGER NOT NULL,
     ended_ns    INTEGER,
     replicas    TEXT NOT NULL DEFAULT '[]',
-    limits      TEXT NOT NULL DEFAULT ''
+    limits      TEXT NOT NULL DEFAULT '',
+    autoscaler  TEXT NOT NULL DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS sessions (
@@ -181,6 +182,22 @@ func (s *Store) RunReplicas(runID string) ([]ReplicaSample, error) {
 		return nil, err
 	}
 	return samples, nil
+}
+
+// SaveAutoscaler records the autoscaling configuration a run was executed under.
+func (s *Store) SaveAutoscaler(runID, payload string) error {
+	_, err := s.db.Exec(`UPDATE runs SET autoscaler = ? WHERE run_id = ?`, payload, runID)
+	return err
+}
+
+// Autoscaler returns the recorded autoscaling configuration, as JSON.
+func (s *Store) Autoscaler(runID string) (string, error) {
+	var payload string
+	err := s.db.QueryRow(`SELECT autoscaler FROM runs WHERE run_id = ?`, runID).Scan(&payload)
+	if err != nil {
+		return "", err
+	}
+	return payload, nil
 }
 
 // TemplateLimits returns the recorded template limits for a run, as JSON.
