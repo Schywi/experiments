@@ -13,6 +13,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strings"
 	"sync"
 	"time"
 
@@ -286,7 +287,7 @@ func (r *Runner) session(ctx context.Context, planned schedule.Planned) {
 			r.persistInstance(instance)
 		}
 	} else {
-		name := fmt.Sprintf("lab-%s-%d", r.cfg.RunID, planned.ID)
+		name := claimName(r.cfg.RunID, planned.ID)
 		acquired, err := r.ad.Acquire(ctx, r.cfg.Namespace, r.cfg.Pool, name)
 		if err != nil {
 			outcome := model.OutcomeAcquisitionFailed
@@ -337,10 +338,10 @@ func (r *Runner) session(ctx context.Context, planned schedule.Planned) {
 		holdCtx, cancelHold = context.WithTimeout(sampleCtx, r.cfg.SessionDeadline)
 		defer cancelHold()
 	}
-	reading, ok := r.hold(holdCtx, instance, planned.Hold)
-	if !ok {
+	reading, completed, sampled := r.hold(holdCtx, instance, planned.Hold)
+	if !completed {
 		// A cancelled or expired hold still reports the resources it consumed.
-		applyReading(&session, reading, r.smp != nil)
+		applyReading(&session, reading, sampled)
 		session.HoldEndNS = r.now().UnixNano()
 		outcome := model.OutcomeLostUnknown
 		if ctx.Err() != nil {
@@ -352,7 +353,7 @@ func (r *Runner) session(ctx context.Context, planned schedule.Planned) {
 		return
 	}
 	session.HoldEndNS = r.now().UnixNano()
-	applyReading(&session, reading, r.smp != nil)
+	applyReading(&session, reading, sampled)
 
 	switch r.cfg.Policy {
 	case model.PolicyReuse:
@@ -395,7 +396,7 @@ func (r *Runner) session(ctx context.Context, planned schedule.Planned) {
 }
 
 // hold sleeps for the session's duration while sampling the instance.
-func (r *Runner) hold(ctx context.Context, instance *adapter.Instance, d time.Duration) (Reading, bool) {
+func (r *Runner) hold(ctx context.Context, instance *adapter.Instance, d time.Duration) (Reading, bool, bool) {
 	var merged Reading
 	var have bool
 	sample := func() {
@@ -422,10 +423,10 @@ func (r *Runner) hold(ctx context.Context, instance *adapter.Instance, d time.Du
 		select {
 		case <-ctx.Done():
 			sample()
-			return merged, false
+			return merged, false, have
 		case <-timer.C:
 			sample()
-			return merged, true
+			return merged, true, have
 		case <-ticker.C:
 			sample()
 		}
@@ -678,4 +679,24 @@ func (r *Runner) Counts() map[model.Outcome]int {
 		out[k] = v
 	}
 	return out
+}
+
+// claimName builds a DNS-1123 subdomain for a session's claim. The run id can
+// carry uppercase letters (a UTC timestamp), which Kubernetes rejects, so the
+// name is lowercased and anything outside [a-z0-9-] becomes a dash.
+func claimName(runID string, id int64) string {
+	cleaned := make([]rune, 0, len(runID))
+	for _, r := range strings.ToLower(runID) {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
+			cleaned = append(cleaned, r)
+		case r == '-', r == '.':
+			cleaned = append(cleaned, '-')
+		}
+	}
+	name := fmt.Sprintf("lab-%s-%d", strings.Trim(string(cleaned), "-"), id)
+	if len(name) > 63 {
+		name = name[len(name)-63:]
+	}
+	return name
 }

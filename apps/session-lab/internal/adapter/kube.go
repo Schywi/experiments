@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -134,28 +135,51 @@ func (k *Kube) WaitReady(ctx context.Context, instance *Instance) error {
 }
 
 // fillFromSandbox reads the sandbox the claim adopted: creation order tells warm
-// from cold, and the status carries the pod identity the sampler needs.
+// from cold, and the status carries the node, the pod IPs and the label selector
+// that identifies the pod the sampler needs.
 func (k *Kube) fillFromSandbox(ctx context.Context, instance *Instance) (bool, error) {
 	sandbox, err := k.dyn.Resource(gvrSandboxes).Namespace(instance.Namespace).Get(ctx, instance.Sandbox, metav1.GetOptions{})
 	if err != nil {
 		return false, nil
 	}
 	instance.Warm = sandbox.GetCreationTimestamp().UnixNano() < instance.CreatedNS
-	status, _, _ := unstructured.NestedMap(sandbox.Object, "status")
-	if status != nil {
-		if ips, ok, _ := unstructured.NestedStringSlice(sandbox.Object, "status", "podIPs"); ok && len(ips) > 0 {
-			instance.PodIP = ips[0]
+	if ips, ok, _ := unstructured.NestedStringSlice(sandbox.Object, "status", "podIPs"); ok && len(ips) > 0 {
+		instance.PodIP = ips[0]
+	}
+	if node, ok, _ := unstructured.NestedString(sandbox.Object, "status", "nodeName"); ok {
+		instance.Node = node
+	}
+
+	// The pod itself carries the UID the cgroup reader joins on. This cluster
+	// labels the pod with status.selector and does not set a pod-name
+	// annotation, so the selector is the reliable route.
+	if selector, ok, _ := unstructured.NestedString(sandbox.Object, "status", "selector"); ok && selector != "" {
+		pods, err := k.core.CoreV1().Pods(instance.Namespace).List(ctx, metav1.ListOptions{LabelSelector: selector, Limit: 1})
+		if err == nil {
+			for _, pod := range pods.Items {
+				instance.PodUID = string(pod.UID)
+				if instance.Node == "" {
+					instance.Node = pod.Spec.NodeName
+				}
+				if instance.PodIP == "" && pod.Status.PodIP != "" {
+					instance.PodIP = pod.Status.PodIP
+				}
+				break
+			}
 		}
 	}
-	// The pod name is annotated on the sandbox; the pod itself carries the UID
-	// and node the sampler joins on.
-	if podName, ok, _ := unstructured.NestedString(sandbox.Object, "metadata", "annotations", "agents.x-k8s.io/pod-name"); ok && podName != "" {
-		pod, err := k.core.CoreV1().Pods(instance.Namespace).Get(ctx, podName, metav1.GetOptions{})
-		if err == nil {
-			instance.PodUID = string(pod.UID)
-			instance.Node = pod.Spec.NodeName
-			if instance.PodIP == "" && pod.Status.PodIP != "" {
-				instance.PodIP = pod.Status.PodIP
+	// Older manifests annotate the pod name instead; keep that path as a
+	// fallback rather than depending on either one.
+	if instance.PodUID == "" {
+		if podName, ok, _ := unstructured.NestedString(sandbox.Object, "metadata", "annotations", "agents.x-k8s.io/pod-name"); ok && podName != "" {
+			if pod, err := k.core.CoreV1().Pods(instance.Namespace).Get(ctx, podName, metav1.GetOptions{}); err == nil {
+				instance.PodUID = string(pod.UID)
+				if instance.Node == "" {
+					instance.Node = pod.Spec.NodeName
+				}
+				if instance.PodIP == "" && pod.Status.PodIP != "" {
+					instance.PodIP = pod.Status.PodIP
+				}
 			}
 		}
 	}
@@ -367,17 +391,29 @@ func NodePathForCgroup() string {
 }
 
 // PodCgroupDir finds the cgroup directory for a pod UID under root.
+//
+// systemd's cgroup driver spells the pod UID into the slice name with
+// underscores, not dashes (kubepods-burstable-pod0b845006_2d0c_4338_....slice),
+// and the container scopes live underneath it. The slice is the right level to
+// read: it aggregates every container in the pod, which is what a session costs.
 func PodCgroupDir(root, podUID string) (string, error) {
 	if podUID == "" {
 		return "", fmt.Errorf("no pod UID")
 	}
-	pattern := filepath.Join(root, "kubepods.slice", "kubepods-*.slice", "*"+podUID+"*")
-	matches, err := filepath.Glob(pattern)
-	if err != nil {
-		return "", err
+	forms := []string{podUID, strings.ReplaceAll(podUID, "-", "_")}
+	for _, form := range forms {
+		for _, pattern := range []string{
+			filepath.Join(root, "kubepods.slice", "*", "*pod"+form+"*.slice"),
+			filepath.Join(root, "kubepods.slice", "*", "*"+form+"*.slice"),
+			filepath.Join(root, "kubepods.slice", "*", "*"+form+"*.scope"),
+			filepath.Join(root, "kubepods.slice", "*"+form+"*.slice"),
+		} {
+			matches, err := filepath.Glob(pattern)
+			if err != nil || len(matches) == 0 {
+				continue
+			}
+			return matches[0], nil
+		}
 	}
-	if len(matches) == 0 {
-		return "", fmt.Errorf("no cgroup for pod %s under %s", podUID, root)
-	}
-	return matches[0], nil
+	return "", fmt.Errorf("no cgroup for pod %s under %s", podUID, root)
 }

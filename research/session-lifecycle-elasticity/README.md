@@ -20,6 +20,7 @@
 | [02 — Objective and what a 10k-session run can claim](02-objective-and-soak-statistics.md) | What is the experiment, and what may its result say? | Soak / capacity / mechanism split, the Little's-law arithmetic that turns a target rate into a host count, rule-of-three bounds on a zero-failure result, and the metric gaps |
 | [03 — What exists today](03-what-exists-today.md) | What does the platform already do, and what does a session-elasticity test still need? | The five `test/stress` phase kinds, external-only autoscaling via HPA/KEDA, the four meanings of "idle", and five gaps |
 | [04 — The deliverable](04-deliverable.md) | What gets built, and under which rules? | The session scheduler and experiment runner: four parts, the lifecycle table, the outcome enum, the four policies, the three elasticity configurations, the report contract, and the boundary list |
+| [05 — The first run](05-first-run.md) | What did the runner actually measure, and what did it get wrong? | A two-session smoke test with its numbers, the three defects execution found, and the throttling that makes its hold latency an artifact |
 
 Read 04 for what is being built and under which rules, 03 for the baseline, 02 for the experiment
 shape, 01 for the instrument.

@@ -99,6 +99,10 @@ func (c *Config) buildMix(mix string, hold time.Duration) error {
 		return nil
 	}
 	if c.Sessions <= 0 {
+		if c.DryRun {
+			// A dry run supplies its own two-session mix; nothing to build here.
+			return nil
+		}
 		return fmt.Errorf("give --sessions or --mix")
 	}
 	if hold <= 0 {
@@ -145,7 +149,7 @@ func (c *Config) validate() error {
 	default:
 		return fmt.Errorf("--policy %q is not reuse|destroy|suspend", c.Policy)
 	}
-	if c.Sessions <= 0 {
+	if c.Sessions <= 0 && !c.DryRun {
 		return fmt.Errorf("--sessions must be positive, got %d", c.Sessions)
 	}
 	if c.OverloadFactor <= 0 {
