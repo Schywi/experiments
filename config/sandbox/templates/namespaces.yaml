@@ -1,0 +1,14 @@
+# Only the namespace this chart owns.
+#
+# agent-sandbox-system is NOT declared here: the pinned upstream release manifest
+# (config/sandbox/install.sh) creates it along with the controller, so a chart
+# that also managed it would either fight Helm's ownership metadata or adopt a
+# namespace it does not own. The router still lives in it, via explicit
+# metadata.namespace on each object.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ .Values.sandboxes.namespace }}
+  labels:
+    {{- include "sandbox.labels" . | nindent 4 }}
+    kubernetes.io/metadata.name: {{ .Values.sandboxes.namespace }}

@@ -1,0 +1,104 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>E6 click targets</title>
+<!--
+  The page the click tests act on: boxes with known geometry, and four identical
+  "delete" buttons that differ only by the id text beside them, which is the
+  look-alike case in miniature.
+
+  Nothing here reaches the cluster. A successful click toggles a data attribute and
+  appends a line to #log, so the click's effect is observable in the DOM and in the
+  screenshot without any side effect outside the page.
+
+  Every target carries data-target="<name>" so the accessibility tree, the DOM and
+  the labels agree on one identity.
+-->
+<style>
+  html, body { margin: 0; padding: 0; width: 1280px; height: 600px;
+               background: #0f1115; overflow: hidden; }
+  body { font: 13px/1.4 ui-monospace, monospace; color: #d7dbe0; }
+  .row { display: flex; gap: 12px; padding: 16px 20px; }
+  button { font: inherit; padding: 10px 16px; border-radius: 6px; cursor: pointer;
+           background: #1f2937; color: #e5e7eb; border: 1px solid #374151; }
+  button[data-armed="1"] { background: #14532d; border-color: #22c55e; }
+  .card { position: absolute; width: 280px; border: 1px solid #374151;
+          border-radius: 8px; background: #151922; padding: 10px; }
+  .card h3 { margin: 0 0 6px; font-size: 12px; color: #9aa4b2; font-weight: 400; }
+  .card .acts { display: flex; gap: 8px; margin-top: 8px; }
+  .small { font-size: 11px; padding: 6px 10px; }
+  #log { position: absolute; left: 20px; bottom: 14px; font-size: 11px; color: #86efac; }
+</style>
+<body>
+  <div class="row">
+    <button data-target="claim" data-armed="0" aria-label="claim sandbox">+ claim</button>
+    <button data-target="bare" data-armed="0" aria-label="bare sandbox">+ bare sandbox</button>
+    <button data-target="fill" data-armed="0" aria-label="fill demo grid">fill demo grid</button>
+    <button data-target="teardown" data-armed="0" aria-label="teardown sandboxes">teardown</button>
+    <button data-target="capacity" data-armed="0" aria-label="capacity check">capacity</button>
+  </div>
+
+  <!-- four look-alike cards: same button text, different id -->
+  <div class="card" style="left:40px;top:90px" data-card="browser-pool-22grt">
+    <h3>browser-pool-22grt</h3>
+    <div>ready · warm · 155 MB</div>
+    <div class="acts">
+      <button class="small" data-target="probe-22grt" data-armed="0" aria-label="probe browser-pool-22grt">probe</button>
+      <button class="small" data-target="delete-22grt" data-armed="0" aria-label="delete browser-pool-22grt">delete</button>
+    </div>
+  </div>
+  <div class="card" style="left:340px;top:90px" data-card="browser-pool-65l7z">
+    <h3>browser-pool-65l7z</h3>
+    <div>ready · warm · 161 MB</div>
+    <div class="acts">
+      <button class="small" data-target="probe-65l7z" data-armed="0" aria-label="probe browser-pool-65l7z">probe</button>
+      <button class="small" data-target="delete-65l7z" data-armed="0" aria-label="delete browser-pool-65l7z">delete</button>
+    </div>
+  </div>
+  <div class="card" style="left:640px;top:90px" data-card="browser-pool-gvw9t">
+    <h3>browser-pool-gvw9t</h3>
+    <div>ready · warm · 158 MB</div>
+    <div class="acts">
+      <button class="small" data-target="probe-gvw9t" data-armed="0" aria-label="probe browser-pool-gvw9t">probe</button>
+      <button class="small" data-target="delete-gvw9t" data-armed="0" aria-label="delete browser-pool-gvw9t">delete</button>
+    </div>
+  </div>
+  <div class="card" style="left:940px;top:90px" data-card="browser-pool-hb765">
+    <h3>browser-pool-hb765</h3>
+    <div>ready · warm · 149 MB</div>
+    <div class="acts">
+      <button class="small" data-target="probe-hb765" data-armed="0" aria-label="probe browser-pool-hb765">probe</button>
+      <button class="small" data-target="delete-hb765" data-armed="0" aria-label="delete browser-pool-hb765">delete</button>
+    </div>
+  </div>
+
+  <!-- scroll fodder: the same buttons again below the fold, for the after-scroll tasks -->
+  <div class="card" style="left:40px;top:640px" data-card="below-1">
+    <h3>browser-pool-22grt</h3>
+    <div class="acts">
+      <button class="small" data-target="probe-22grt-below" data-armed="0" aria-label="probe browser-pool-22grt below the fold">probe</button>
+      <button class="small" data-target="delete-22grt-below" data-armed="0" aria-label="delete browser-pool-22grt below the fold">delete</button>
+    </div>
+  </div>
+  <div class="card" style="left:340px;top:640px" data-card="below-2">
+    <h3>browser-pool-ww79w</h3>
+    <div class="acts">
+      <button class="small" data-target="probe-ww79w-below" data-armed="0" aria-label="probe browser-pool-ww79w below the fold">probe</button>
+      <button class="small" data-target="delete-ww79w-below" data-armed="0" aria-label="delete browser-pool-ww79w below the fold">delete</button>
+    </div>
+  </div>
+
+  <div id="log" aria-live="polite"></div>
+
+<script>
+  // A click is only observed through the page state: data-armed flips, and the
+  // target's name lands in #log. No network, no cluster, no side effects.
+  document.addEventListener("click", function (event) {
+    var el = event.target.closest("button[data-target]");
+    if (!el) return;
+    var was = el.dataset.armed === "1";
+    el.dataset.armed = was ? "0" : "1";
+    document.getElementById("log").textContent =
+      (was ? "off " : "on ") + el.dataset.target + " @" + Math.round(event.clientX) + "," + Math.round(event.clientY);
+  });
+</script>
+</body>

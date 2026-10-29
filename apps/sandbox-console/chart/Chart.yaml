@@ -1,0 +1,6 @@
+apiVersion: v2
+name: sandbox-console
+description: Read-only pane over live agent-sandbox Chromium sandboxes (M1-M3 of the sandbox-console RFC)
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

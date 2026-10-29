@@ -1,0 +1,20 @@
+{{- if .Values.persistence.enabled }}
+# Timings outlive the pod. The four compare timers only exist at creation, so a
+# sandbox that has been running for hours can only be compared if its numbers
+# were written down -- and an emptyDir loses them on every deploy.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: sandbox-console-data
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "sandbox-console.labels" . | nindent 4 }}
+spec:
+  accessModes: ["ReadWriteOnce"]
+  {{- with .Values.persistence.storageClassName }}
+  storageClassName: {{ . }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.persistence.size }}
+{{- end }}

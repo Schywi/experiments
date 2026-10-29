@@ -67,10 +67,12 @@ spec:
               protocol: TCP
     # External access: the Cilium Ingress (Browser on 7474) and the
     # LoadBalancer (bolt 7687 / Browser 7474) for out-of-cluster clients.
+    # `cluster` admits pod traffic, which is what a browser sandbox sends.
     - fromEntities:
         - ingress
         - world
         - host
+        - cluster
       toPorts:
         - ports:
             - port: "7474"

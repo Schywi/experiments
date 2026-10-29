@@ -1,0 +1,107 @@
+# The single E6 model: Qwen3-VL-2B-Instruct Q8_0 on llama-server, Vulkan backend.
+#
+# Same image and args E5 proved (benchmark/experiments/e5-vlm-grounding), at
+# `replicas: 0`: nothing is resident until a run scales it to 1, and the namespace
+# quota refuses a second copy while the first holds `amd.com/render`.
+#
+# The weights file is Q8_0 because ggml-org/Qwen3-VL-2B-Instruct-GGUF publishes no
+# Q4_K_M — E5 found that the hard way, with a curl 404 crash-loop.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: qwen3vl
+  namespace: vlm-e6
+  labels: {app.kubernetes.io/part-of: vlm-e6, arm: qwen3vl}
+spec:
+  replicas: 0
+  strategy: {type: Recreate}
+  selector:
+    matchLabels: {arm: qwen3vl}
+  template:
+    metadata:
+      labels: {arm: qwen3vl, app.kubernetes.io/part-of: vlm-e6}
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 20
+      securityContext:
+        seccompProfile: {type: RuntimeDefault}
+      initContainers:
+        - name: fetch-weights
+          image: 127.0.0.1:5000/vlm-server:local
+          imagePullPolicy: Always
+          command: ["sh", "-c"]
+          args:
+            - |
+              set -e
+              dir=/models/qwen3vl
+              mkdir -p "$dir"
+              base=https://huggingface.co/ggml-org/Qwen3-VL-2B-Instruct-GGUF/resolve/main
+              for f in Qwen3-VL-2B-Instruct-Q8_0.gguf mmproj-Qwen3-VL-2B-Instruct-Q8_0.gguf; do
+                [ -f "$dir/$f" ] || curl -fL --retry 3 -o "$dir/$f" "$base/$f"
+              done
+              ls -l "$dir"
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: ["ALL"]}
+          resources:
+            requests: {cpu: 100m, memory: 256Mi}
+            limits: {cpu: "2", memory: 1Gi}
+          volumeMounts:
+            - {name: models, mountPath: /models}
+      containers:
+        - name: vlm
+          image: 127.0.0.1:5000/vlm-server:local
+          imagePullPolicy: Always
+          args:
+            - "-m"
+            - "/models/qwen3vl/Qwen3-VL-2B-Instruct-Q8_0.gguf"
+            - "--mmproj"
+            - "/models/qwen3vl/mmproj-Qwen3-VL-2B-Instruct-Q8_0.gguf"
+            - "-ngl"
+            - "99"
+            - "-c"
+            - "4096"
+            - "--threads"
+            - "4"
+            - "--jinja"
+            - "--host"
+            - "0.0.0.0"
+            - "--port"
+            - "8000"
+          ports:
+            - {name: http, containerPort: 8000}
+          startupProbe:
+            httpGet: {path: /health, port: http}
+            periodSeconds: 5
+            failureThreshold: 120
+          readinessProbe:
+            httpGet: {path: /health, port: http}
+            periodSeconds: 10
+            failureThreshold: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: ["ALL"]}
+          env:
+            - {name: HOME, value: /tmp}
+          resources:
+            requests: {cpu: "1", memory: 2Gi, amd.com/render: 1}
+            limits: {cpu: "4", memory: 4Gi, amd.com/render: 1}
+          volumeMounts:
+            - {name: models, mountPath: /models}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: models
+          persistentVolumeClaim: {claimName: qwen-models}
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: qwen3vl
+  namespace: vlm-e6
+  labels: {app.kubernetes.io/part-of: vlm-e6, arm: qwen3vl}
+spec:
+  selector: {arm: qwen3vl}
+  ports:
+    - {name: http, port: 8000, targetPort: http}

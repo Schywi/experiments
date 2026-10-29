@@ -1,0 +1,62 @@
+# The two pages the experiment renders inside the sandbox.
+#
+# The console's own /static/ is fixed at image build time and `apps/` is out of
+# scope for E6, so the pages are served from a pod in this namespace instead.
+# Template-derived sandboxes may reach any pod in the cluster
+# (config/sandbox/templates/lan-egress-networkpolicy.yaml), which is what makes
+# the sandbox's Chromium able to load http://cal-page.vlm-e6.svc.cluster.local:8000/.
+#
+# The ConfigMap is created from the files, not from this manifest, so the page in
+# the cluster is byte-identical to the page in the repo:
+#
+#   kubectl -n vlm-e6 create configmap pages \
+#     --from-file=calibration.html=harness/page/calibration.html \
+#     --from-file=targets.html=harness/page/targets.html \
+#     --dry-run=client -o yaml | kubectl apply -f -
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cal-page
+  namespace: vlm-e6
+  labels: {app.kubernetes.io/part-of: vlm-e6}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: cal-page}
+  template:
+    metadata:
+      labels: {app: cal-page, app.kubernetes.io/part-of: vlm-e6}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: http
+          image: python:3.12-slim
+          command: ["python3", "-m", "http.server", "8000", "--directory", "/srv"]
+          ports:
+            - {name: http, containerPort: 8000}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: ["ALL"]}
+          resources:
+            requests: {cpu: 20m, memory: 32Mi}
+            limits: {cpu: 200m, memory: 128Mi}
+          volumeMounts:
+            - {name: pages, mountPath: /srv, readOnly: true}
+      volumes:
+        - name: pages
+          configMap: {name: pages}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cal-page
+  namespace: vlm-e6
+  labels: {app.kubernetes.io/part-of: vlm-e6}
+spec:
+  selector: {app: cal-page}
+  ports:
+    - {name: http, port: 8000, targetPort: http}

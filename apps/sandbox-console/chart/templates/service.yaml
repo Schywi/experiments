@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: sandbox-console
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "sandbox-console.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.type | default "ClusterIP" }}
+  {{- with .Values.service.loadBalancerIP }}
+  loadBalancerIP: {{ . }}
+  {{- end }}
+  selector:
+    {{- include "sandbox-console.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.service.port }}
+      targetPort: http
+    # Port 80 too, so http://192.168.0.249/ works with no port suffix.
+    - name: web
+      port: 80
+      targetPort: http

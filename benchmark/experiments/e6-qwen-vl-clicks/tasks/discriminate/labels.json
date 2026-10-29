@@ -1,0 +1,69 @@
+{
+  "tolerance_px": 32,
+  "band_px": 64,
+  "method": "getBoundingClientRect() centre of each card's delete button, read from the page's own DOM over the console's CDP bridge in the same second console-home.png was captured. The four cards sit in one row, so the four buttons differ only in x: 282, 594, 906, 1218 at y 567.",
+  "measured": {
+    "frame": "../baseline/console-home.png",
+    "url": "http://192.168.0.250:8080/",
+    "captured": "2026-10-26",
+    "note": "Same capture as the baseline arm. The sandboxes those cards belonged to were deleted after the capture, so the frame is frozen evidence rather than a live page; that is deliberate, and it is why the four buttons are indistinguishable except by the id printed in each card header."
+  },
+  "tasks": {
+    "t-disc-22grt": {
+      "labels": [
+        "delete browser-pool-22grt",
+        "browser-pool-22grt delete",
+        "delete 22grt",
+        "22grt"
+      ],
+      "element": "button[data-act=delete][data-id=browser-pool-22grt]",
+      "point": {
+        "x": 282,
+        "y": 567
+      },
+      "ax_match": "browser-pool-22grt"
+    },
+    "t-disc-65l7z": {
+      "labels": [
+        "delete browser-pool-65l7z",
+        "browser-pool-65l7z delete",
+        "delete 65l7z",
+        "65l7z"
+      ],
+      "element": "button[data-act=delete][data-id=browser-pool-65l7z]",
+      "point": {
+        "x": 594,
+        "y": 567
+      },
+      "ax_match": "browser-pool-65l7z"
+    },
+    "t-disc-gvw9t": {
+      "labels": [
+        "delete browser-pool-gvw9t",
+        "browser-pool-gvw9t delete",
+        "delete gvw9t",
+        "gvw9t"
+      ],
+      "element": "button[data-act=delete][data-id=browser-pool-gvw9t]",
+      "point": {
+        "x": 906,
+        "y": 567
+      },
+      "ax_match": "browser-pool-gvw9t"
+    },
+    "t-disc-hb765": {
+      "labels": [
+        "delete browser-pool-hb765",
+        "browser-pool-hb765 delete",
+        "delete hb765",
+        "hb765"
+      ],
+      "element": "button[data-act=delete][data-id=browser-pool-hb765]",
+      "point": {
+        "x": 1218,
+        "y": 567
+      },
+      "ax_match": "browser-pool-hb765"
+    }
+  }
+}

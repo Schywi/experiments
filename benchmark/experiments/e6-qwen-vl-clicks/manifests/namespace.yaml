@@ -1,0 +1,71 @@
+# The E6 namespace and the quota that keeps one model resident at a time.
+#
+# Same shape as E5's: the arms sit at `replicas: 0`, and `amd.com/render` is capped
+# at 1 in both requests and limits, so a second model pod cannot be admitted while
+# the first holds the node's single render device. Here there is only one arm
+# (Qwen3-VL), so the quota's job is to stop an accidental second copy during a
+# rerun, not to arbitrate between models.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: vlm-e6
+  labels:
+    app.kubernetes.io/part-of: vlm-e6
+    pod-security.kubernetes.io/enforce: baseline
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: qwen-models
+  namespace: vlm-e6
+  labels: {app.kubernetes.io/part-of: vlm-e6}
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 6Gi
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: one-model-at-a-time
+  namespace: vlm-e6
+spec:
+  hard:
+    requests.amd.com/render: "1"
+    limits.amd.com/render: "1"
+    requests.cpu: "6"
+    requests.memory: 12Gi
+    pods: "8"
+---
+# The task sets carry three 1280x600 PNGs (~390 KB together), which is over what a
+# ConfigMap can carry, so the fixtures live on a claim and run_e6.sh copies the
+# tree in once with a short-lived loader pod.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: e6-fixtures
+  namespace: vlm-e6
+  labels: {app.kubernetes.io/part-of: vlm-e6}
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 1Gi
+---
+# events.jsonl is the run's only durable output, and it is written while the run is
+# still going, so it cannot live on an emptyDir.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: e6-results
+  namespace: vlm-e6
+  labels: {app.kubernetes.io/part-of: vlm-e6}
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 1Gi

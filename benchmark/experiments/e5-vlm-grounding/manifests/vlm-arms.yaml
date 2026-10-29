@@ -1,0 +1,317 @@
+# The three arms, all at `replicas: 0`.
+#
+# Nothing here is up until a run scales exactly one of them to 1. The namespace's
+# ResourceQuota (`requests.amd.com/render: "1"`) refuses a second one while the
+# first holds the grant, so the sequential rule is enforced by the cluster.
+#
+# Per arm: one Deployment, one ClusterIP Service (so the runner addresses
+# `http://vlm-<arm>:8000`), weights and the mmproj projector fetched by an init
+# container onto the shared `vlm-models` PVC. The image carries no weights.
+#
+#   kubectl -n vlm-exp scale deploy/vlm-smolvlm2 --replicas=1
+#   kubectl -n vlm-exp rollout status deploy/vlm-smolvlm2 --timeout=600s
+#   ... run the runner Job ...
+#   kubectl -n vlm-exp scale deploy/vlm-smolvlm2 --replicas=0
+#   kubectl -n vlm-exp wait --for=delete pod -l arm=smolvlm2 --timeout=300s
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vlm-smolvlm2
+  namespace: vlm-exp
+  labels: {app.kubernetes.io/part-of: vlm-lab, arm: smolvlm2}
+spec:
+  replicas: 0
+  strategy: {type: Recreate}
+  selector:
+    matchLabels: {arm: smolvlm2}
+  template:
+    metadata:
+      labels: {arm: smolvlm2, app.kubernetes.io/part-of: vlm-lab}
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 20
+      securityContext:
+        seccompProfile: {type: RuntimeDefault}
+      initContainers:
+        - name: fetch-weights
+          image: 127.0.0.1:5000/vlm-server:local
+          imagePullPolicy: Always
+          command: ["sh", "-c"]
+          args:
+            - |
+              set -e
+              dir=/models/smolvlm2
+              mkdir -p "$dir"
+              base=https://huggingface.co/ggml-org/SmolVLM2-500M-Video-Instruct-GGUF/resolve/main
+              for f in SmolVLM2-500M-Video-Instruct-Q8_0.gguf mmproj-SmolVLM2-500M-Video-Instruct-Q8_0.gguf; do
+                [ -f "$dir/$f" ] || curl -fL --retry 3 -o "$dir/$f" "$base/$f"
+              done
+              ls -l "$dir"
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: ["ALL"]}
+          resources:
+            requests: {cpu: 100m, memory: 256Mi}
+            limits: {cpu: "2", memory: 1Gi}
+          volumeMounts:
+            - {name: models, mountPath: /models}
+      containers:
+        - name: vlm
+          image: 127.0.0.1:5000/vlm-server:local
+          imagePullPolicy: Always
+          args:
+            - "-m"
+            - "/models/smolvlm2/SmolVLM2-500M-Video-Instruct-Q8_0.gguf"
+            - "--mmproj"
+            - "/models/smolvlm2/mmproj-SmolVLM2-500M-Video-Instruct-Q8_0.gguf"
+            - "-ngl"
+            - "99"
+            - "-c"
+            - "4096"
+            - "--threads"
+            - "4"
+            - "--host"
+            - "0.0.0.0"
+            - "--port"
+            - "8000"
+          ports:
+            - {name: http, containerPort: 8000}
+          # The Vulkan device is enumerated and the projector loaded at start-up;
+          # a cold first run also has a fresh shader cache to build.
+          startupProbe:
+            httpGet: {path: /health, port: http}
+            periodSeconds: 5
+            failureThreshold: 120
+          readinessProbe:
+            httpGet: {path: /health, port: http}
+            periodSeconds: 10
+            failureThreshold: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: ["ALL"]}
+          env:
+            - {name: HOME, value: /tmp}
+          resources:
+            requests: {cpu: "1", memory: 2Gi, amd.com/render: 1}
+            limits: {cpu: "4", memory: 4Gi, amd.com/render: 1}
+          volumeMounts:
+            - {name: models, mountPath: /models}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: models
+          persistentVolumeClaim: {claimName: vlm-models}
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vlm-smolvlm2
+  namespace: vlm-exp
+  labels: {app.kubernetes.io/part-of: vlm-lab, arm: smolvlm2}
+spec:
+  selector: {arm: smolvlm2}
+  ports:
+    - {name: http, port: 8000, targetPort: http}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vlm-moondream
+  namespace: vlm-exp
+  labels: {app.kubernetes.io/part-of: vlm-lab, arm: moondream}
+spec:
+  replicas: 0
+  strategy: {type: Recreate}
+  selector:
+    matchLabels: {arm: moondream}
+  template:
+    metadata:
+      labels: {arm: moondream, app.kubernetes.io/part-of: vlm-lab}
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 20
+      securityContext:
+        seccompProfile: {type: RuntimeDefault}
+      initContainers:
+        - name: fetch-weights
+          image: 127.0.0.1:5000/vlm-server:local
+          imagePullPolicy: Always
+          command: ["sh", "-c"]
+          args:
+            - |
+              set -e
+              dir=/models/moondream
+              mkdir -p "$dir"
+              base=https://huggingface.co/ggml-org/moondream2-20250414-GGUF/resolve/main
+              for f in moondream2-text-model-f16_ct-vicuna.gguf moondream2-mmproj-f16-20250414.gguf; do
+                [ -f "$dir/$f" ] || curl -fL --retry 3 -o "$dir/$f" "$base/$f"
+              done
+              ls -l "$dir"
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: ["ALL"]}
+          resources:
+            requests: {cpu: 100m, memory: 256Mi}
+            limits: {cpu: "2", memory: 1Gi}
+          volumeMounts:
+            - {name: models, mountPath: /models}
+      containers:
+        - name: vlm
+          image: 127.0.0.1:5000/vlm-server:local
+          imagePullPolicy: Always
+          args:
+            - "-m"
+            - "/models/moondream/moondream2-text-model-f16_ct-vicuna.gguf"
+            - "--mmproj"
+            - "/models/moondream/moondream2-mmproj-f16-20250414.gguf"
+            - "-ngl"
+            - "99"
+            - "-c"
+            - "4096"
+            - "--threads"
+            - "4"
+            - "--host"
+            - "0.0.0.0"
+            - "--port"
+            - "8000"
+          ports:
+            - {name: http, containerPort: 8000}
+          startupProbe:
+            httpGet: {path: /health, port: http}
+            periodSeconds: 5
+            failureThreshold: 120
+          readinessProbe:
+            httpGet: {path: /health, port: http}
+            periodSeconds: 10
+            failureThreshold: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: ["ALL"]}
+          env:
+            - {name: HOME, value: /tmp}
+          resources:
+            requests: {cpu: "1", memory: 2Gi, amd.com/render: 1}
+            limits: {cpu: "4", memory: 4Gi, amd.com/render: 1}
+          volumeMounts:
+            - {name: models, mountPath: /models}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: models
+          persistentVolumeClaim: {claimName: vlm-models}
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vlm-moondream
+  namespace: vlm-exp
+  labels: {app.kubernetes.io/part-of: vlm-lab, arm: moondream}
+spec:
+  selector: {arm: moondream}
+  ports:
+    - {name: http, port: 8000, targetPort: http}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vlm-qwen3vl
+  namespace: vlm-exp
+  labels: {app.kubernetes.io/part-of: vlm-lab, arm: qwen3vl}
+spec:
+  replicas: 0
+  strategy: {type: Recreate}
+  selector:
+    matchLabels: {arm: qwen3vl}
+  template:
+    metadata:
+      labels: {arm: qwen3vl, app.kubernetes.io/part-of: vlm-lab}
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 20
+      securityContext:
+        seccompProfile: {type: RuntimeDefault}
+      initContainers:
+        - name: fetch-weights
+          image: 127.0.0.1:5000/vlm-server:local
+          imagePullPolicy: Always
+          command: ["sh", "-c"]
+          args:
+            - |
+              set -e
+              dir=/models/qwen3vl
+              mkdir -p "$dir"
+              base=https://huggingface.co/ggml-org/Qwen3-VL-2B-Instruct-GGUF/resolve/main
+              for f in Qwen3-VL-2B-Instruct-Q8_0.gguf mmproj-Qwen3-VL-2B-Instruct-Q8_0.gguf; do
+                [ -f "$dir/$f" ] || curl -fL --retry 3 -o "$dir/$f" "$base/$f"
+              done
+              ls -l "$dir"
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: ["ALL"]}
+          resources:
+            requests: {cpu: 100m, memory: 256Mi}
+            limits: {cpu: "2", memory: 1Gi}
+          volumeMounts:
+            - {name: models, mountPath: /models}
+      containers:
+        - name: vlm
+          image: 127.0.0.1:5000/vlm-server:local
+          imagePullPolicy: Always
+          args:
+            - "-m"
+            - "/models/qwen3vl/Qwen3-VL-2B-Instruct-Q8_0.gguf"
+            - "--mmproj"
+            - "/models/qwen3vl/mmproj-Qwen3-VL-2B-Instruct-Q8_0.gguf"
+            - "-ngl"
+            - "99"
+            - "-c"
+            - "4096"
+            - "--threads"
+            - "4"
+            # Qwen3-VL's chat template lives in the GGUF metadata; without this
+            # llama-server falls back to a template that drops the image part.
+            - "--jinja"
+            - "--host"
+            - "0.0.0.0"
+            - "--port"
+            - "8000"
+          ports:
+            - {name: http, containerPort: 8000}
+          startupProbe:
+            httpGet: {path: /health, port: http}
+            periodSeconds: 5
+            failureThreshold: 120
+          readinessProbe:
+            httpGet: {path: /health, port: http}
+            periodSeconds: 10
+            failureThreshold: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: ["ALL"]}
+          env:
+            - {name: HOME, value: /tmp}
+          resources:
+            requests: {cpu: "1", memory: 2Gi, amd.com/render: 1}
+            limits: {cpu: "4", memory: 4Gi, amd.com/render: 1}
+          volumeMounts:
+            - {name: models, mountPath: /models}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: models
+          persistentVolumeClaim: {claimName: vlm-models}
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vlm-qwen3vl
+  namespace: vlm-exp
+  labels: {app.kubernetes.io/part-of: vlm-lab, arm: qwen3vl}
+spec:
+  selector: {arm: qwen3vl}
+  ports:
+    - {name: http, port: 8000, targetPort: http}

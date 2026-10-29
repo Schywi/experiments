@@ -1,0 +1,64 @@
+# E5 scaffolding: one isolated namespace, its own weights PVC, and a quota that
+# makes "one model at a time" a property of the namespace rather than a promise
+# in a runbook.
+#
+# The quota is the enforcement: `amd.com/render` is a single-device resource on
+# this node, and both the request and the limit are capped at 1, so a second arm
+# cannot be admitted while the first still holds the GPU. Scaling an arm up while
+# another is up is refused by the API server, not caught by a human.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: vlm-exp
+  labels:
+    app.kubernetes.io/part-of: vlm-lab
+    # Pod Security: the arms need no privileges; the render device arrives
+    # through the device plugin's grant, not hostPath.
+    pod-security.kubernetes.io/enforce: baseline
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: vlm-models
+  namespace: vlm-exp
+  labels:
+    app.kubernetes.io/part-of: vlm-lab
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 8Gi
+---
+# The fixture frames live on a PVC rather than in a ConfigMap: three 1280x600
+# PNGs are ~390 KB together, and a ConfigMap's annotation payload caps out at
+# 256 KiB. run_arm.sh copies results/frames/*.png into this claim once, and every
+# arm mounts the same bytes read-only.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: vlm-frames
+  namespace: vlm-exp
+  labels:
+    app.kubernetes.io/part-of: vlm-lab
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 1Gi
+---
+# One render grant at a time, and nothing else shared with `gpu-exp`: the E4
+# namespace keeps its own PVC and its own pods.
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: one-arm-at-a-time
+  namespace: vlm-exp
+spec:
+  hard:
+    requests.amd.com/render: "1"
+    limits.amd.com/render: "1"
+    requests.cpu: "6"
+    requests.memory: 12Gi
+    pods: "6"

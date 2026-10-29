@@ -71,6 +71,12 @@ Application reads the branch its work lives on:
 | `trackc` | models-llm, worm-controller, worm-regression, worm-vector, worm-worker |
 | commit `592d7f51…` | `applications/stable/` bundle, manual sync only |
 
+Two sandbox workloads are **not** Applications: `sandbox` (rev 7, ns
+`agent-sandbox-system`) and `sandbox-console` (rev 5, ns `sandbox-console`) are
+Helm releases. `config/argocd/applications/sandbox-console.yaml` and
+`sandbox-platform.yaml` exist on `feat/sandbox-console` and have never been
+applied.
+
 `main` is the public face of this repository: it is what a visitor reads to
 understand the platform, and nothing in the cluster deploys from it. The
 Applications read the working branches above. Promoting them onto

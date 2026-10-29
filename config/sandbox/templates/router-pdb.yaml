@@ -1,0 +1,15 @@
+# minAvailable: 0 because there is one replica and one node. This PDB exists so
+# a node drain does not silently take the router away from a running demo; it is
+# not an availability guarantee.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: sandbox-router
+  namespace: {{ .Values.router.namespace }}
+  labels:
+    {{- include "sandbox.routerSelector" . | nindent 4 }}
+spec:
+  minAvailable: 0
+  selector:
+    matchLabels:
+      {{- include "sandbox.routerSelector" . | nindent 6 }}

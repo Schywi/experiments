@@ -14,10 +14,15 @@ spec:
   ingress:
     # Cilium Ingress Controller -> Grafana, the Grafana LoadBalancer (192.168.0.245)
     # for out-of-cluster/LAN clients, plus node health probes.
+    #
+    # `cluster` is what lets a browser sandbox render this UI: the sandbox's own
+    # egress policy opens the pod network, and this side has to admit pod traffic
+    # or the render is a timeout (measured from sandbox-demo).
     - fromEntities:
         - ingress
         - world
         - host
+        - cluster
       toPorts:
         - ports:
             - port: "3000"

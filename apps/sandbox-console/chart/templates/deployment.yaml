@@ -1,0 +1,133 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sandbox-console
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "sandbox-console.labels" . | nindent 4 }}
+spec:
+  # One replica, one uvicorn worker: the CDP session cache, the screenshot cache
+  # and the bounded FIFO in concurrency.py are all in-process state. Scaling out
+  # would multiply the limiter and duplicate every capture.
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "sandbox-console.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "sandbox-console.selectorLabels" . | nindent 8 }}
+    spec:
+      serviceAccountName: sandbox-console
+      # Needed twice: for the read-only Kubernetes calls in kube.py, and as the
+      # bearer token the router's TokenReview authorizer validates.
+      automountServiceAccountToken: true
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: sandbox-console
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.service.port }}
+          env:
+            - name: SANDBOX_NAMESPACE
+              value: {{ .Values.sandbox.namespace | quote }}
+            - name: ROUTER_URL
+              value: {{ .Values.sandbox.routerUrl | quote }}
+            - name: SANDBOX_PORT
+              value: {{ .Values.sandbox.port | quote }}
+            - name: SANDBOX_ROUTER_TOKEN
+              value: {{ .Values.sandbox.routerToken | quote }}
+            - name: VIEWPORT_WIDTH
+              value: {{ .Values.view.width | quote }}
+            - name: VIEWPORT_HEIGHT
+              value: {{ .Values.view.height | quote }}
+            - name: MAX_TILES
+              value: {{ .Values.view.maxTiles | quote }}
+            - name: POLL_SECONDS
+              value: {{ .Values.view.pollSeconds | quote }}
+            - name: SHOT_TTL_SECONDS
+              value: {{ .Values.view.shotTtlSeconds | quote }}
+            - name: WRITE_ENABLED
+              value: {{ .Values.writeEnabled | quote }}
+            - name: ALLOW_RAW_SANDBOX
+              value: {{ .Values.allowRawSandbox | quote }}
+            - name: DEMO_TILES
+              value: {{ .Values.demo.tiles | quote }}
+            - name: MAX_CONCURRENT_SANDBOXES
+              value: {{ .Values.demo.maxConcurrent | quote }}
+            - name: SANDBOX_WARM_POOL
+              value: {{ .Values.pool | quote }}
+            - name: SANDBOX_IMAGE
+              value: {{ .Values.sandboxImage | quote }}
+            - name: SANDBOX_TARGET_URL
+              value: {{ .Values.sandboxTargetUrl | quote }}
+            - name: CREATE_TIMEOUT_SECONDS
+              value: {{ .Values.createTimeoutSeconds | quote }}
+            - name: CDP_TRANSPORT
+              value: {{ .Values.transport | quote }}
+            - name: CDP_CONNECT_TIMEOUT
+              value: {{ .Values.cdp.connectTimeoutSeconds | quote }}
+            - name: CDP_COMMAND_TIMEOUT
+              value: {{ .Values.cdp.commandTimeoutSeconds | quote }}
+            - name: CDP_CONCURRENCY
+              value: {{ .Values.cdp.concurrency | quote }}
+            - name: CDP_QUEUE_SIZE
+              value: {{ .Values.cdp.queueSize | quote }}
+            - name: CDP_RETRY_AFTER_SECONDS
+              value: {{ .Values.cdp.retryAfterSeconds | quote }}
+            - name: PROBE_TIMEOUT_MS
+              value: {{ .Values.probes.timeoutMs | quote }}
+            - name: PROBE_REACHABLE_MS
+              value: {{ .Values.probes.reachableMs | quote }}
+            - name: AUDIT_LOG
+              value: /var/log/sandbox-console/audit.jsonl
+            - name: CONSOLE_DB
+              value: {{ .Values.persistence.path | default "/data/console.db" | quote }}
+          startupProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 3
+            failureThreshold: 20
+          readinessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 10
+            failureThreshold: 3
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 30
+            failureThreshold: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: audit
+              mountPath: /var/log/sandbox-console
+            - name: tmp
+              mountPath: /tmp
+            {{- if .Values.persistence.enabled }}
+            - name: data
+              mountPath: /data
+            {{- end }}
+      volumes:
+        # emptyDir on purpose: the audit trail is a per-pod log, not a database
+        # (RFC §10). Losing it on restart is acceptable and cheaper than a PVC.
+        - name: audit
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
+        {{- if .Values.persistence.enabled }}
+        - name: data
+          persistentVolumeClaim:
+            claimName: sandbox-console-data
+        {{- end }}

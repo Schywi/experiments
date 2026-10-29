@@ -1,0 +1,111 @@
+# Built locally (buildah) and pushed to the in-cluster registry (config/registry/).
+image:
+  repository: 127.0.0.1:5000/sandbox-console
+  tag: local
+  # Always: the in-cluster registry serves a mutable `:local` tag.
+  pullPolicy: Always
+
+# Where the sandboxes are and how the console reaches them. Every byte of CDP
+# traffic goes through the router: a template-derived sandbox drops all ingress
+# except pods labelled app=sandbox-router in agent-sandbox-system.
+sandbox:
+  namespace: sandbox-demo
+  # In-cluster Service name, not a LoadBalancer IP: the LAN pool was exhausted by
+  # the Kargo gateways on 2026-10-24, so the router stayed ClusterIP.
+  routerUrl: http://sandbox-router-svc.agent-sandbox-system.svc.cluster.local:8080
+  # Chromium's CDP port. Sent as X-Sandbox-Port on every request because the
+  # router's own default is 8888.
+  port: "9222"
+  # Empty means "use the mounted ServiceAccount token". Only override this
+  # against a router running with --authz-mode=allow-all.
+  routerToken: ""
+
+# Tile geometry and the refresh cadence. A tile is re-captured only when its
+# cached frame is older than shotTtlSeconds.
+view:
+  width: "1280"
+  height: "600"
+  # 8, not 12: ~9.1 actively-driven Chromium instances is what this host's free
+  # CPU supports (experiment 02), and the desktop is shared with the demo.
+  maxTiles: "8"
+  pollSeconds: "3"
+  shotTtlSeconds: "10"
+
+# How the console speaks DevTools: http posts to the in-pod bridge
+# (apps/browser-sandbox/cdp-bridge.py) because the sandbox-router cannot forward
+# a WebSocket; ws dials Chromium through the router and is kept for the day that
+# is fixed upstream.
+transport: http
+
+# CDP budgets and the in-process bound on concurrent captures/probes.
+cdp:
+  connectTimeoutSeconds: "5"
+  commandTimeoutSeconds: "10"
+  concurrency: "4"
+  queueSize: "32"
+  retryAfterSeconds: "3"
+
+# Isolation probes: one AbortController deadline per fetch, issued from inside
+# the sandbox's own browser.
+probes:
+  timeoutMs: "4000"
+  # A failure faster than this never lost a packet, so the target was reachable.
+  reachableMs: "1000"
+
+service:
+  port: 8080
+  # Its own LoadBalancer IP (Cilium LB IPAM, lan-pool) so the pane is reachable
+  # at http://192.168.0.250/ with no DNS and no /etc/hosts entry.
+  #
+  # .250 and not the .249 this chart was designed around: the pool is
+  # 192.168.0.240-250 and the two kargo-gateway LoadBalancers claimed .248 and
+  # .249 on 2026-10-24, after the plan was written. .250 is the last free
+  # address, and the console is what a human opens.
+  type: LoadBalancer
+  loadBalancerIP: "192.168.0.250"
+
+
+# M4-M7: creating and deleting from the pane. `writeEnabled: false` turns the
+# buttons off and makes the mutating routes answer 403, for a strictly read-only
+# deployment.
+writeEnabled: true
+
+# M6: the bare column of compare mode. A bare `kind: Sandbox` gets no
+# NetworkPolicy, cluster DNS and a mounted service-account token -- the contrast
+# the comparison exists to show. Enabled here because compare mode is useless
+# without it; set it false on any deployment that should never create one.
+allowRawSandbox: true
+
+# Timings and compare runs are written to a SQLite file so they survive a
+# redeploy. Without the volume the pane still works; it just forgets.
+persistence:
+  enabled: true
+  size: 1Gi
+  storageClassName: ""
+
+# M7: how many tiles the demo fills, and the ceiling that refuses more. 9 is the
+# measured ~9.1 active-browser limit from experiment 02; the demo targets 8 so the
+# desktop keeps a little headroom.
+demo:
+  tiles: "8"
+  maxConcurrent: "9"
+
+# The warm pool claims are made against, and the pod shape a bare Sandbox gets.
+pool: browser-pool
+sandboxImage: 127.0.0.1:5000/browser-sandbox:local
+sandboxTargetUrl: https://example.com/
+createTimeoutSeconds: "120"
+
+# Namespaced Role in `sandbox.namespace` plus its binding. Read verbs on the
+# sandbox CRDs and pods; create/delete were added in M4 and are gated below.
+rbac:
+  create: true
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
