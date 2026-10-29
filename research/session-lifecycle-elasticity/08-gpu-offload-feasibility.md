@@ -30,10 +30,10 @@ Three independent blockers, each sufficient on its own:
    display; the host CPU is an Intel i5-9400F with no integrated GPU to fall back on (**verified
    live**). Assigning the card to a guest removes the host's display until the binding is undone
    and the machine reboots — the exact action `AGENTS.md` forbids agents from taking.
-3. **Exclusive assignment cannot raise session concurrency.** The plugin advertises one device
-   (`amd.com/render: 1`) and passthrough gives the whole card to one VM (**verified live**,
-   `apps/gpu-device-plugin/main.go:47-58`). One GPU-backed session at a time, on a node that
-   currently sustains ~18 concurrent sessions, changes nothing about sustainable capacity.
+3. **Exclusive assignment cannot raise session concurrency.** The plugin is built to advertise one
+   unit per render node (`apps/gpu-device-plugin/main.go:47-58`), and passthrough gives the whole
+   card to one VM. One GPU-backed session at a time, on a node that currently sustains ~18
+   concurrent sessions, changes nothing about sustainable capacity.
 
 **The underlying hypothesis — that CPU is the limiting resource — is partially supported and
 partly unproven.** What the runs actually establish is narrower than the hypothesis: admission
@@ -74,7 +74,10 @@ Live and read-only, this session (**verified live**):
 ```
 node allocatable:  cpu 6, memory 16305712Ki, pods 110, amd.com/render 0
 gpu-device-plugin log: "advertising 1 render node(s) [renderD128]" / "registered amd.com/render with kubelet"
+gpu-device-plugin pod: Running 1/1, 1 restart, /dev/dri/renderD128 visible inside the pod
 amd.com/render capacity/allocatable: 0 / 0
+kubelet checkpoint RegisteredDevices: {}  (empty)
+/var/lib/kubelet/device-plugins: kubelet.sock, kubelet_internal_checkpoint — no amd-render.sock
 dmesg/CPU: GenuineIntel i5-9400F, vmx, kvm_intel loaded
 IOMMU: /sys/kernel/iommu_groups -> 0 entries, /sys/class/iommu -> empty
 GPU PCI: 0000:01:00.0 (0x030000 VGA), 0000:01:00.1 (0x040300 audio), amdgpu bound
@@ -84,10 +87,23 @@ metrics-server: v1beta1.metrics.k8s.io Available (node CPU 1104m/18%, memory 571
 KubeVirt: absent (no kubevirt/virtualmachine API kinds)
 ```
 
-Note the contradiction: the plugin logs a successful registration and the DaemonSet is 1/1 Ready,
-while the node advertises `amd.com/render` **0**. A leftover `llm-gpu` pod sits in
-`UnexpectedAdmissionError`. Whatever the cause, the GPU is not schedulable right now, so any
-GPU experiment starts by repairing that.
+Note the contradiction, and it has a mechanical cause: the plugin logs a successful registration
+and the DaemonSet is 1/1 Ready, while the node advertises `amd.com/render` **0**. The kubelet's own
+checkpoint resolves it — `RegisteredDevices: {}` is empty, and the plugin's socket
+`amd-render.sock` is not in `/var/lib/kubelet/device-plugins`, so kubelet has nothing registered and
+nothing to re-dial. A leftover `llm-gpu` pod sits in `UnexpectedAdmissionError`.
+
+The cause is in `main.go`: `main()` calls `register()` once and then blocks on `select {}`
+(`main.go:146-151`). `ListAndWatch` re-sends the device list on a 30 s ticker, but only to a stream
+kubelet is already holding. After a kubelet restart the registration is gone and the plugin never
+re-establishes it, so the resource stays at 0 until the plugin pod itself is restarted. The fix is a
+re-registration loop (or a `Register` attempt whenever `ListAndWatch` sees a send failure), not a
+redeploy.
+
+This matters for the hypothesis: the device plugin is deployed, healthy, and has worked before
+(E3 measured Vulkan through it, and the checkpoint still carries a `renderD128` allocation from a
+`vlm` pod). What is broken right now is one registration, which is why any GPU experiment has to
+start by restoring `amd.com/render` to 1.
 
 ---
 
@@ -183,6 +199,8 @@ then generalise about rendering throughput. That is the mistake to avoid.
 | Vulkan | Mesa RADV, Mesa 26.2.3 | **measured** |
 | Compute path | Vulkan only; `gfx803` is off AMD's ROCm list, `/dev/kfd` must not be mounted | **configured** (`config/gpu/README.md:14-26`) |
 | Resource name | `amd.com/render`, one unit | **implemented** |
+| Plugin deployed and healthy | DaemonSet 1/1, `renderD128` visible in the pod | **verified live** |
+| Registration in effect | no: kubelet checkpoint `RegisteredDevices: {}`, `amd-render.sock` absent | **verified live** |
 | Currently schedulable | no: capacity 0 / allocatable 0 | **verified live** |
 | VRAM visible to the host | 4294967296 (~4 GiB total), 404549632 (~386 MiB) in use by the desktop | **verified live** |
 | IOMMU | disabled: 0 groups, no `intel_iommu=on` | **verified live** |
@@ -409,6 +427,9 @@ lspci -nnk -s 01:00                            # 1002:67df, amdgpu in use
 # the live inconsistency Phase 0 must resolve first
 kubectl get node fedora -o jsonpath='{.status.allocatable.amd\.com/render}{"\n"}'
 kubectl -n gpu logs ds/gpu-device-plugin --tail=5
+kubectl -n gpu exec ds/gpu-device-plugin -- \
+  cat /var/lib/kubelet/device-plugins/kubelet_internal_checkpoint   # RegisteredDevices must be non-empty
+kubectl -n gpu exec ds/gpu-device-plugin -- ls /var/lib/kubelet/device-plugins
 
 # the flag that makes option A GPU-free by construction
 rg -n 'disable-gpu|Vulkan' apps/browser-sandbox/entrypoint.sh

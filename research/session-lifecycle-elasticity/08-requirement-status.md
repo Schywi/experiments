@@ -35,9 +35,9 @@ runs), **configured** (settings are set somewhere real), **verified** (a run or 
 | | |
 |---|---|
 | Implemented | `internal/autoscale` + `cmd/pool-autoscaler`: demand = ready + pending claims, clamped to `--min/--max`, reconciled every `--interval`, settings published to a ConfigMap, scale-out latency measured |
-| Deployed | yes, during run `20261029T170145Z`; `kubectl get hpa -A` still empty, KEDA CRDs still `0` |
+| Deployed | yes — `config/session-lab` chart: Deployment, ServiceAccount, Role (claims read, pools read+patch, configmaps write), Service, published settings ConfigMap; `kubectl get hpa -A` still empty, KEDA CRDs still `0` |
 | Configured | `--min 2 --max 40 --interval 5s`, read back by the run from the cluster as `hpa=0 keda=false … min=2 max=40 every 5s (heartbeat 2s ago)` |
-| Verified | pool 2 → 22 → 40 (configured ceiling), 10 up and 3 down changes, two completed scale-out cycles averaging 195 s |
+| Verified | host-run scaler: pool 2 → 40, two scale-out cycles averaging 195 s. In-cluster scaler (note 10): 2 → 4 → 7 → 9 → 12 → 15 → 22, scale-out complete in 84.9 s, then 22 → 2 after claims cleared |
 
 Gap, and the largest one. The upstream examples scale on GKE Managed Prometheus, which this cluster
 does not run. The smallest viable substitute is a controller that reads pending-claim demand and

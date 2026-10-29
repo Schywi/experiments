@@ -481,7 +481,7 @@ func (r *Runner) session(ctx context.Context, planned schedule.Planned) {
 		r.put(instance)
 	case model.PolicyDestroy:
 		session.DeleteCalledNS = r.now().UnixNano()
-		if err := r.ad.Release(ctx, instance); err != nil {
+		if err := r.deleteWithRetry(ctx, instance); err != nil {
 			r.settle(session.ID, model.OutcomeDestroyFailed, "release: "+err.Error(), &session)
 			return
 		}
@@ -616,11 +616,14 @@ func (r *Runner) put(instance *adapter.Instance) {
 	r.free = append(r.free, instance)
 }
 
-// release deletes an instance on a context that survives run cancellation.
+// release deletes an instance on a context that survives run cancellation, and
+// retries: a control-plane hiccup at the end of a run must not leave claims
+// behind, because a leftover claim looks like demand to an autoscaler and holds
+// replicas nobody asked for.
 func (r *Runner) release(ctx context.Context, instance *adapter.Instance) {
 	releaseCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Minute)
 	defer cancel()
-	if err := r.ad.Release(releaseCtx, instance); err != nil {
+	if err := r.deleteWithRetry(releaseCtx, instance); err != nil {
 		r.log.Printf("release %s: %v", instance.ID, err)
 		return
 	}
@@ -628,6 +631,26 @@ func (r *Runner) release(ctx context.Context, instance *adapter.Instance) {
 	r.mu.Lock()
 	delete(r.all, instance.ID)
 	r.mu.Unlock()
+}
+
+// deleteWithRetry makes up to five attempts, backing off between them.
+func (r *Runner) deleteWithRetry(ctx context.Context, instance *adapter.Instance) error {
+	var err error
+	for attempt := 1; attempt <= 5; attempt++ {
+		if err = r.ad.Release(ctx, instance); err == nil {
+			return nil
+		}
+		if attempt == 5 {
+			break
+		}
+		r.log.Printf("release %s: attempt %d failed: %v", instance.ID, attempt, err)
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(time.Duration(attempt) * 2 * time.Second):
+		}
+	}
+	return err
 }
 
 func (r *Runner) releaseAll(ctx context.Context) {
