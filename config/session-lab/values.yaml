@@ -49,6 +49,10 @@ resources:
   requests:
     cpu: 20m
     memory: 32Mi
+  # No CPU limit, for the same reason the sandbox template has none: a quota
+  # throttles this controller exactly when the cluster is busy, which is when it
+  # must still reconcile. See
+  # research/session-lifecycle-elasticity/12-cpu-requests-not-limits.md.
   limits:
-    cpu: 200m
+    # cpu: 200m
     memory: 128Mi

@@ -56,7 +56,9 @@ router:
       cpu: 20m
       memory: 32Mi
     limits:
-      cpu: 200m
+      # No CPU limit, same policy as the sandbox template: the router is on the
+      # data path, and a quota throttles it exactly when the cluster is busy.
+      # cpu: 200m
       memory: 128Mi
 
 sandboxes:
@@ -75,8 +77,19 @@ sandboxes:
         cpu: 100m
         memory: 256Mi
       limits:
-        # ~250 MiB resident per Chromium; the limit is headroom for a busy page.
-        cpu: "1"
+        # POLICY: no CPU limit. A CPU limit is a CFS quota, and a browser that
+        # touches it is throttled even while the node is idle — 248 of 360
+        # measured sessions were throttled at the "1" this field used to set.
+        # CPU is compressible, so a pod without a quota simply competes on
+        # shares; the request above is the scheduling guarantee. See
+        # research/session-lifecycle-elasticity/12-cpu-requests-not-limits.md.
+        #
+        # Memory keeps its limit: memory is incompressible, and without one a
+        # single sandbox grows until the node OOMs.
+        #
+        # The field is commented out rather than deleted so nobody re-adds it
+        # by habit without reading the note.
+        # cpu: "1"
         memory: 768Mi
     dshmSizeLimit: 512Mi
   warmPool:
