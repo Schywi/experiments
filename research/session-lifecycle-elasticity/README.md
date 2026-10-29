@@ -23,6 +23,8 @@
 | [05 — The first run](05-first-run.md) | What did the runner actually measure, and what did it get wrong? | A two-session smoke test with its numbers, the three defects execution found, and the throttling that makes its hold latency an artifact |
 | [06 — Audit](06-audit.md) | Planned vs. built, area by area | Nine areas with implemented / live / verified / gap columns, and the fix order: metrics endpoint, scrape job, template limits, dashboard, overload run, suspend test |
 | [07 — Overload and suspend runs](07-overload-and-suspend.md) | Where does the platform stop? | 60 sessions at offered concurrency 60: 42 success, 17 scheduler refusals, queue wait p95 134 s, node memory down to 20.9%; plus the suspend run with two resume cycles |
+| [08 — Requirement status](08-requirement-status.md) | What is implemented, deployed, configured, verified? | Eight requirements with the four columns kept separate, and the unsupported claims corrected |
+| [09 — Results: three runs](09-results-three-runs.md) | What changes with lifecycle policy and with an autoscaler? | One workload, three runs: reuse resets in 35 ms, destroy pays 374 ms + cold start, autoscaling cuts queue wait 2× and reaches its 40-replica ceiling, where the API server becomes the boundary |
 
 Read 04 for what is being built and under which rules, 03 for the baseline, 02 for the experiment
 shape, 01 for the instrument.
