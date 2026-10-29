@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -26,6 +27,7 @@ var (
 	gvrClaims    = schema.GroupVersionResource{Group: "extensions.agents.x-k8s.io", Version: "v1beta1", Resource: "sandboxclaims"}
 	gvrSandboxes = schema.GroupVersionResource{Group: "agents.x-k8s.io", Version: "v1beta1", Resource: "sandboxes"}
 	gvrPools     = schema.GroupVersionResource{Group: "extensions.agents.x-k8s.io", Version: "v1beta1", Resource: "sandboxwarmpools"}
+	gvrTemplates = schema.GroupVersionResource{Group: "extensions.agents.x-k8s.io", Version: "v1beta1", Resource: "sandboxtemplates"}
 )
 
 const (
@@ -314,6 +316,80 @@ func (k *Kube) SetPoolReplicas(ctx context.Context, namespace, name string, repl
 		return fmt.Errorf("patch pool %s/%s replicas=%d: %w", namespace, name, replicas, err)
 	}
 	return nil
+}
+
+// Template reads the requests and limits the template applies to a sandbox pod,
+// which is the context CPU throttling needs to mean anything.
+func (k *Kube) Template(ctx context.Context, namespace, name string) (TemplateLimits, error) {
+	template, err := k.dyn.Resource(gvrTemplates).Namespace(namespace).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return TemplateLimits{}, fmt.Errorf("get template %s/%s: %w", namespace, name, err)
+	}
+	containers, found, _ := unstructured.NestedSlice(template.Object, "spec", "podTemplate", "spec", "containers")
+	if !found || len(containers) == 0 {
+		return TemplateLimits{}, fmt.Errorf("template %s has no containers", name)
+	}
+	limits := TemplateLimits{}
+	for _, raw := range containers {
+		container, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		name, _, _ := unstructured.NestedString(container, "name")
+		resources, _, _ := unstructured.NestedMap(container, "resources")
+		if resources == nil {
+			continue
+		}
+		limits.Container = name
+		limits.CPURequestMilli = quantityMilli(resources, "requests", "cpu")
+		limits.CPULimitMilli = quantityMilli(resources, "limits", "cpu")
+		limits.MemRequestBytes = quantityBytes(resources, "requests", "memory")
+		limits.MemLimitBytes = quantityBytes(resources, "limits", "memory")
+		break
+	}
+	return limits, nil
+}
+
+// quantityMilli reads resources.<kind>.cpu as milli-cores.
+func quantityMilli(resources map[string]any, kind, key string) int64 {
+	raw, ok := resources[kind]
+	if !ok {
+		return 0
+	}
+	values, ok := raw.(map[string]any)
+	if !ok {
+		return 0
+	}
+	text, ok := values[key].(string)
+	if !ok {
+		return 0
+	}
+	quantity, err := resource.ParseQuantity(text)
+	if err != nil {
+		return 0
+	}
+	return quantity.MilliValue()
+}
+
+// quantityBytes reads resources.<kind>.<key> as bytes.
+func quantityBytes(resources map[string]any, kind, key string) int64 {
+	raw, ok := resources[kind]
+	if !ok {
+		return 0
+	}
+	values, ok := raw.(map[string]any)
+	if !ok {
+		return 0
+	}
+	text, ok := values[key].(string)
+	if !ok {
+		return 0
+	}
+	quantity, err := resource.ParseQuantity(text)
+	if err != nil {
+		return 0
+	}
+	return quantity.Value()
 }
 
 // Node reads the allocatable budget of the node that holds the sandboxes.

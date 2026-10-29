@@ -41,6 +41,7 @@ type Report struct {
 	Resources      Resources          `json:"resources"`
 	Instances      InstanceSummary    `json:"instances"`
 	Host           HostMemory         `json:"host_memory"`
+	Template       *TemplateLimits    `json:"template_limits,omitempty"`
 	Replicas       []store.ReplicaSample `json:"replicas,omitempty"`
 	Boundary       string             `json:"first_boundary,omitempty"`
 	BoundaryEv     []string           `json:"boundary_evidence,omitempty"`
@@ -85,6 +86,16 @@ type Resources struct {
 	ThrottledSessions   int     `json:"throttled_sessions"`
 	OOMKills            int     `json:"oom_kills"`
 	RefaultSessions     int     `json:"refault_sessions"`
+}
+
+// TemplateLimits is what the sandbox pods were held to. It is here so a
+// throttling count can be read next to the limit that caused it.
+type TemplateLimits struct {
+	Container       string  `json:"container"`
+	CPURequestMilli int64   `json:"cpu_request_milli"`
+	CPULimitMilli   int64   `json:"cpu_limit_milli"`
+	MemRequestMiB   float64 `json:"mem_request_mib"`
+	MemLimitMiB     float64 `json:"mem_limit_mib"`
 }
 
 // HostMemory is the node's memory story for the run: the floor it reached and
@@ -218,6 +229,25 @@ func Build(cfg model.RunConfig, plan schedule.Plan, st *store.Store) (*Report, e
 
 	rep.Instances = summariseInstances(instances)
 
+	if raw, err := st.TemplateLimits(cfg.RunID); err == nil && raw != "" {
+		var stored struct {
+			Container       string `json:"container"`
+			CPURequestMilli int64  `json:"cpu_request_milli"`
+			CPULimitMilli   int64  `json:"cpu_limit_milli"`
+			MemRequestBytes int64  `json:"mem_request_bytes"`
+			MemLimitBytes   int64  `json:"mem_limit_bytes"`
+		}
+		if json.Unmarshal([]byte(raw), &stored) == nil {
+			rep.Template = &TemplateLimits{
+				Container:       stored.Container,
+				CPURequestMilli: stored.CPURequestMilli,
+				CPULimitMilli:   stored.CPULimitMilli,
+				MemRequestMiB:   float64(stored.MemRequestBytes) / (1 << 20),
+				MemLimitMiB:     float64(stored.MemLimitBytes) / (1 << 20),
+			}
+		}
+	}
+
 	hostSamples, err := st.HostSamples()
 	if err == nil {
 		rep.Host = summariseHost(hostSamples)
@@ -304,6 +334,11 @@ func (r *Report) Print(w io.Writer) {
 		r.Resources.CPUCoreSecondsP50, r.Resources.CPUCoreSecondsMax)
 	fmt.Fprintf(w, "memory peak       p50 %.0f MiB  max %.0f MiB  working-set max %.0f MiB\n",
 		r.Resources.MemPeakP50MiB, r.Resources.MemPeakMaxMiB, r.Resources.WorkingSetPeakMaxMiB)
+	if r.Template != nil {
+		fmt.Fprintf(w, "template %s      requests cpu=%dm mem=%.0fMiB, limits cpu=%dm mem=%.0fMiB\n",
+			r.Template.Container, r.Template.CPURequestMilli, r.Template.MemRequestMiB,
+			r.Template.CPULimitMilli, r.Template.MemLimitMiB)
+	}
 	fmt.Fprintf(w, "throttled sessions %d, oom kills %d, sessions with refaults %d\n",
 		r.Resources.ThrottledSessions, r.Resources.OOMKills, r.Resources.RefaultSessions)
 	if r.Host.Samples > 0 {

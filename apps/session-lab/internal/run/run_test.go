@@ -5,6 +5,7 @@ import (
 	"io"
 	"log"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -171,5 +172,30 @@ func TestPoolReplicasAreRestored(t *testing.T) {
 	// NewFake starts at 1 desired; the run must leave it there.
 	if state.Desired != 1 {
 		t.Fatalf("pool left at desired=%d, want the original 1", state.Desired)
+	}
+}
+
+func TestTemplateLimitsAreRecorded(t *testing.T) {
+	// A throttling count is unreadable without the limit that caused it, so the
+	// run row carries the template's requests and limits.
+	fake := adapter.NewFake()
+	fake.Limits = adapter.TemplateLimits{
+		Container: "browser", CPURequestMilli: 100, CPULimitMilli: 1000,
+		MemRequestBytes: 256 << 20, MemLimitBytes: 768 << 20,
+	}
+	cfg := config(model.PolicyDestroy, 2, time.Millisecond)
+	st, _ := execute(t, cfg, fake)
+
+	raw, err := st.TemplateLimits(cfg.RunID)
+	if err != nil {
+		t.Fatalf("template limits: %v", err)
+	}
+	if raw == "" {
+		t.Fatalf("the run row has no template limits")
+	}
+	for _, want := range []string{"browser", "1000", "805306368"} {
+		if !strings.Contains(raw, want) {
+			t.Fatalf("recorded limits are missing %q: %s", want, raw)
+		}
 	}
 }

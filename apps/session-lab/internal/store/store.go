@@ -26,7 +26,8 @@ CREATE TABLE IF NOT EXISTS runs (
     config      TEXT NOT NULL,
     started_ns  INTEGER NOT NULL,
     ended_ns    INTEGER,
-    replicas    TEXT NOT NULL DEFAULT '[]'
+    replicas    TEXT NOT NULL DEFAULT '[]',
+    limits      TEXT NOT NULL DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS sessions (
@@ -155,6 +156,23 @@ func (s *Store) EndRun(runID string, at time.Time, replicas []ReplicaSample) err
 	}
 	_, err = s.db.Exec(`UPDATE runs SET ended_ns = ?, replicas = ? WHERE run_id = ?`, at.UnixNano(), string(payload), runID)
 	return err
+}
+
+// SaveTemplateLimits records the requests and limits the sandbox template
+// applies, which is what makes a throttling count readable.
+func (s *Store) SaveTemplateLimits(runID, limitsJSON string) error {
+	_, err := s.db.Exec(`UPDATE runs SET limits = ? WHERE run_id = ?`, limitsJSON, runID)
+	return err
+}
+
+// TemplateLimits returns the recorded template limits for a run, as JSON.
+func (s *Store) TemplateLimits(runID string) (string, error) {
+	var limits string
+	err := s.db.QueryRow(`SELECT limits FROM runs WHERE run_id = ?`, runID).Scan(&limits)
+	if err != nil {
+		return "", err
+	}
+	return limits, nil
 }
 
 // ReplicaSample is one reading of the warm pool's desired and ready counts.

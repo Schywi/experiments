@@ -34,6 +34,8 @@ type Recorder struct {
 	workSet  *prometheus.HistogramVec
 	poolWant prometheus.Gauge
 	poolHave prometheus.Gauge
+	tplCPU   prometheus.Gauge
+	tplMem   prometheus.Gauge
 	boundary *prometheus.CounterVec
 
 	// The gauges are also tracked here so decrementing them cannot go negative
@@ -110,13 +112,22 @@ func New() *Recorder {
 			Name: "session_lab_pool_ready",
 			Help: "Warm pool ready replicas as reported during the run.",
 		}),
+		tplCPU: prometheus.NewGauge(prometheus.GaugeOpts{
+			Name: "session_lab_template_cpu_limit_cores",
+			Help: "CPU limit the sandbox template applies, from the live object.",
+		}),
+		tplMem: prometheus.NewGauge(prometheus.GaugeOpts{
+			Name: "session_lab_template_memory_limit_bytes",
+			Help: "Memory limit the sandbox template applies, from the live object.",
+		}),
 		boundary: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: "session_lab_boundaries_total",
 			Help: "Times the platform or the node refused, throttled or reclaimed, by kind.",
 		}, []string{"kind"}),
 	}
 	registry.MustRegister(r.active, r.waiting, r.sessions, r.queue, r.acquire, r.hold,
-		r.reset, r.release, r.cpu, r.throttle, r.oom, r.workSet, r.poolWant, r.poolHave, r.boundary)
+		r.reset, r.release, r.cpu, r.throttle, r.oom, r.workSet, r.poolWant, r.poolHave,
+		r.tplCPU, r.tplMem, r.boundary)
 	return r
 }
 
@@ -202,6 +213,12 @@ func (r *Recorder) Resources(policy string, reading run.Reading) {
 func (r *Recorder) Pool(desired, ready int32) {
 	r.poolWant.Set(float64(desired))
 	r.poolHave.Set(float64(ready))
+}
+
+// Template implements run.Recorder.
+func (r *Recorder) Template(cpuLimitCores, memLimitBytes float64) {
+	r.tplCPU.Set(cpuLimitCores)
+	r.tplMem.Set(memLimitBytes)
 }
 
 // Boundary implements run.Recorder.

@@ -11,6 +11,7 @@ package run
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"strings"
@@ -61,6 +62,7 @@ type Recorder interface {
 	Release(policy string, seconds float64)
 	Resources(policy string, reading Reading)
 	Pool(desired, ready int32)
+	Template(cpuLimitCores, memLimitBytes float64)
 	Boundary(kind string)
 }
 
@@ -196,6 +198,27 @@ func (r *Runner) preflight(ctx context.Context) error {
 	r.log.Printf("preflight: node %s allocatable cpu=%dm memory=%dMiB pods=%d",
 		node.Name, node.CPUMilli, node.MemBytes/(1<<20), node.Pods)
 	r.recordReplicas(pool, "preflight")
+
+	// What the sandbox is held to belongs with the run: a throttling count
+	// without its limit is not a finding.
+	templateName := r.cfg.Template
+	if templateName == "" {
+		templateName = pool.Template
+	}
+	if templateName != "" {
+		limits, err := r.ad.Template(ctx, r.cfg.Namespace, templateName)
+		if err != nil {
+			r.log.Printf("preflight: template limits unavailable: %v", err)
+		} else {
+			r.storeTemplateLimits(limits)
+			r.log.Printf("preflight: template %s container %s requests cpu=%dm memory=%dMiB limits cpu=%dm memory=%dMiB",
+				templateName, limits.Container, limits.CPURequestMilli, limits.MemRequestBytes/(1<<20),
+				limits.CPULimitMilli, limits.MemLimitBytes/(1<<20))
+			if r.rec != nil {
+				r.rec.Template(float64(limits.CPULimitMilli)/1000, float64(limits.MemLimitBytes))
+			}
+		}
+	}
 
 	if r.cfg.PoolReplicas == nil {
 		return nil
@@ -701,6 +724,18 @@ func (r *Runner) recordHost() {
 	}
 	if r.memTotal == 0 {
 		r.memTotal = total
+	}
+}
+
+// storeTemplateLimits writes the template's requests and limits into the run row.
+func (r *Runner) storeTemplateLimits(limits adapter.TemplateLimits) {
+	payload, err := json.Marshal(limits)
+	if err != nil {
+		r.log.Printf("template limits: %v", err)
+		return
+	}
+	if err := r.st.SaveTemplateLimits(r.cfg.RunID, string(payload)); err != nil {
+		r.log.Printf("template limits: %v", err)
 	}
 }
 

@@ -57,6 +57,16 @@ type NodeCapacity struct {
 	Pods     int64
 }
 
+// TemplateLimits is what a sandbox pod is held to. It is recorded with the run
+// so a throttled session carries the limit that throttled it.
+type TemplateLimits struct {
+	Container       string `json:"container"`
+	CPURequestMilli int64  `json:"cpu_request_milli"`
+	CPULimitMilli   int64  `json:"cpu_limit_milli"`
+	MemRequestBytes int64  `json:"mem_request_bytes"`
+	MemLimitBytes   int64  `json:"mem_limit_bytes"`
+}
+
 // Boundary is one observation that the platform refused or degraded something:
 // an OOM kill, an eviction, a scheduling refusal.
 type Boundary struct {
@@ -87,6 +97,8 @@ type Adapter interface {
 	Pool(ctx context.Context, namespace, name string) (PoolState, error)
 	// SetPoolReplicas writes the pool's replica count.
 	SetPoolReplicas(ctx context.Context, namespace, name string, replicas int32) error
+	// Template reads the requests and limits the sandbox template applies.
+	Template(ctx context.Context, namespace, name string) (TemplateLimits, error)
 	// Node reads the allocatable budget of the node the sandboxes run on.
 	Node(ctx context.Context, namespace string) (NodeCapacity, error)
 	// Boundaries returns refusals and degradations observed since the given
@@ -123,6 +135,8 @@ type Fake struct {
 	nextID   int
 	pool     PoolState
 	node     NodeCapacity
+	// Limits is what Template reports.
+	Limits TemplateLimits
 }
 
 // NewFake returns a fake adapter.
@@ -235,6 +249,15 @@ func (f *Fake) SetPoolReplicas(ctx context.Context, namespace, name string, repl
 	defer f.mu.Unlock()
 	f.pool.Desired = replicas
 	return nil
+}
+
+// Template implements Adapter.
+func (f *Fake) Template(ctx context.Context, namespace, name string) (TemplateLimits, error) {
+	limits := f.Limits
+	if limits.Container == "" {
+		limits.Container = name
+	}
+	return limits, nil
 }
 
 // Node implements Adapter.
