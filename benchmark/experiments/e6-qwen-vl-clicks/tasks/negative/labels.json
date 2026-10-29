@@ -1,0 +1,19 @@
+{
+  "tolerance_px": 32,
+  "band_px": 64,
+  "method": "No coordinate is correct for these tasks, so the label file carries what is on the frame instead: the absence is a fact about the frame, checked by reading the page's accessibility tree for the asked name and finding nothing.",
+  "tasks": {
+    "t-neg-export-csv": {
+      "absent_reason": "The toolbar has no export control. Its buttons are '+ claim', '+ bare sandbox', 'fill demo grid', 'teardown', the 'compare' link, 'claim-burst', 'capacity' and the 'health' link; nothing exports CSV.",
+      "absent_evidence": "three expected-but-absent names: ['export', 'csv', 'download']"
+    },
+    "t-neg-pause-dialog": {
+      "absent_reason": "The dialog header holds the sandbox id, a '↑' scroll button, a '↓' scroll button, 'compare' and 'close'. There is no pause control anywhere in the dialog.",
+      "absent_evidence": "three expected-but-absent names: ['pause', 'stop', 'suspend']"
+    },
+    "t-neg-unknown-tile": {
+      "absent_reason": "The frame holds six cards, for browser-pool-22grt, browser-pool-65l7z, browser-pool-gvw9t, browser-pool-hb765, browser-pool-sthfr and browser-pool-ww79w. No card carries the id browser-pool-zzzzz.",
+      "absent_evidence": "asked id 'browser-pool-zzzzz' is not a substring of the frame's card headers"
+    }
+  }
+}

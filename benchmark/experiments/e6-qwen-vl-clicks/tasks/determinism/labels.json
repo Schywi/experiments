@@ -1,0 +1,43 @@
+{
+  "tolerance_px": 32,
+  "band_px": 64,
+  "method": "Same ground truth as baseline task 2: the centre of the '+ claim' button, read from the page's DOM when console-home.png was captured. All three tasks carry the same point because they are the same question asked three times; the scorer compares the three replies to each other, not to a new answer.",
+  "tasks": {
+    "t-det-1": {
+      "labels": [
+        "+ claim",
+        "claim"
+      ],
+      "element": "button[data-act=create][data-kind=claim]",
+      "point": {
+        "x": 58,
+        "y": 97
+      },
+      "ax_match": "claim"
+    },
+    "t-det-2": {
+      "labels": [
+        "+ claim",
+        "claim"
+      ],
+      "element": "button[data-act=create][data-kind=claim]",
+      "point": {
+        "x": 58,
+        "y": 97
+      },
+      "ax_match": "claim"
+    },
+    "t-det-3": {
+      "labels": [
+        "+ claim",
+        "claim"
+      ],
+      "element": "button[data-act=create][data-kind=claim]",
+      "point": {
+        "x": 58,
+        "y": 97
+      },
+      "ax_match": "claim"
+    }
+  }
+}

@@ -1,0 +1,72 @@
+{
+  "viewport": {
+    "width": 1280,
+    "height": 600
+  },
+  "source": {
+    "note": "The served targets page (harness/page/targets.html), reached inside the sandbox at the cal-page pod IP. Unlike the baseline set, this page is live: the DOM arms read the same page the frozen frame shows, which is what the first dom-unique run against the console grid could not do (the cards in the 2026-10-26 frame no longer exist).",
+    "captured": "2026-10-28",
+    "measured_by": "harness/probe_page.py"
+  },
+  "frames": {
+    "targets": "targets-1280x600.png"
+  },
+  "tasks": [
+    {
+      "id": "t-tg-claim",
+      "frame": "targets",
+      "kind": "point",
+      "arm_hint": "targets",
+      "ask": "Locate the button that claims a new sandbox, the one labelled \"+ claim\"."
+    },
+    {
+      "id": "t-tg-capacity",
+      "frame": "targets",
+      "kind": "point",
+      "arm_hint": "targets",
+      "ask": "Locate the button labelled \"capacity\"."
+    },
+    {
+      "id": "t-tg-delete-22grt",
+      "frame": "targets",
+      "kind": "label+point",
+      "arm_hint": "targets",
+      "ask": "This page shows four sandbox cards, each with its own delete button. Locate the delete button of the card whose sandbox id is \"browser-pool-22grt\", not the delete button of any other card."
+    },
+    {
+      "id": "t-tg-delete-65l7z",
+      "frame": "targets",
+      "kind": "label+point",
+      "arm_hint": "targets",
+      "ask": "This page shows four sandbox cards, each with its own delete button. Locate the delete button of the card whose sandbox id is \"browser-pool-65l7z\", not the delete button of any other card."
+    },
+    {
+      "id": "t-tg-delete-gvw9t",
+      "frame": "targets",
+      "kind": "label+point",
+      "arm_hint": "targets",
+      "ask": "This page shows four sandbox cards, each with its own delete button. Locate the delete button of the card whose sandbox id is \"browser-pool-gvw9t\", not the delete button of any other card."
+    },
+    {
+      "id": "t-tg-delete-hb765",
+      "frame": "targets",
+      "kind": "label+point",
+      "arm_hint": "targets",
+      "ask": "This page shows four sandbox cards, each with its own delete button. Locate the delete button of the card whose sandbox id is \"browser-pool-hb765\", not the delete button of any other card."
+    },
+    {
+      "id": "t-tg-probe-65l7z",
+      "frame": "targets",
+      "kind": "point",
+      "arm_hint": "targets",
+      "ask": "Locate the probe button of the card whose sandbox id is \"browser-pool-65l7z\"."
+    },
+    {
+      "id": "t-tg-export-csv",
+      "frame": "targets",
+      "kind": "abstain",
+      "arm_hint": "targets-negative",
+      "ask": "Locate the button that exports the table as CSV. If the page has no such button, say so instead of guessing."
+    }
+  ]
+}
