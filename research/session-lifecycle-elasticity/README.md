@@ -21,6 +21,7 @@
 | [03 — What exists today](03-what-exists-today.md) | What does the platform already do, and what does a session-elasticity test still need? | The five `test/stress` phase kinds, external-only autoscaling via HPA/KEDA, the four meanings of "idle", and five gaps |
 | [04 — The deliverable](04-deliverable.md) | What gets built, and under which rules? | The session scheduler and experiment runner: four parts, the lifecycle table, the outcome enum, the four policies, the three elasticity configurations, the report contract, and the boundary list |
 | [05 — The first run](05-first-run.md) | What did the runner actually measure, and what did it get wrong? | A two-session smoke test with its numbers, the three defects execution found, and the throttling that makes its hold latency an artifact |
+| [06 — Audit](06-audit.md) | Planned vs. built, area by area | Nine areas with implemented / live / verified / gap columns, and the fix order: metrics endpoint, scrape job, template limits, dashboard, overload run, suspend test |
 
 Read 04 for what is being built and under which rules, 03 for the baseline, 02 for the experiment
 shape, 01 for the instrument.
