@@ -86,3 +86,13 @@ data:
             replacement: ${1}:8080
           - source_labels: [__meta_kubernetes_pod_node_name]
             target_label: node
+      {{- if .Values.sessionLab.enabled }}
+      # session-lab session lifecycle and resource series. The runner runs on the
+      # node (it reads the host's cgroup files), so this is a static target: the
+      # endpoint answers while a run is in progress and disappears between runs.
+      - job_name: session-lab
+        metrics_path: {{ .Values.sessionLab.metricsPath }}
+        static_configs:
+          - targets:
+              {{- toYaml .Values.sessionLab.targets | nindent 14 }}
+      {{- end }}

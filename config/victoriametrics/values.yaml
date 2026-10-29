@@ -24,6 +24,16 @@ scrapeConfigCheckInterval: 30s
 # Metric retention; 30d keeps a month of Cilium/Hubble history.
 retentionPeriod: 30d
 
+# session-lab runs on the host — it reads the node's cgroup files — so it is a
+# static target rather than a discovered pod. The default is the node's LAN
+# address, where a run serves /metrics while it is in progress. Set enabled to
+# false to drop the job.
+sessionLab:
+  enabled: true
+  metricsPath: /metrics
+  targets:
+    - 192.168.0.28:9109
+
 storage:
   size: 5Gi
   # Empty string uses the cluster default StorageClass.
