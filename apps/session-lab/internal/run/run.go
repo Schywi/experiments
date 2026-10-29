@@ -48,6 +48,22 @@ type Sampler interface {
 	Sample(ctx context.Context, podUID, node string) (Reading, bool, error)
 }
 
+// Recorder receives what the run is doing, for export to a metrics endpoint.
+// Every method is nil-safe at the call site, so a run without one still works.
+type Recorder interface {
+	SessionArrived()
+	SessionAcquired()
+	SessionSettled(policy string, outcome model.Outcome)
+	QueueWait(policy string, seconds float64)
+	Acquire(policy, launchType string, seconds float64)
+	Hold(policy, bucket string, seconds float64)
+	Reset(policy string, seconds float64)
+	Release(policy string, seconds float64)
+	Resources(policy string, reading Reading)
+	Pool(desired, ready int32)
+	Boundary(kind string)
+}
+
 // Options are the runner's collaborators.
 type Options struct {
 	Adapter adapter.Adapter
@@ -58,6 +74,8 @@ type Options struct {
 	Clock   func() time.Time
 	// HostMemory reports the node's memory; nil disables the host series.
 	HostMemory func() (total, available, swapTotal, swapFree int64)
+	// Recorder exports run progress; nil disables the export.
+	Recorder Recorder
 }
 
 // Runner executes one plan.
@@ -83,6 +101,7 @@ type Runner struct {
 
 	// hostMemory reports the node's memory, when a reader was supplied.
 	hostMemory func() (total, available, swapTotal, swapFree int64)
+	rec        Recorder
 
 	// minAvailable and memTotal are the node memory extremes the run saw.
 	minAvailable   int64
@@ -104,6 +123,7 @@ func New(cfg model.RunConfig, opts Options) *Runner {
 		cfg: cfg, ad: opts.Adapter, st: opts.Store, smp: opts.Sampler, plan: opts.Plan,
 		log: logger, now: now, all: map[string]*adapter.Instance{}, counts: map[model.Outcome]int{},
 		hostMemory: opts.HostMemory,
+		rec:        opts.Recorder,
 	}
 }
 
@@ -149,6 +169,9 @@ func (r *Runner) Run(ctx context.Context) error {
 		for _, b := range boundaries {
 			r.log.Printf("boundary: %s %s: %s", b.Kind, b.Object, b.Message)
 			_ = r.st.AddEvent(model.Event{AtNS: b.At.UnixNano(), Kind: "boundary:" + b.Kind, Detail: b.Object + ": " + b.Message})
+			if r.rec != nil {
+				r.rec.Boundary(b.Kind)
+			}
 		}
 	} else {
 		r.log.Printf("boundaries: %v", bErr)
@@ -248,6 +271,9 @@ func (r *Runner) dispatch(ctx context.Context) error {
 		wg.Add(1)
 		go func(p schedule.Planned) {
 			defer wg.Done()
+			if r.rec != nil {
+				r.rec.SessionArrived()
+			}
 			if sem != nil {
 				select {
 				case sem <- struct{}{}:
@@ -323,6 +349,13 @@ func (r *Runner) session(ctx context.Context, planned schedule.Planned) {
 		}
 		session.ReadyNS = instance.ReadyNS
 		session.LaunchType = launchType(instance)
+		if r.rec != nil {
+			r.rec.SessionAcquired()
+			if session.ClaimCreatedNS > 0 {
+				r.rec.QueueWait(string(r.cfg.Policy), float64(session.ReadyNS-session.ClaimCreatedNS)/1e9)
+			}
+			r.rec.Acquire(string(r.cfg.Policy), session.LaunchType, float64(session.ReadyNS-session.ArrivalNS)/1e9)
+		}
 		session.Node = instance.Node
 		session.PodUID = instance.PodUID
 		r.persistInstance(instance)
@@ -354,6 +387,12 @@ func (r *Runner) session(ctx context.Context, planned schedule.Planned) {
 	}
 	session.HoldEndNS = r.now().UnixNano()
 	applyReading(&session, reading, sampled)
+	if r.rec != nil {
+		r.rec.Hold(string(r.cfg.Policy), planned.Bucket, float64(session.HoldEndNS-session.HoldStartNS)/1e9)
+		if sampled {
+			r.rec.Resources(string(r.cfg.Policy), reading)
+		}
+	}
 
 	switch r.cfg.Policy {
 	case model.PolicyReuse:
@@ -365,6 +404,9 @@ func (r *Runner) session(ctx context.Context, planned schedule.Planned) {
 			return
 		}
 		session.ResetEndNS = r.now().UnixNano()
+		if r.rec != nil {
+			r.rec.Reset(string(r.cfg.Policy), float64(session.ResetEndNS-session.ResetStartNS)/1e9)
+		}
 		instance.Sessions++
 		r.persistInstance(instance)
 		r.put(instance)
@@ -384,6 +426,9 @@ func (r *Runner) session(ctx context.Context, planned schedule.Planned) {
 			return
 		}
 		session.GoneNS = instance.DeletedNS
+		if r.rec != nil && session.GoneNS > 0 {
+			r.rec.Release(string(r.cfg.Policy), float64(session.GoneNS-session.DeleteCalledNS)/1e9)
+		}
 		instance.Sessions++
 		r.persistInstance(instance)
 		r.mu.Lock()
@@ -554,6 +599,9 @@ func (r *Runner) settle(id int64, outcome model.Outcome, detail string, session 
 	r.mu.Lock()
 	r.counts[outcome]++
 	r.mu.Unlock()
+	if r.rec != nil {
+		r.rec.SessionSettled(string(r.cfg.Policy), outcome)
+	}
 }
 
 // settlePending marks sessions that never started.
@@ -625,6 +673,9 @@ func (r *Runner) recordReplicas(state adapter.PoolState, note string) {
 	r.reps = append(r.reps, store.ReplicaSample{
 		AtNS: r.now().UnixNano(), Desired: state.Desired, Ready: state.Ready, Note: note,
 	})
+	if r.rec != nil {
+		r.rec.Pool(state.Desired, state.Ready)
+	}
 }
 
 // recordHost appends one node-memory reading, which is what shows the run

@@ -10,6 +10,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -18,6 +19,7 @@ import (
 	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/adapter"
 	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/config"
 	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/measure"
+	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/metrics"
 	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/model"
 	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/report"
 	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/run"
@@ -90,12 +92,25 @@ func realMain() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	recorder := metrics.New()
+	if cfg.MetricsAddr != "" {
+		go func() {
+			mux := http.NewServeMux()
+			mux.Handle("/metrics", recorder.Handler())
+			logger.Printf("metrics: serving %s on %s", "/metrics", cfg.MetricsAddr)
+			if err := http.ListenAndServe(cfg.MetricsAddr, mux); err != nil {
+				logger.Printf("metrics: %v", err)
+			}
+		}()
+	}
+
 	runner := run.New(cfg.RunConfig, run.Options{
 		Adapter: kube,
 		Store:   st,
 		Sampler: sampler,
 		Plan:    plan,
 		Log:     logger,
+		Recorder: recorder,
 		HostMemory: func() (int64, int64, int64, int64) {
 			memory := measure.ReadHostMemory()
 			return memory.TotalBytes, memory.AvailableBytes, memory.SwapTotalBytes, memory.SwapFreeBytes
