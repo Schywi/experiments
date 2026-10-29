@@ -7,7 +7,20 @@
 | Phase | 8 — session lifecycle elasticity |
 | Scope | A baseline read of the fork's load paths, autoscaling story and API surface, so the new test is written against what exists |
 | Evidence base | agent-sandbox checkout `d816e0f`; see the folder [README](README.md) for provenance |
-| Related | [01 — CPU and memory instrumentation](01-instrumentation-cpu-memory.md), [02 — objective and soak statistics](02-objective-and-soak-statistics.md), [`../rfc-sandbox-console.md`](../rfc-sandbox-console.md) |
+| Related | [01 — CPU and memory instrumentation](01-instrumentation-cpu-memory.md), [02 — objective and soak statistics](02-objective-and-soak-statistics.md), [04 — the deliverable](04-deliverable.md) |
+
+---
+
+## Status of the numbers in this note
+
+This note reads what the platform and the harness do. The rates quoted next to that reading come from
+upstream documentation and are not measurements of this cluster:
+
+| Quantity | Where it came from | Status |
+|---|---|---|
+| the per-pool refill ceiling in §3 | upstream `docs/configuration.md`, `docs/performance-tuning.md` | documented claim, unverified here |
+| the burst adoption rate in §3 | same | documented claim, unverified here |
+| any browser-per-host density | fork research and Phase 7's note | unverified; note 04 §2 keeps it out of the runner's inputs |
 
 ---
 
@@ -159,12 +172,15 @@ density of pods left running, with swap-in on idle→active as a latency cost.
 
 ## 7. Where this lands in this repository
 
-`config/sandbox/` (router, browser `SandboxTemplate`, 8-replica warm pool), `apps/browser-sandbox/`
-and `apps/sandbox-console/` are Phase 7 and live on `feat/sandbox-console`; the phase document is
-`evolution/07-sandbox-console.md` on that branch, and the console's create path already refuses a
-tenth live sandbox because a 6-core desktop drives ~9.1 concurrent browsers. Phase 8 measures that
-same pool under a session mix, so its design notes sit here and the harness changes land in the
-fork's `test/stress`, against the same checkout the citations above were read from.
+Phase 7 is merged into `cluster-evolution` (`218d60a`): `config/sandbox/` holds the router, the
+browser `SandboxTemplate` and the warm pool, `apps/browser-sandbox/` the Chromium image, and
+`apps/sandbox-console/` the Python pane whose phase document is `evolution/07-sandbox-console.md`.
+
+Phase 8 adds `apps/session-lab/`, a Go module that talks to the sandbox APIs directly
+([04](04-deliverable.md)). The console stays out of that path for a structural reason: it holds `get/list/watch` on `sandboxwarmpools` and `sandboxtemplates`
+(`apps/sandbox-console/chart/templates/rbac.yaml`), so a replica change is outside its verbs, and it
+has no session model. Its API is available to a human driving a browser; this runner does not read
+it.
 
 ## 8. How to check this note
 

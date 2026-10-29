@@ -6,21 +6,32 @@
 | Date | 2026-10-29 |
 | Phase | 8 of this repository's evolution (6 = Kargo promotion, 7 = agent-sandbox and the console) |
 | Branch | `research/session-lifecycle-elasticity`, cut from `cluster-evolution` at `078d1b9` |
-| Scope | Designing a test for heterogeneous session lengths, exclusive holds, waiting agents and an elastic warm pool. Design notes only; no cluster manifest changes |
+| Scope | A Go session scheduler and experiment runner at `apps/session-lab/`, with design notes here |
 | Subject | `kubernetes-sigs/agent-sandbox`, read through the fork checkout `~/Documentos/git_repos/agent-sandbox` |
 | Related | [`../rfc-sandbox-console.md`](../rfc-sandbox-console.md) (Phase 7), [`../../ROADMAP.md`](../../ROADMAP.md) |
 
 ---
 
-## The three notes
+## The notes
 
 | Note | Question | Summary |
 |---|---|---|
 | [01 — Measuring CPU and memory per session](01-instrumentation-cpu-memory.md) | What instrument produces a per-session CPU and memory number? | cgroup v2 files plus PSI, read per pod: the field tables, the `working_set ≈ current − inactive_file` accounting trap, three collection paths, and the four questions that justify tracing |
-| [02 — Objective and what a 10k-session run can claim](02-objective-and-soak-statistics.md) | What is the experiment, and what may its result say? | Soak / capacity / mechanism split, the Little's-law arithmetic that lands ~110 peak concurrency on ~12 hosts, rule-of-three bounds on a zero-failure result, and the metric gaps |
+| [02 — Objective and what a 10k-session run can claim](02-objective-and-soak-statistics.md) | What is the experiment, and what may its result say? | Soak / capacity / mechanism split, the Little's-law arithmetic that turns a target rate into a host count, rule-of-three bounds on a zero-failure result, and the metric gaps |
 | [03 — What exists today](03-what-exists-today.md) | What does the platform already do, and what does a session-elasticity test still need? | The five `test/stress` phase kinds, external-only autoscaling via HPA/KEDA, the four meanings of "idle", and five gaps |
+| [04 — The deliverable](04-deliverable.md) | What gets built, and under which rules? | The session scheduler and experiment runner: four parts, the lifecycle table, the outcome enum, the four policies, the three elasticity configurations, the report contract, and the boundary list |
 
-Read 03 first for the baseline, 02 for the experiment shape, 01 for the instrument.
+Read 04 for what is being built and under which rules, 03 for the baseline, 02 for the experiment
+shape, 01 for the instrument.
+
+## The rule about numbers
+
+**The runner imposes no ceiling, and no figure from a document is an input to it.** Concurrency,
+session count, pool size and worker count are whatever the operator asks for; node capacity, pool
+status and template shape are read from the API at run time. The notes below still quote numbers
+that came from upstream documentation, from the fork's research, or from Phase 7's write-up. Each
+note marks them as unverified in its own "Status of the numbers" block. A run of
+`apps/session-lab/` replaces them, and the replacement is recorded with the run that produced it.
 
 ## What the three notes conclude
 
@@ -88,11 +99,12 @@ sandbox console, recorded in `evolution/07-sandbox-console.md` on `feat/sandbox-
 
 ## Open next steps
 
-1. Write a per-session cgroup sampler for `test/stress` (note 01 §3-§6) and the outcome enum of
-   note 02 §7, then run the four-bucket template layout of note 02 §6 as the first A-shaped run.
-2. Decide whether the elasticity assertion of note 03 §6.4 belongs in `test/stress` as a new phase
-   kind or in a ClusterLoader2 recipe, and add the waiting-claims gauge either way.
-3. Land the Phase 8 narrative in `evolution/08-*` once the first run has anchors to cite.
+1. Build `apps/session-lab/` to the spec in [04](04-deliverable.md): the SQLite session store, the
+   Kubernetes adapter, the bucketed scheduler, the measurement pass and the report.
+2. Run the four policies at increasing load until the platform refuses, and record which constraint
+   broke first.
+3. Write `evolution/08-*` once the first run has anchors to cite, and add the missing rows for
+   phases 6, 7 and 8 to `evolution/README.md` in that same commit.
 
 ## How to check these notes
 

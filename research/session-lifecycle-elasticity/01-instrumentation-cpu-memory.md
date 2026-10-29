@@ -7,7 +7,23 @@
 | Phase | 8 — session lifecycle elasticity |
 | Scope | What to instrument so a per-session CPU and memory number exists at all. Nothing here changes the sandbox platform's code |
 | Evidence base | agent-sandbox checkout `d816e0f` (see the folder [README](README.md) for provenance and the six corrected line numbers) |
-| Related | [02 — objective and what a 10k-session run can claim](02-objective-and-soak-statistics.md), [03 — what exists today](03-what-exists-today.md), [`../rfc-sandbox-console.md`](../rfc-sandbox-console.md) |
+| Related | [02 — objective and what a 10k-session run can claim](02-objective-and-soak-statistics.md), [03 — what exists today](03-what-exists-today.md), [04 — the deliverable](04-deliverable.md) |
+
+---
+
+## Status of the numbers in this note
+
+The instrument is the subject here; the figures quoted next to it are somebody's earlier reading and
+none of them is an input to a run ([04](04-deliverable.md) §2).
+
+| Quantity | Where it came from | Status |
+|---|---|---|
+| `0.3 vCPU` per actively-driven Chromium | fork `research/experiments/02-capacity-6vcpu-100k.md:133-134` | that document calls it an assumption |
+| a browser-per-host density figure | fork research, and Phase 7's note in this repository | unverified; replaced by run output |
+| the per-pod CPU limit a sandbox carries | the live `SandboxTemplate` | read it from the object at run time |
+
+Whatever `apps/session-lab/` measures replaces these rows, and the correction lands here next to the
+run that produced it.
 
 ---
 
@@ -47,7 +63,7 @@ For each sandbox pod cgroup, `/sys/fs/cgroup/kubepods.slice/kubepods-*.slice/cri
 | File | Field | Why it matters |
 |---|---|---|
 | `cpu.stat` | `usage_usec`, `user_usec`, `system_usec` | replaces the 0.3 vCPU assumption, per session, integrable |
-| `cpu.stat` | `nr_throttled`, `throttled_usec` | the template sets `500m` limits; a throttled session's latency is an artifact of the limit |
+| `cpu.stat` | `nr_throttled`, `throttled_usec` | a pod is throttled once it reaches `cpu.max`; read that limit from the live object, and treat a throttled session's latency as an artifact of the limit |
 | `cpu.max` | `quota/period` | records what the observation was made under |
 | `cpu.pressure` | `some avg10/60/300`, `full total` | was this session runnable-but-starved |
 

@@ -7,7 +7,19 @@
 | Phase | 8 — session lifecycle elasticity |
 | Scope | Choosing the experiment shape before writing any code, and the statistics that decide what a result may say |
 | Evidence base | agent-sandbox checkout `d816e0f`; see the folder [README](README.md) for provenance |
-| Related | [01 — CPU and memory instrumentation](01-instrumentation-cpu-memory.md), [03 — what exists today](03-what-exists-today.md) |
+| Related | [01 — CPU and memory instrumentation](01-instrumentation-cpu-memory.md), [03 — what exists today](03-what-exists-today.md), [04 — the deliverable](04-deliverable.md) |
+
+---
+
+## Status of the numbers in this note
+
+§3 and §7 are arithmetic and statistics on operator-chosen inputs. Two places quote a figure from
+elsewhere, and neither is a measurement of this cluster:
+
+| Quantity | Status |
+|---|---|
+| the concurrency-to-host conversion in §2 | divides by a browser-per-host density taken from the fork's research; unverified, and note 04 §2 keeps it out of the runner's inputs |
+| the `120 ms → 480 ms` line in §3 | an illustration of a claim shape, not a result |
 
 ---
 
