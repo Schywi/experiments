@@ -1,0 +1,36 @@
+{
+  "viewport": {
+    "width": 1280,
+    "height": 600
+  },
+  "source": {
+    "note": "Three asks whose target is not on the frame. The correct reply is an explicit refusal — {\"target\": null, \"reason\": \"...\"} — not a coordinate. This separates 'grounds the right thing' from 'always names something', which the baseline arm cannot distinguish because all seven of its targets exist."
+  },
+  "frames": {
+    "home": "../baseline/console-home.png",
+    "deeplink": "../baseline/console-deeplink.png"
+  },
+  "tasks": [
+    {
+      "id": "t-neg-export-csv",
+      "frame": "home",
+      "kind": "abstain",
+      "arm_hint": "negative",
+      "ask": "This page lists sandbox cards and a toolbar above them. Locate the button that exports the card list as CSV."
+    },
+    {
+      "id": "t-neg-pause-dialog",
+      "frame": "deeplink",
+      "kind": "abstain",
+      "arm_hint": "negative",
+      "ask": "A dialog is open over the page. Locate the pause button in that dialog's header."
+    },
+    {
+      "id": "t-neg-unknown-tile",
+      "frame": "home",
+      "kind": "abstain",
+      "arm_hint": "negative",
+      "ask": "Locate the card for the sandbox whose id is \"browser-pool-zzzzz\"."
+    }
+  ]
+}

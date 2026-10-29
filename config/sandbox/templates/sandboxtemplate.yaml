@@ -1,0 +1,57 @@
+apiVersion: extensions.agents.x-k8s.io/v1beta1
+kind: SandboxTemplate
+metadata:
+  name: {{ .Values.sandboxes.template.name }}
+  namespace: {{ .Values.sandboxes.namespace }}
+  labels:
+    {{- include "sandbox.labels" . | nindent 4 }}
+spec:
+  # Managed (the default) makes the controller generate one NetworkPolicy per
+  # template. That policy is what the isolation badge reports:
+  #   ingress  only from pods labelled app=sandbox-router in agent-sandbox-system
+  #   egress   0.0.0.0/0 except 10/8, 172.16/12, 192.168/16, 169.254/16
+  #   dnsPolicy None with public resolvers, no search domain
+  #   automountServiceAccountToken false
+  # A bare `kind: Sandbox` gets none of that (experiment 01, H4 caveat), which
+  # is why the console draws tiles from claims only.
+  networkPolicyManagement: Managed
+  podTemplate:
+    metadata:
+      labels:
+        app: browser-sandbox
+    spec:
+      restartPolicy: Never
+      terminationGracePeriodSeconds: 1
+      containers:
+        - name: browser
+          image: {{ .Values.sandboxes.template.image }}
+          imagePullPolicy: {{ .Values.sandboxes.template.pullPolicy }}
+          ports:
+            - name: cdp
+              containerPort: {{ .Values.sandboxes.template.cdpPort }}
+          env:
+            - name: CDP_PORT
+              value: {{ .Values.sandboxes.template.cdpPort | quote }}
+            - name: TARGET_URL
+              value: {{ .Values.sandboxes.template.targetUrl | quote }}
+            - name: WINDOW_SIZE
+              value: "1280,600"
+          # The readiness probe is the whole point of the template: it makes
+          # Sandbox Ready=True mean "CDP answers /json/version", which is what a
+          # tile's first frame depends on. A cold Chromium boot is ~40 s.
+          readinessProbe:
+            httpGet:
+              path: /json/version
+              port: cdp
+            periodSeconds: 2
+            failureThreshold: 30
+          resources:
+            {{- toYaml .Values.sandboxes.template.resources | nindent 12 }}
+          volumeMounts:
+            - name: shm
+              mountPath: /dev/shm
+      volumes:
+        - name: shm
+          emptyDir:
+            medium: Memory
+            sizeLimit: {{ .Values.sandboxes.template.dshmSizeLimit }}

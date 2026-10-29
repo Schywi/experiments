@@ -1,0 +1,58 @@
+{
+  "tolerance_px": 32,
+  "band_px": 64,
+  "method": "getBoundingClientRect() centre of each element, read from the live page through the console's CDP route with harness/probe_page.py at a 1280x600 viewport, so CSS pixels and image pixels are the same number. The four delete buttons differ only in x: 136, 436, 736, 1036 at y 165.",
+  "measured": {
+    "captured": "2026-10-28",
+    "url": "http://10.42.0.129:8000/targets.html",
+    "note": "The page gives every button an aria-label carrying the sandbox id (aria-label=\"delete browser-pool-65l7z\"), which is what makes the accessibility tree able to tell the four look-alike delete buttons apart. Without those labels the AX names are all \"delete\" and the DOM arm has nothing to disambiguate with; that was the first attempt's failure."
+  },
+  "tasks": {
+    "t-tg-claim": {
+      "labels": ["claim sandbox", "+ claim", "claim"],
+      "element": "button[data-target=claim]",
+      "ax_match": "claim sandbox",
+      "point": {"x": 60, "y": 36}
+    },
+    "t-tg-capacity": {
+      "labels": ["capacity check", "capacity"],
+      "element": "button[data-target=capacity]",
+      "ax_match": "capacity check",
+      "point": {"x": 527, "y": 36}
+    },
+    "t-tg-delete-22grt": {
+      "labels": ["delete browser-pool-22grt", "delete 22grt", "22grt"],
+      "element": "button[data-target=delete-22grt]",
+      "ax_match": "delete browser-pool-22grt",
+      "point": {"x": 136, "y": 165}
+    },
+    "t-tg-delete-65l7z": {
+      "labels": ["delete browser-pool-65l7z", "delete 65l7z", "65l7z"],
+      "element": "button[data-target=delete-65l7z]",
+      "ax_match": "delete browser-pool-65l7z",
+      "point": {"x": 436, "y": 165}
+    },
+    "t-tg-delete-gvw9t": {
+      "labels": ["delete browser-pool-gvw9t", "delete gvw9t", "gvw9t"],
+      "element": "button[data-target=delete-gvw9t]",
+      "ax_match": "delete browser-pool-gvw9t",
+      "point": {"x": 736, "y": 165}
+    },
+    "t-tg-delete-hb765": {
+      "labels": ["delete browser-pool-hb765", "delete hb765", "hb765"],
+      "element": "button[data-target=delete-hb765]",
+      "ax_match": "delete browser-pool-hb765",
+      "point": {"x": 1036, "y": 165}
+    },
+    "t-tg-probe-65l7z": {
+      "labels": ["probe browser-pool-65l7z", "probe"],
+      "element": "button[data-target=probe-65l7z]",
+      "ax_match": "probe browser-pool-65l7z",
+      "point": {"x": 376, "y": 165}
+    },
+    "t-tg-export-csv": {
+      "absent_reason": "The page's controls are '+ claim', '+ bare sandbox', 'fill demo grid', 'teardown', 'capacity', and per card 'probe' and 'delete'. Nothing exports CSV.",
+      "absent_evidence": "three expected-but-absent names: ['export', 'csv', 'download']"
+    }
+  }
+}

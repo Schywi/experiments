@@ -1,0 +1,64 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: kaniko-browser-sandbox
+  namespace: registry
+  labels:
+    app.kubernetes.io/name: kaniko
+    app.kubernetes.io/part-of: agent-sandbox-lab
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 1800
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: kaniko
+    spec:
+      restartPolicy: Never
+      initContainers:
+        # See sandbox-console-job.yaml: a ConfigMap volume is symlinks, and
+        # COPY would carry the link (the entrypoint would be a dangling symlink
+        # and the container would fail to exec).
+        - name: dereference-context
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - cp -rL /ctx/. /workspace/ && ls -l /workspace
+          volumeMounts:
+            - name: context
+              mountPath: /ctx
+            - name: work
+              mountPath: /workspace
+      containers:
+        - name: kaniko
+          image: gcr.io/kaniko-project/executor:v1.23.2
+          args:
+            - "--context=dir:///workspace"
+            - "--dockerfile=/workspace/Containerfile"
+            - "--destination=192.168.0.28:5000/browser-sandbox:local"
+            - "--insecure"
+            # Reuse unchanged layers between rebuilds; the Playwright base image
+            # is a ~11 minute pull without it.
+            - "--cache=true"
+            - "--cache-repo=192.168.0.28:5000/kaniko-cache-browser"
+            - "--force"
+            - "--verbosity=info"
+          volumeMounts:
+            - name: work
+              mountPath: /workspace
+          resources:
+            # The Playwright base image is ~1.7 GB before the Chromium layer is
+            # unpacked; kaniko needs room to extract it.
+            requests:
+              cpu: 100m
+              memory: 1Gi
+            limits:
+              cpu: "2"
+              memory: 3Gi
+      volumes:
+        - name: context
+          configMap:
+            name: ctx-browser-sandbox
+        - name: work
+          emptyDir: {}

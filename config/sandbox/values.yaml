@@ -1,0 +1,87 @@
+# agent-sandbox platform, version-pinned.
+#
+# The controller and the four CRDs are NOT here: upstream publishes them as a
+# release manifest, and `install.sh` applies that pinned file. This chart owns
+# the three objects the console actually needs -- the router, the browser
+# SandboxTemplate and the warm pool -- plus their namespaces.
+#
+# Router flags and the NetworkPolicy port list are the two places this chart
+# deliberately differs from upstream's `sandbox-router/deploy/`. Both
+# differences are explained where they appear.
+
+router:
+  namespace: agent-sandbox-system
+  # One replica: this is a single-node cluster, so a second replica buys no
+  # availability and the PDB below is a formality.
+  replicas: 1
+  image:
+    repository: registry.k8s.io/agent-sandbox/sandbox-router-go
+    # Same release as the controller manifest install.sh applies. v1.0.7 is a
+    # published tag; upstream's own deploy/ manifest pins `:latest`, which is
+    # never published (examples/document-conversion-sandbox/README.md).
+    tag: v1.0.7
+    pullPolicy: IfNotPresent
+  authz:
+    # tokenreview: the router validates the caller's bearer token against the
+    # cluster's TokenReview API. The console presents its ServiceAccount token.
+    # `allow-all` would let anyone who can reach the router drive any sandbox in
+    # the namespace.
+    mode: tokenreview
+    requireToken: true
+  # The router's egress policy allows the API server by port (443/6443) and not
+  # by address: Cilium translates the `kubernetes` ClusterIP to the host backend
+  # before egress policy runs, so no ipBlock can name it. See the NetworkPolicy
+  # template for the failure that costs.
+  cache:
+    # Resolve the live Pod IP from an informer instead of cluster DNS. Template
+    # pods have no per-sandbox Service, so the DNS form is NXDOMAIN for them.
+    enabled: true
+  proxyTimeout: 180s
+  upstreamMaxRetries: "3"
+  clusterDomain: cluster.local
+  service:
+    # ClusterIP, not LoadBalancer. The LAN pool (192.168.0.240-250) is fully
+    # allocated: .248 and .249 went to the two kargo-gateway LoadBalancers on
+    # 2026-10-24, and .240-.247 were already in use. Only .250 is left, and the
+    # console takes it because that is the address a human opens.
+    #
+    # The console reaches the router over this ClusterIP, so the pane works
+    # without it. For CDP from a laptop, port-forward instead:
+    #   kubectl -n agent-sandbox-system port-forward svc/sandbox-router-svc 8080:8080
+    type: ClusterIP
+    loadBalancerIP: ""
+    port: 8080
+  resources:
+    requests:
+      cpu: 20m
+      memory: 32Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+
+sandboxes:
+  namespace: sandbox-demo
+  template:
+    name: browser-tpl
+    # Built by apps/browser-sandbox and pushed to the in-cluster registry.
+    # Always: the in-cluster registry serves a mutable `:local` tag, so a cached
+    # image must not be reused (the same reason the assistant chart says Always).
+    image: 127.0.0.1:5000/browser-sandbox:local
+    pullPolicy: Always
+    targetUrl: https://example.com/
+    cdpPort: 9222
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        # ~250 MiB resident per Chromium; the limit is headroom for a busy page.
+        cpu: "1"
+        memory: 768Mi
+    dshmSizeLimit: 512Mi
+  warmPool:
+    name: browser-pool
+    # 8, not the 12 a full grid draws. Experiment 02 measured ~9.1 *active*
+    # Chromium instances against this host's free CPU; idle memory would allow
+    # ~28, and the difference is what makes a 12-tile grid lag during a demo.
+    replicas: 8

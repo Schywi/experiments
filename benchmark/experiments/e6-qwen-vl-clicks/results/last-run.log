@@ -1,0 +1,12 @@
+[20261028T202719Z] arm=vision-only dry_run=False sets=targets
+[20261028T202719Z] calibration: x=1.441683*px+62.538 y=2.639863*py+-20.863 raw_rms=381.42px corrected_rms=214.28px status=unusable usable_for_click=False
+  targets/t-tg-claim: resolved_by=vision-only point=None qwen=True
+  targets/t-tg-capacity: resolved_by=vision-only point=None qwen=True
+  targets/t-tg-delete-22grt: resolved_by=vision-only point=None qwen=True
+  targets/t-tg-delete-65l7z: resolved_by=vision-only point=None qwen=True
+  targets/t-tg-delete-gvw9t: resolved_by=vision-only point=None qwen=True
+  targets/t-tg-delete-hb765: resolved_by=vision-only point=None qwen=True
+  targets/t-tg-probe-65l7z: resolved_by=vision-only point=None qwen=True
+  targets/t-tg-export-csv: resolved_by=vision-only point=None qwen=True
+
+[20261028T202719Z] 8 task(s) done; events at /results/e6/20261028T202719Z/events.jsonl

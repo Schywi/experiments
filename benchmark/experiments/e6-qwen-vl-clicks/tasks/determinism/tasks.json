@@ -1,0 +1,35 @@
+{
+  "viewport": {
+    "width": 1280,
+    "height": 600
+  },
+  "source": {
+    "note": "Baseline task 2 asked three times, same frame, same prompt, temperature 0. An agent loop needs the same input to produce the same point; if the three replies differ, the model is sampling and every downstream score carries that noise."
+  },
+  "frames": {
+    "home": "../baseline/console-home.png"
+  },
+  "tasks": [
+    {
+      "id": "t-det-1",
+      "frame": "home",
+      "kind": "point",
+      "arm_hint": "determinism",
+      "ask": "Locate the toolbar button labelled \"+ claim\"."
+    },
+    {
+      "id": "t-det-2",
+      "frame": "home",
+      "kind": "point",
+      "arm_hint": "determinism",
+      "ask": "Locate the toolbar button labelled \"+ claim\"."
+    },
+    {
+      "id": "t-det-3",
+      "frame": "home",
+      "kind": "point",
+      "arm_hint": "determinism",
+      "ask": "Locate the toolbar button labelled \"+ claim\"."
+    }
+  ]
+}

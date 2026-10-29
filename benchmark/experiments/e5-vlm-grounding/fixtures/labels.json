@@ -1,0 +1,51 @@
+{
+  "tolerance_px": 32,
+  "band_px": 64,
+  "method": "Ground truth is the centre of each element's getBoundingClientRect(), read from the page's own DOM over the console's CDP bridge (POST /cdp Runtime.evaluate) in the same second the PNG was captured. The viewport is 1280x600 at devicePixelRatio 1, so CSS pixels and image pixels are the same number.",
+  "measured": {
+    "captured": "2026-10-26",
+    "sandbox": "browser-pool-sthfr",
+    "urls": {
+      "home": "http://192.168.0.250:8080/",
+      "home-scrolled": "http://192.168.0.250:8080/ (window.scrollY = 420)",
+      "deeplink": "http://192.168.0.250:8080/s/browser-pool-22grt"
+    }
+  },
+  "tasks": {
+    "t1-identify-claim-button": {
+      "labels": ["+ claim", "claim", "+claim", "new claim"],
+      "element": "button[data-act=create][data-kind=claim]",
+      "point": {"x": 58, "y": 97}
+    },
+    "t2-point-claim-button": {
+      "labels": ["+ claim", "claim"],
+      "element": "button[data-act=create][data-kind=claim]",
+      "point": {"x": 58, "y": 97}
+    },
+    "t3-similar-delete-button": {
+      "labels": ["delete browser-pool-65l7z", "browser-pool-65l7z delete", "delete 65l7z", "65l7z"],
+      "element": "button[data-act=delete][data-id=browser-pool-65l7z]",
+      "point": {"x": 594, "y": 567}
+    },
+    "t4-after-scroll-probe-button": {
+      "labels": ["probe", "probe browser-pool-sthfr"],
+      "element": "button[data-act=probe][data-id=browser-pool-sthfr]",
+      "point": {"x": 179, "y": 511}
+    },
+    "t5-after-scroll-delete-button": {
+      "labels": ["delete browser-pool-ww79w", "browser-pool-ww79w delete", "delete ww79w", "ww79w"],
+      "element": "button[data-act=delete][data-id=browser-pool-ww79w]",
+      "point": {"x": 594, "y": 558}
+    },
+    "t6-after-navigate-scroll-down": {
+      "labels": ["down", "scroll down", "↓"],
+      "element": "button[data-act=scroll][data-dy=400]",
+      "point": {"x": 1075, "y": 50}
+    },
+    "t7-after-navigate-which-dialog": {
+      "labels": ["browser-pool-22grt", "22grt"],
+      "element": "dialog header h2",
+      "point": {"x": 119, "y": 50}
+    }
+  }
+}

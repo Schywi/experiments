@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: sandbox-router-svc
+  namespace: {{ .Values.router.namespace }}
+  labels:
+    {{- include "sandbox.routerSelector" . | nindent 4 }}
+spec:
+  # Its own LoadBalancer IP when one is available; ClusterIP otherwise. The
+  # console reaches it over the Service name, so the pane works either way.
+  type: {{ .Values.router.service.type | default "ClusterIP" }}
+  {{- with .Values.router.service.loadBalancerIP }}
+  loadBalancerIP: {{ . }}
+  {{- end }}
+  selector:
+    {{- include "sandbox.routerSelector" . | nindent 4 }}
+  ports:
+    - name: proxy
+      port: {{ .Values.router.service.port }}
+      targetPort: proxy
+      protocol: TCP

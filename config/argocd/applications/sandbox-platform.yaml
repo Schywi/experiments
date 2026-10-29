@@ -1,0 +1,36 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: sandbox-platform
+  namespace: argocd
+  annotations:
+    # The console reads this router; create the platform first.
+    argocd.argoproj.io/sync-wave: "1"
+  labels:
+    app.kubernetes.io/part-of: agent-sandbox-lab
+    app.kubernetes.io/managed-by: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/Schywi/experiments.git
+    # Contextual: Argo reads the branch the work is on, NEVER `main`.
+    targetRevision: feat/sandbox-console
+    path: config/sandbox
+    helm:
+      releaseName: sandbox
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: agent-sandbox-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+# Scope note: this Application owns the router, the browser SandboxTemplate and
+# the warm pool. The agent-sandbox CRDs and controller are NOT reconciled here --
+# they come from the pinned upstream release manifest via config/sandbox/install.sh.
+# Declaring upstream's generated manifest as an Argo source would mean reviewing
+# its RBAC by eye on every bump; see config/sandbox/README.md.

@@ -1,0 +1,54 @@
+{{- if .Values.rbac.create }}
+# Read-only, namespaced. Every rule here is exercised by kube.py and nothing
+# else: sandboxes and claims for the grid, pods for the pod hash / dnsPolicy /
+# token fields, and pods.metrics.k8s.io for memory and CPU.
+#
+# Deliberately absent: pods/exec (the isolation badge is measured from inside
+# the sandbox's own browser instead), and every write verb (create, update,
+# patch, delete). Compare mode, when it lands, will need `create` on
+# sandboxes/sandboxclaims -- and that is the change to review, not a silent one.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: sandbox-console
+  # The sandboxes live in their own namespace, so the Role is created there
+  # rather than in the release namespace.
+  namespace: {{ .Values.sandbox.namespace }}
+  labels:
+    {{- include "sandbox-console.labels" . | nindent 4 }}
+rules:
+  # M4-M7: the only write verbs the console ever holds, and only on the two
+  # objects it is allowed to own. Templates, warm pools and policies stay
+  # GitOps-only, so the pane can never become a second reconciler.
+  - apiGroups: ["agents.x-k8s.io"]
+    resources: ["sandboxes"]
+    verbs: ["get", "list", "watch", "create", "delete"]
+  - apiGroups: ["extensions.agents.x-k8s.io"]
+    resources: ["sandboxclaims"]
+    verbs: ["get", "list", "watch", "create", "delete"]
+  - apiGroups: ["extensions.agents.x-k8s.io"]
+    resources: ["sandboxtemplates", "sandboxwarmpools"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+  - apiGroups: ["metrics.k8s.io"]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: sandbox-console
+  namespace: {{ .Values.sandbox.namespace }}
+  labels:
+    {{- include "sandbox-console.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: sandbox-console
+subjects:
+  - kind: ServiceAccount
+    name: sandbox-console
+    namespace: {{ .Release.Namespace }}
+{{- end }}

@@ -1,0 +1,43 @@
+{
+  "viewport": {
+    "width": 1280,
+    "height": 600
+  },
+  "source": {
+    "note": "Same frame as the baseline arm (E5's console-home.png, six tiles, four in the top row), so the only thing that changes between baseline task 3 and these four tasks is which card is asked about.",
+    "derived_from": "../baseline/tasks.json"
+  },
+  "frames": {
+    "home": "../baseline/console-home.png"
+  },
+  "tasks": [
+    {
+      "id": "t-disc-22grt",
+      "frame": "home",
+      "kind": "label+point",
+      "arm_hint": "discriminate",
+      "ask": "This page shows several sandbox cards, each with its own delete button. Locate the delete button of the card whose sandbox id is \"browser-pool-22grt\", not the delete button of any other card."
+    },
+    {
+      "id": "t-disc-65l7z",
+      "frame": "home",
+      "kind": "label+point",
+      "arm_hint": "discriminate",
+      "ask": "This page shows several sandbox cards, each with its own delete button. Locate the delete button of the card whose sandbox id is \"browser-pool-65l7z\", not the delete button of any other card."
+    },
+    {
+      "id": "t-disc-gvw9t",
+      "frame": "home",
+      "kind": "label+point",
+      "arm_hint": "discriminate",
+      "ask": "This page shows several sandbox cards, each with its own delete button. Locate the delete button of the card whose sandbox id is \"browser-pool-gvw9t\", not the delete button of any other card."
+    },
+    {
+      "id": "t-disc-hb765",
+      "frame": "home",
+      "kind": "label+point",
+      "arm_hint": "discriminate",
+      "ask": "This page shows several sandbox cards, each with its own delete button. Locate the delete button of the card whose sandbox id is \"browser-pool-hb765\", not the delete button of any other card."
+    }
+  ]
+}

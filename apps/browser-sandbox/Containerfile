@@ -1,0 +1,32 @@
+# A Chromium whose DevTools endpoint the sandbox-router can reach on port 9222.
+#
+# The Playwright image is the base because it already carries a Chromium built
+# for headless automation (experiment 02, Q1: the chrome-sandbox example adds a
+# VNC server and an X display that a screenshot pipeline never uses).
+#
+# Pinned by tag: the Chromium inside must match the Playwright release, and a
+# floating tag would move the browser under a running demo.
+FROM mcr.microsoft.com/playwright/python:v1.48.0-jammy
+
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
+    CDP_PORT=9222 \
+    CDP_UPSTREAM_PORT=9223 \
+    CDP_WS_PORT=0 \
+    TARGET_URL=https://example.com/ \
+    WINDOW_SIZE=1280,600
+
+# This Chromium binds DevTools to loopback and ignores
+# --remote-debugging-address, and the sandbox-router cannot carry a WebSocket.
+# cdp-bridge.py closes both gaps: it holds the WebSocket over loopback and
+# publishes plain HTTP on the pod IP. cdp-forward.py is the raw TCP publisher for
+# the WebSocket transport, kept for the day the router can do upgrades again.
+COPY --chown=root:root entrypoint.sh /usr/local/bin/browser-entrypoint
+COPY --chown=root:root cdp-bridge.py /usr/local/bin/cdp-bridge
+COPY --chown=root:root cdp-forward.py /usr/local/bin/cdp-forward
+RUN chmod 0755 /usr/local/bin/browser-entrypoint /usr/local/bin/cdp-bridge /usr/local/bin/cdp-forward
+
+# Chromium's user-data-dir lives in /tmp; the template mounts a memory-backed
+# emptyDir over /dev/shm.
+EXPOSE 9222
+
+ENTRYPOINT ["/usr/local/bin/browser-entrypoint"]

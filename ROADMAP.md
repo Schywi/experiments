@@ -25,11 +25,12 @@ Ground rules that shaped it (from [`AGENTS.md`](AGENTS.md)):
 | Execution model | **Bare metal on the physical Fedora 44 host** — not a VM, Vagrant, QEMU/libvirt, or container (`systemd-detect-virt` → `none`). The GPU is the host's display card; a passthrough bind would remove it from the host. |
 | Running profile | **Native k3s** on one Fedora 44 host (node `192.168.0.28`), not `k3d` |
 | Networking | **Cilium only** — eBPF, kube-proxy replacement, Cilium Ingress, Cilium LB-IPAM + L2 announcements on the LAN (`192.168.0.240-250`). MetalLB is **k3d-era only**. |
-| GitOps | Argo CD `10.8.0`, 17 Applications registered, **anonymous read-only**, pinned at `192.168.0.247`. Four of them are Kargo's and are `Synced/Healthy`; measured 2026-10-28: `cartography` `OutOfSync/Degraded`, `grafana` and `victoriametrics` `OutOfSync` |
+| GitOps | Argo CD `10.8.0`, 17 Applications registered, **anonymous read-only**, pinned at `192.168.0.247`. Four of them are Kargo's and are `Synced/Healthy`; measured 2026-10-28: `cartography` `OutOfSync/Degraded`, `grafana` and `victoriametrics` `OutOfSync`. The sandbox platform and console are Helm releases, not Applications |
 | Promotion | Kargo `1.12.0` in namespace `kargo`, UI at `http://192.168.0.249/` behind a token-injecting gateway. The busybox pilot promoted staging → prod as two real commits (`5c5d204`, `ced5f89`) |
 | Models | Qwen2.5-1.5B (llama.cpp, CPU) and Kokoro TTS running; Laya scaled to 0 |
 | GPU | AMD RX 570 (`gfx803`) reachable as `amd.com/render` through a Go device plugin; Vulkan path proven, **no ROCm/CUDA, no VRAM enforcement** |
 | AI Ops | `apps/assistant` — 15 tools, one evaluator call reads the sentence and returns the task list, evidence attached server-side |
+| Sandboxes | agent-sandbox `v1.0.7` (pinned release) + `apps/sandbox-console` at `192.168.0.250` — read-only grid, one screenshot per tap, live isolation badge, M1-M7 of `research/rfc-sandbox-console.md`. Warm pool 8/8 ready; 3 of 13 live sandboxes `PodFailed` |
 | Worm lab | Complete on `trackc`, merged here, and **scaled to 0** — it is preserved history, not a live workload |
 | Branches | `main` (public face, not a deploy source) · `native-k3s-gpu-models` (live Argo target) · `trackc` (worm-lab + registry backports) · `cluster-evolution` (unifies all three) · `feat/kargo` (Phase 6: Kargo + assistant evaluator) |
 
@@ -244,10 +245,11 @@ commits, so they do not follow a branch.
 Shared ingress and UI: `cilium-ingress` `192.168.0.240`, Hubble UI
 `192.168.0.241`, Kargo `192.168.0.249`, Argo CD `192.168.0.247`.
 
-One thing deploys **outside** Argo and is therefore not reproducible from a
+Three things deploy **outside** Argo and are therefore not reproducible from a
 clean checkout: the E4 A/B assistant (`assistant-e4-gpu`, tracked as
-`config/gpu-exp/assistant-e4-gpu.yaml`). Registering it as an Application is
-tracked in §4.
+`config/gpu-exp/assistant-e4-gpu.yaml`), and the two sandbox workloads, which are
+Helm releases `sandbox` (rev 7, ns `agent-sandbox-system`) and `sandbox-console`
+(rev 5, ns `sandbox-console`). Registering them as Applications is tracked in §4.
 
 `config/argocd/applications/stable/` holds four Applications pinned to a full
 commit (`592d7f51…`) with manual sync only. Per

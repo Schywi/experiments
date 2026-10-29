@@ -1,0 +1,23 @@
+# sandbox-console: read-only pane over live agent-sandbox Chromium sandboxes.
+#
+# Unlike the assistant, this does not load a Kubernetes client library beyond
+# what the read-only list calls need -- but it does need a WebSocket client,
+# because the only way to a screenshot is the DevTools protocol over the
+# sandbox-router.
+FROM python:3.12-slim
+
+RUN pip install --no-cache-dir fastapi "uvicorn[standard]" httpx kubernetes websockets \
+ && useradd --uid 10001 --user-group --shell /usr/sbin/nologin app \
+ && mkdir -p /var/log/sandbox-console && chown 10001:10001 /var/log/sandbox-console
+
+WORKDIR /app
+# Copy every module: an explicit list drifted once already in
+# apps/assistant and silently omitted a module from the image.
+COPY --chown=10001:10001 *.py /app/
+# Vendored @unocss/runtime (one file, ~240 KB). Self-hosted on purpose: the pane
+# has to render on a LAN with no CDN, and a build step would need node.
+COPY --chown=10001:10001 static/ /app/static/
+
+USER 10001
+EXPOSE 8080
+ENTRYPOINT ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "8080"]

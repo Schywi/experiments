@@ -1,0 +1,81 @@
+# The controller Job: six deterministic stages, Qwen called at exactly one.
+#
+# Paths match controller.py's own layout — it computes ROOT as the parent of
+# `controller/`, so mounting the tree at /opt/e6 is enough:
+#
+#   /opt/e6/controller/*.py      from ConfigMap e6-controller (flat keys)
+#   /opt/e6/tasks/<set>/...      from PVC e6-fixtures (frames included)
+#   /opt/e6/calibration/fit.json from ConfigMap e6-fit
+#   /results/e6/<run-id>/        on PVC e6-results, so events.jsonl survives a crash
+#
+# The ServiceAccount token is mounted on purpose: the sandbox router runs
+# `--authz-mode=tokenreview` and the console's own CDP route needs a Bearer token,
+# which console.py reads from /var/run/secrets/kubernetes.io/serviceaccount/token.
+#
+#   sed -e 's|--sets', '|' ... |'  run_e6.sh replaces the two placeholder args.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: e6-controller
+  namespace: vlm-e6
+  labels: {app.kubernetes.io/part-of: vlm-e6}
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels: {app.kubernetes.io/part-of: vlm-e6}
+    spec:
+      restartPolicy: Never
+      securityContext:
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: controller
+          image: python:3.12-slim
+          command: ["python3", "/opt/e6/controller/controller.py"]
+          args:
+            - "--sets"
+            - "SETS_PLACEHOLDER"
+            - "--arm"
+            - "ARM_PLACEHOLDER"
+            - "--page-url"
+            - "PAGE_URL_PLACEHOLDER"
+            - "--out"
+            - "/results"
+          env:
+            - {name: MODEL_URL, value: "http://qwen3vl:8000"}
+            - {name: CONSOLE_URL, value: "http://sandbox-console.sandbox-console.svc.cluster.local:8080"}
+            - {name: ROUTER_URL, value: "http://sandbox-router-svc.agent-sandbox-system.svc.cluster.local:8080"}
+            - {name: SANDBOX_NAMESPACE, value: "sandbox-demo"}
+            - {name: CONSOLE_HOME, value: "http://192.168.0.250:8080/"}
+            - {name: HTTP_TIMEOUT, value: "120"}
+            - {name: SETTLE_SECONDS, value: "1.0"}
+            - {name: MAX_TOKENS, value: "320"}
+            - {name: TIMEOUT, value: "600"}
+            # flow.sh sets this to 1 when the run should click vision coordinates
+            # even though the calibration is unusable.
+            - {name: ALLOW_VISION_CLICKS, value: "VISION_PLACEHOLDER"}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: ["ALL"]}
+          resources:
+            requests: {cpu: 100m, memory: 256Mi}
+            limits: {cpu: "1", memory: 1Gi}
+          volumeMounts:
+            - {name: controller, mountPath: /opt/e6/controller, readOnly: true}
+            - {name: tasks, mountPath: /opt/e6/tasks, readOnly: true}
+            - {name: fit, mountPath: /opt/e6/calibration, readOnly: true}
+            - {name: results, mountPath: /results}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: controller
+          configMap: {name: e6-controller}
+        - name: fit
+          configMap: {name: e6-fit}
+        - name: tasks
+          persistentVolumeClaim: {claimName: e6-fixtures, readOnly: true}
+        - name: results
+          persistentVolumeClaim: {claimName: e6-results}
+        - name: tmp
+          emptyDir: {}

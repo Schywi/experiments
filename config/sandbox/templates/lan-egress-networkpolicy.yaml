@@ -1,0 +1,45 @@
+# LAN and cluster egress for the browser sandboxes.
+#
+# The controller's generated policy (`networkPolicyManagement: Managed`) allows
+# the public internet and drops every private range, which is what keeps a
+# sandbox off this host's LAN and off the cluster network. The pane also renders
+# the cluster's own UIs, so this object adds them back:
+#
+#   192.168.0.0/16        the LoadBalancer addresses a LAN client would use, and
+#                         the host itself: .240 cilium ingress, .241 hubble,
+#                         .242 cartography, .243 assistant, .244 fuwa,
+#                         .245 grafana, .246 victoriametrics, .247 argocd,
+#                         .249 kargo, .250 sandbox-console
+#   any namespace in the  every pod in the cluster. This is the rule that
+#   cluster               actually makes a LoadBalancer address work from inside:
+#                         kube-proxy replacement DNATs the service address to a
+#                         backend pod before the policy is evaluated, and Cilium
+#                         matches pod traffic by identity, not by CIDR. A CIDR
+#                         rule for 10.42.0.0/16 alone never matches the packet.
+#
+# NetworkPolicies are additive: this object adds allows and cannot widen what
+# the generated policy already permits. Two consequences are deliberate:
+#
+#   * the API server answers at 192.168.0.28:6443 and at its ClusterIP. There is
+#     no credential to use it with: the template keeps
+#     `automountServiceAccountToken: false`.
+#   * a sandbox can reach every pod in the cluster, including its siblings. The
+#     ingress side stays closed -- only the router may talk to a sandbox -- so
+#     the reachability added here is one-way.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: browser-lan-egress
+  namespace: {{ .Values.sandboxes.namespace }}
+  labels:
+    app.kubernetes.io/part-of: agent-sandbox-lab
+spec:
+  podSelector:
+    matchLabels:
+      app: browser-sandbox
+  policyTypes: ["Egress"]
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 192.168.0.0/16
+        - namespaceSelector: {}

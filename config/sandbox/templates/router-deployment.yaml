@@ -1,0 +1,80 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sandbox-router
+  namespace: {{ .Values.router.namespace }}
+  labels:
+    {{- include "sandbox.routerSelector" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.router.replicas }}
+  selector:
+    matchLabels:
+      {{- include "sandbox.routerSelector" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        # `app: sandbox-router` is load-bearing: the NetworkPolicy the
+        # SandboxTemplate controller generates allows ingress to template pods
+        # only from pods with that exact label in this exact namespace
+        # (extensions/controllers/sandboxtemplate_controller.go).
+        {{- include "sandbox.routerSelector" . | nindent 8 }}
+    spec:
+      serviceAccountName: sandbox-router
+      automountServiceAccountToken: true
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: sandbox-router
+          image: "{{ .Values.router.image.repository }}:{{ .Values.router.image.tag }}"
+          imagePullPolicy: {{ .Values.router.image.pullPolicy }}
+          args:
+            - --http-bind-address=:8080
+            - --metrics-bind-address=:9090
+            - --health-probe-bind-address=:8081
+            - --cluster-domain={{ .Values.router.clusterDomain }}
+            - --proxy-timeout={{ .Values.router.proxyTimeout }}
+            - --upstream-max-retries={{ .Values.router.upstreamMaxRetries }}
+            - --cache-enabled={{ .Values.router.cache.enabled }}
+            {{- if .Values.router.cache.enabled }}
+            # Template-derived sandboxes have no per-sandbox Service, so the DNS
+            # form of resolution is NXDOMAIN for them. The cache is what makes
+            # a claimed sandbox reachable by name.
+            - --cache-namespace={{ .Values.sandboxes.namespace }}
+            {{- end }}
+            - --authz-mode={{ .Values.router.authz.mode }}
+            {{- if eq .Values.router.authz.mode "tokenreview" }}
+            - --authz-tokenreview-require-token={{ .Values.router.authz.requireToken }}
+            {{- end }}
+          ports:
+            - name: proxy
+              containerPort: 8080
+            - name: metrics
+              containerPort: 9090
+            - name: healthz
+              containerPort: 8081
+          livenessProbe:
+            httpGet: {path: /healthz, port: healthz}
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet: {path: /readyz, port: healthz}
+            initialDelaySeconds: 1
+            periodSeconds: 5
+            failureThreshold: 2
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            {{- toYaml .Values.router.resources | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
