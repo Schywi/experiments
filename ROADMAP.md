@@ -24,11 +24,11 @@ Ground rules that shaped it (from [`AGENTS.md`](AGENTS.md)):
 | Execution model | **Bare metal on the physical Fedora 44 host** — not a VM, Vagrant, QEMU/libvirt, or container (`systemd-detect-virt` → `none`). The GPU is the host's display card; a passthrough bind would remove it from the host. |
 | Running profile | **Native k3s** on one Fedora 44 host (node `192.168.0.28`), not `k3d` |
 | Networking | **Cilium only** — eBPF, kube-proxy replacement, Cilium Ingress, Cilium LB-IPAM + L2 announcements on the LAN (`192.168.0.240-250`). MetalLB is **k3d-era only**. |
-| GitOps | Argo CD `10.8.0`, 12 Applications `Synced/Healthy`, **anonymous read-only**, pinned at `192.168.0.247` |
+| GitOps | Argo CD `10.8.0`, **17** Applications — 13 `Synced`, three `OutOfSync` (`cartography`, `grafana`, `victoriametrics`), one `Unknown` (`fuwa`) — **anonymous read-only**, pinned at `192.168.0.247`. The sandbox platform and console are Helm releases, not Applications |
 | Models | Qwen2.5-1.5B (llama.cpp, CPU) and Kokoro TTS running; Laya scaled to 0 |
 | GPU | AMD RX 570 (`gfx803`) reachable as `amd.com/render` through a Go device plugin; Vulkan path proven, **no ROCm/CUDA, no VRAM enforcement** |
 | AI Ops | `apps/assistant` — 10 read-only tools, 2 LLM calls per answer, evidence attached server-side |
-| Sandboxes | agent-sandbox `v1.0.7` (pinned release) + `apps/sandbox-console` at `192.168.0.249` — read-only grid, one screenshot per tap, live isolation badge. Milestones M1-M3 of `research/rfc-sandbox-console.md` |
+| Sandboxes | agent-sandbox `v1.0.7` (pinned release) + `apps/sandbox-console` at `192.168.0.250` — read-only grid, one screenshot per tap, live isolation badge, M1-M7 of `research/rfc-sandbox-console.md`. Warm pool 8/8 ready; 3 of 13 live sandboxes `PodFailed` |
 | Worm lab | Complete on `trackc`, merged here, and **scaled to 0** — it is preserved history, not a live workload |
 | Branches | `main` (frozen k3d era) · `native-k3s-gpu-models` (live Argo target) · `trackc` (worm-lab + registry backports) · **`cluster-evolution` (this branch, unifies all three)** |
 
@@ -175,23 +175,27 @@ permissive CORS change (`e415607`) is documented as a known exposure in
 
 ---
 
-### Phase 6 — agent-sandbox and the console that proves it (2026-10-18 → )
+### Phase 7 — agent-sandbox and the console that proves it (2026-10-18 → )
 
 **Branch:** `feat/sandbox-console` · **Paths:** `apps/sandbox-console/`,
 `apps/browser-sandbox/`, `config/sandbox/` · **Design note:**
-`research/rfc-sandbox-console.md` · **Narrative:** `evolution/06-sandbox-console.md`
+`research/rfc-sandbox-console.md` · **Narrative:** `evolution/07-sandbox-console.md`
 
 agent-sandbox runs as a pinned upstream release: four CRDs plus the `v1.0.7`
 controller, applied by `config/sandbox/install.sh` after verifying the
 manifest's sha256. The SIGs checkout at `~/Documentos/git_repos/agent-sandbox`
-stays read-only; the objects this repo owns are the router (LoadBalancer
-`192.168.0.248`), the browser `SandboxTemplate`, the 8-replica warm pool, and
-the console at `192.168.0.249`.
+stays read-only; the objects this repo owns are the browser `SandboxTemplate`,
+the 8-replica warm pool, the router (`ClusterIP sandbox-router-svc:8080`) and
+the console at `192.168.0.250`. Both workloads are Helm releases — `sandbox`
+rev 7 in `agent-sandbox-system` and `sandbox-console` rev 5 in
+`sandbox-console` — so the two Argo Applications on this branch are unapplied.
 
-The console covers M1-M3 of the RFC: a read-only grid of claimed sandboxes, one
-screenshot per tap through the DevTools protocol via the router, and an
-isolation badge measured inside the sandbox's own Chromium. It holds
-`get/list/watch` only, so no command runs in a sandbox.
+The console covers M1-M7 of the RFC: a read-only grid of claimed sandboxes, one
+screenshot per tap through the DevTools protocol via the router, an isolation
+badge measured inside the sandbox's own Chromium, create/delete of claims, three
+streaming recipes, a warm-Claim-versus-bare-`Sandbox` comparison, and a demo
+fill/teardown. It holds `get/list/watch` plus narrow `create`/`delete` on
+`sandboxes` and `sandboxclaims`; no command runs in a sandbox.
 
 Four substrate details, each of which produces an unreachable tile rather than
 an error: the router's NetworkPolicy needed egress on `9222` (upstream allows
@@ -203,11 +207,10 @@ drawing tiles that could only 502.
 
 ---
 
-## 3. What is actually deployed (verified against the cluster)
+## 3. What is actually deployed (verified against the cluster, 2026-10-28)
+
 | App | Namespace | Argo targetRevision | Exposure |
 |---|---|---|---|
-| `sandbox-console` | `sandbox-console` | `feat/sandbox-console` | `192.168.0.249` |
-| `sandbox-platform` | `agent-sandbox-system`, `sandbox-demo` | `feat/sandbox-console` | router `192.168.0.248` |
 | `assistant` | `assistant` | `native-k3s-gpu-models` | `192.168.0.243` |
 | `assistant-laya` | `assistant` | `native-k3s-gpu-models` | scaled to 0 |
 | `cartography` | `cartography` | `native-k3s-gpu-models` | `192.168.0.242` (Neo4j, no auth) |
@@ -224,9 +227,11 @@ drawing tiles that could only 502.
 Shared ingress and UI: `cilium-ingress` `192.168.0.240`, Hubble UI
 `192.168.0.241`, Argo CD `192.168.0.247`.
 
-Two things deploy **outside** Argo and are therefore not reproducible from a
-clean checkout: the `fuwa` namespace (UI + loki/otel/tempo at `192.168.0.244`)
-and the E4 A/B assistant (`assistant-e4-gpu`). Registering them as Applications
+Four things deploy **outside** Argo and are therefore not reproducible from a
+clean checkout: the `fuwa` namespace (UI + loki/otel/tempo at `192.168.0.244`),
+the E4 A/B assistant (`assistant-e4-gpu`), and the two sandbox workloads, which
+are Helm releases `sandbox` (rev 7, ns `agent-sandbox-system`) and
+`sandbox-console` (rev 5, ns `sandbox-console`). Registering them as Applications
 is tracked in §4.
 
 `config/argocd/applications/stable/` holds four Applications pinned to a full
@@ -286,6 +291,10 @@ Grouped from `bd ready`; run `bd ready` for the live list.
 13. Port the recipe runner to the real `dev/load-test/test-recipes/` scripts once
     they are reachable from a cluster-side runner; today the three in-process
     recipes cover burst, teardown and capacity.
+14. Decide the fate of `config/argocd/applications/sandbox-console.yaml` and
+    `sandbox-platform.yaml`: they have never been registered, and live both
+    workloads are Helm releases. Applying them would make the chart the single
+    source of truth; leaving them means deleting two files that describe nothing.
 15. Report the router's 101 bug upstream: `sandbox-router/proxy/proxy.go:545`
     wraps every upstream response body in a byte-counting wrapper, so Go's
     `ReverseProxy` aborts every WebSocket upgrade with "101 switching protocols

@@ -282,11 +282,11 @@ unbounded concurrency (`experiments/apps/assistant/concurrency.py` is the templa
 
 | | |
 |---|---|
-| LB-IPAM pool | `192.168.0.240–250`. **8 used**: `.240` cilium-ingress, `.241` hubble, `.242` neo4j, `.243` assistant, `.244` fuwa, `.245` grafana, `.246` victoriametrics, `.247` argocd |
-| Free | `.248`, `.249`, `.250` — **3 addresses** |
-| Allocation | one LoadBalancer Service for `sandbox-router` at **`192.168.0.248`**; the console also gets a Service (`.249`) or rides the router |
-| Per-sandbox IPs | **not possible.** 12 sandboxes into 3 free addresses, and a Service per ephemeral pod churns LB-IPAM and L2 ARP announcements on every create/delete |
-| Routing | console → `192.168.0.248` with `X-Sandbox-ID: sb-4f2a` → router → `pod:9222` |
+| LB-IPAM pool | `192.168.0.240–250`, **all 11 allocated** as of 2026-10-28 |
+| Allocation | `.240` cilium-ingress, `.241` hubble, `.242` neo4j, `.243` assistant, `.244` fuwa, `.245` grafana, `.246` victoriametrics, `.247` argocd, **`.248` and `.249` kargo-gateway (2026-10-24)**, **`.250` sandbox-console** |
+| Router | **ClusterIP `sandbox-router-svc:8080`.** No LoadBalancer was ever available for it: by the time it shipped the two Kargo gateways had taken `.248` and `.249` |
+| Per-sandbox IPs | **not possible.** 12 sandboxes and zero free addresses, and a Service per ephemeral pod churns LB-IPAM and L2 ARP announcements on every create/delete |
+| Routing | console → `sandbox-router-svc:8080` with `X-Sandbox-ID: sb-4f2a` → router → `pod:9222` |
 | Why not pod IPs | `10.42.x` is tunnelled, not LAN-routable, and ingress to template-derived sandboxes is default-deny except from the router |
 
 **Websocket caveat:** unused if tiles are screenshots. If a later change adds long-lived

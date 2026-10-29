@@ -1,13 +1,15 @@
 # sandbox-console
 
-A read-only pane over live agent-sandbox Chromium sandboxes. Twelve tiles at
+A read-only pane over live agent-sandbox Chromium sandboxes. Eight tiles at
 most, one screenshot per tap, and a badge that says whether the sandbox can
-reach the cluster. Reached at `http://192.168.0.249/`.
+reach the cluster. Reached at `http://192.168.0.250/`.
 
 It exists to answer two questions on one screen: *is this actually a browser*,
 and *why can I not reach my cluster from inside it*. The reasoning is in
 [`research/rfc-sandbox-console.md`](../../research/rfc-sandbox-console.md); this
-release covers milestones M1-M3 (grid, screenshot and tap, isolation badge).
+release covers milestones M1-M7 (grid, screenshot and tap, isolation badge;
+create and delete of claims; three streaming recipes; warm-Claim-versus-bare-
+`Sandbox` comparison; demo fill and teardown).
 Create/delete, compare mode and the recipe runner are not implemented, and no
 code path here writes to the Kubernetes API.
 

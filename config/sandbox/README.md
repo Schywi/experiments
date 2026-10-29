@@ -4,7 +4,7 @@ Three objects, plus the namespaces they live in:
 
 | Object | Where | What it does |
 |---|---|---|
-| `sandbox-router` Deployment/Service | `agent-sandbox-system` | Routes `X-Sandbox-ID` + `X-Sandbox-Port` requests to a sandbox pod. LoadBalancer IP `192.168.0.248`. |
+| `sandbox-router` Deployment/Service | `agent-sandbox-system` | Routes `X-Sandbox-ID` + `X-Sandbox-Port` requests to a sandbox pod. `ClusterIP sandbox-router-svc:8080` (`10.43.71.0`) — the LAN pool is full, so there is no LoadBalancer IP. |
 | `SandboxTemplate` `browser-tpl` | `sandbox-demo` | The hardened pod shape: Chromium on 9222, readiness on `/json/version`, generated default-deny NetworkPolicy. |
 | `SandboxWarmPool` `browser-pool` | `sandbox-demo` | 8 pre-provisioned sandboxes, so a claim is adopted in ~1.5 s instead of started cold in ~40 s. |
 
@@ -59,9 +59,10 @@ written down here rather than discovered during a demo:
 kubectl -n sandbox-demo get sandboxes -o custom-columns=NAME:.metadata.name,READY:.status.conditions[?\(@.type==\"Ready\"\)].status
 
 TOKEN="$(kubectl create token sandbox-console -n sandbox-console 2>/dev/null || kubectl create token default)"
+kubectl -n agent-sandbox-system port-forward svc/sandbox-router-svc 8080:8080 &
 curl -sS -H 'X-Sandbox-ID: <name>' -H 'X-Sandbox-Port: 9222' \
      -H "Authorization: Bearer ${TOKEN}" \
-     http://192.168.0.248/json/version
+     http://127.0.0.1:8080/json/version
 
 # The generated NetworkPolicy: router-only ingress, LAN/private egress blocked
 kubectl -n sandbox-demo get networkpolicy -o yaml

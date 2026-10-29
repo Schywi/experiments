@@ -29,8 +29,8 @@ addresses are the ones the cluster actually reports.
 | VictoriaMetrics | `http://192.168.0.246/` | scrapes Cilium agent/operator/Hubble |
 | Hubble UI | `http://192.168.0.241/` | flow visibility |
 | Assistant API | `http://192.168.0.243/` | `POST /chat`, evidence panel, htmx UI |
-| Sandbox console | `http://192.168.0.249/` | read-only grid of live Chromium sandboxes, screenshot per tap, isolation badge |
-| Sandbox router | ClusterIP `sandbox-router-svc` | `X-Sandbox-ID` routing to sandbox pods; TokenReview auth. `.248`/`.249` belong to the Kargo gateways |
+| Sandbox console | `http://192.168.0.250/` | read-only grid of live Chromium sandboxes, screenshot per tap, isolation badge. Helm release `sandbox-console` |
+| Sandbox router | ClusterIP `sandbox-router-svc:8080` (`10.43.71.0`) | `X-Sandbox-ID` routing to sandbox pods; TokenReview auth. `.248`/`.249` belong to the Kargo gateways |
 | Neo4j Browser | `http://192.168.0.242/` | Cartography graph, `NEO4J_AUTH=none` |
 | Cilium Ingress | `192.168.0.240` | shared ingress, class `cilium` |
 
@@ -69,15 +69,24 @@ Two settings in `config/k3s/config.yaml` are easy to break:
 
 ## GitOps
 
-Argo CD 10.8.0 reconciles 14 Applications, all `Synced / Healthy`. Each
-Application reads the branch its work lives on:
+Argo CD 10.8.0 reconciles 17 Applications. 13 are `Synced`; `cartography` is
+`OutOfSync`/`Degraded`, `grafana` and `victoriametrics` are `OutOfSync` because
+the `cluster` entity in their CiliumNetworkPolicy lives on
+`feat/sandbox-console`, and `fuwa` is `Unknown`. Each Application reads the
+branch its work lives on:
 
 | targetRevision | Applications |
 |---|---|
 | `native-k3s-gpu-models` | assistant, assistant-laya, cartography, grafana, models-kokoro, models-laya, victoriametrics |
 | `trackc` | models-llm, worm-controller, worm-regression, worm-vector, worm-worker |
-| `feat/sandbox-console` | sandbox-console, sandbox-platform |
+| `feat/kargo` | kargo-gateway, kargo-pilot-resources |
 | commit `592d7f51…` | `applications/stable/` bundle, manual sync only |
+
+Two sandbox workloads are **not** Applications: `sandbox` (rev 7, ns
+`agent-sandbox-system`) and `sandbox-console` (rev 5, ns `sandbox-console`) are
+Helm releases. `config/argocd/applications/sandbox-console.yaml` and
+`sandbox-platform.yaml` exist on `feat/sandbox-console` and have never been
+applied.
 
 `main` holds the Phase-1 history and is not a deploy source. Moving the set
 onto `cluster-evolution` is tracked in `ROADMAP.md` §4.
@@ -141,7 +150,7 @@ cd apps/assistant && python3 -m pytest -q
 ## Sandbox console
 
 `apps/sandbox-console/` is a read-only pane over live agent-sandbox Chromium
-sandboxes at `http://192.168.0.249/`. It answers two questions on one screen:
+sandboxes at `http://192.168.0.250/`. It answers two questions on one screen:
 whether a sandbox is a real browser (a screenshot per tile, refreshed on tap)
 and whether it can reach the cluster (a badge measured from inside the
 sandbox's own browser).
@@ -160,7 +169,7 @@ whether a tile renders: the router's own NetworkPolicy must allow egress on
 `9222` (upstream allows `8888` only), `X-Sandbox-Port` must be sent (the router
 defaults to `8888`), Chromium must bind CDP to `0.0.0.0`, and `/json/list`
 reports a loopback socket URL that has to be rewritten to the router. All four
-are recorded in `config/sandbox/README.md` and `evolution/06-sandbox-console.md`.
+are recorded in `config/sandbox/README.md` and `evolution/07-sandbox-console.md`.
 
 Isolation is measured with three `fetch` calls issued through
 `Runtime.evaluate` inside the sandbox's Chromium, each with a 4 s
