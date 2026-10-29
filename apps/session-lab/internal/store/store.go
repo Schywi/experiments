@@ -165,6 +165,22 @@ func (s *Store) SaveTemplateLimits(runID, limitsJSON string) error {
 	return err
 }
 
+// RunReplicas returns the pool replica trajectory recorded with the run.
+func (s *Store) RunReplicas(runID string) ([]ReplicaSample, error) {
+	var raw string
+	if err := s.db.QueryRow(`SELECT replicas FROM runs WHERE run_id = ?`, runID).Scan(&raw); err != nil {
+		return nil, err
+	}
+	if raw == "" || raw == "null" {
+		return nil, nil
+	}
+	var samples []ReplicaSample
+	if err := json.Unmarshal([]byte(raw), &samples); err != nil {
+		return nil, err
+	}
+	return samples, nil
+}
+
 // TemplateLimits returns the recorded template limits for a run, as JSON.
 func (s *Store) TemplateLimits(runID string) (string, error) {
 	var limits string

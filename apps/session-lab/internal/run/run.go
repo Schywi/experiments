@@ -334,6 +334,17 @@ func (r *Runner) session(ctx context.Context, planned schedule.Planned) {
 				return
 			}
 			r.persistInstance(instance)
+			// A resume recreates the pod, so the instance is not usable until it
+			// reports Ready again.
+			if err := r.ad.WaitReady(ctx, instance); err != nil {
+				r.settle(session.ID, model.OutcomeAcquisitionFailed, "resume wait: "+err.Error(), nil)
+				r.put(instance)
+				return
+			}
+			session.ReadyNS = instance.ReadyNS
+			session.Node = instance.Node
+			session.PodUID = instance.PodUID
+			r.persistInstance(instance)
 		}
 	} else {
 		name := claimName(r.cfg.RunID, planned.ID)

@@ -229,6 +229,10 @@ func Build(cfg model.RunConfig, plan schedule.Plan, st *store.Store) (*Report, e
 
 	rep.Instances = summariseInstances(instances)
 
+	if replicas, err := st.RunReplicas(cfg.RunID); err == nil {
+		rep.Replicas = replicas
+	}
+
 	if raw, err := st.TemplateLimits(cfg.RunID); err == nil && raw != "" {
 		var stored struct {
 			Container       string `json:"container"`
