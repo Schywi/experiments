@@ -1,0 +1,6 @@
+apiVersion: v2
+name: session-lab
+description: the session-lab pool autoscaler — sizes the SandboxWarmPool to its pending demand
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

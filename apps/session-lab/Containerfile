@@ -1,0 +1,14 @@
+# The pool autoscaler. Static binary, no shell in the runtime image: the only
+# thing it does is talk to the API server and serve /metrics.
+FROM docker.io/library/golang:1.26 AS build
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/pool-autoscaler ./cmd/pool-autoscaler
+
+FROM docker.io/library/alpine:3.20
+RUN apk add --no-cache ca-certificates
+COPY --from=build /out/pool-autoscaler /usr/local/bin/pool-autoscaler
+USER 65532:65532
+ENTRYPOINT ["/usr/local/bin/pool-autoscaler"]

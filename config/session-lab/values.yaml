@@ -1,0 +1,44 @@
+# The pool autoscaler, deployed in the namespace it scales.
+#
+# This is the smallest thing that makes the sandbox pool elastic: the cluster has
+# no HPA and no KEDA, and the upstream examples scale on GKE Managed Prometheus,
+# which this cluster does not run. Demand comes from the platform's own objects —
+# claims waiting for an instance — and the control is the pool's replica count.
+
+image:
+  # Built from apps/session-lab/Containerfile and pushed with
+  # config/registry/push-image.sh session-lab-autoscaler.
+  repository: 127.0.0.1:5000/session-lab-autoscaler
+  tag: local
+  pullPolicy: IfNotPresent
+
+# Namespace holding the pool and the claims. The autoscaler, its ServiceAccount,
+# its Role and its published settings all live here, because that is where the
+# objects it touches are.
+sandbox:
+  namespace: sandbox-demo
+  pool: browser-pool
+
+autoscaler:
+  # Configured bounds. These are the limits the autoscaler enforces; the observed
+  # capacity of the platform is whatever an experiment measures, and the two are
+  # reported separately.
+  minReplicas: 2
+  maxReplicas: 40
+  interval: 5s
+  # Where the settings are published, so a run can record what was configured
+  # rather than being told.
+  configMap: session-lab-autoscaler
+
+metrics:
+  port: 9110
+service:
+  type: ClusterIP
+
+resources:
+  requests:
+    cpu: 20m
+    memory: 32Mi
+  limits:
+    cpu: 200m
+    memory: 128Mi

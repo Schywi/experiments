@@ -1,0 +1,17 @@
+# A Service in front of the autoscaler's /metrics, so VictoriaMetrics can discover
+# it by label instead of being pointed at a pod IP that changes on every restart.
+apiVersion: v1
+kind: Service
+metadata:
+  name: session-lab-autoscaler
+  namespace: {{ .Values.sandbox.namespace }}
+  labels:
+    {{- include "session-lab.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.type }}
+  selector:
+    {{- include "session-lab.selector" . | nindent 4 }}
+  ports:
+    - name: metrics
+      port: {{ .Values.metrics.port }}
+      targetPort: metrics

@@ -1,0 +1,63 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: session-lab-autoscaler
+  namespace: {{ .Values.sandbox.namespace }}
+  labels:
+    {{- include "session-lab.labels" . | nindent 4 }}
+spec:
+  # One replica: two autoscalers patching the same pool would fight, which is the
+  # same reason the runner refuses to run two experiments at once.
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "session-lab.selector" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "session-lab.selector" . | nindent 8 }}
+        {{- include "session-lab.labels" . | nindent 8 }}
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: {{ .Values.metrics.port | quote }}
+    spec:
+      serviceAccountName: session-lab-autoscaler
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: autoscaler
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - --namespace={{ .Values.sandbox.namespace }}
+            - --pool={{ .Values.sandbox.pool }}
+            - --min={{ .Values.autoscaler.minReplicas }}
+            - --max={{ .Values.autoscaler.maxReplicas }}
+            - --interval={{ .Values.autoscaler.interval }}
+            - --configmap={{ .Values.autoscaler.configMap }}
+            - --metrics-addr=:{{ .Values.metrics.port }}
+          ports:
+            - name: metrics
+              containerPort: {{ .Values.metrics.port }}
+          readinessProbe:
+            httpGet:
+              path: /metrics
+              port: metrics
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /metrics
+              port: metrics
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]

@@ -95,11 +95,20 @@ data:
         static_configs:
           - targets:
               {{- toYaml .Values.sessionLab.targets | nindent 14 }}
-      # The pool autoscaler: demand, computed target, configured bounds and the
-      # scale-out delay it measured.
+      # The pool autoscaler runs in the cluster, so it is discovered by pod
+      # label: demand, computed target, configured bounds and scale-out delay.
       - job_name: session-lab-autoscaler
         metrics_path: {{ .Values.sessionLab.metricsPath }}
-        static_configs:
-          - targets:
-              {{- toYaml .Values.sessionLab.autoscalerTargets | nindent 14 }}
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names:
+                - {{ .Values.sessionLab.autoscalerNamespace }}
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_name]
+            action: keep
+            regex: session-lab-autoscaler
+          - source_labels: [__meta_kubernetes_pod_ip]
+            target_label: __address__
+            replacement: ${1}:{{ .Values.sessionLab.autoscalerPort }}
       {{- end }}
