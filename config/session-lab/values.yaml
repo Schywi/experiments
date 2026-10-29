@@ -10,7 +10,12 @@ image:
   # config/registry/push-image.sh session-lab-autoscaler.
   repository: 127.0.0.1:5000/session-lab-autoscaler
   tag: local
-  pullPolicy: IfNotPresent
+  # Always, because :local is a mutable tag: Kaniko pushes a new digest under the
+  # same tag, and IfNotPresent keeps the node's cached copy — which is how a
+  # deployment ends up running code that was replaced hours ago. Verified once
+  # the hard way: a paused pool was resized by an image from before the pause
+  # logic existed.
+  pullPolicy: Always
 
 # Namespace holding the pool and the claims. The autoscaler, its ServiceAccount,
 # its Role and its published settings all live here, because that is where the
