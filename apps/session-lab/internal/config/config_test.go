@@ -1,6 +1,7 @@
 package config
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -80,5 +81,28 @@ func TestFixedArrivalWindowMatchesTheRequest(t *testing.T) {
 	// 60 sessions at 0.5/s: the last arrival lands at (n-1)/rate = 118s.
 	if got := plan.Span.Seconds(); got < 110 || got > 125 {
 		t.Fatalf("fixed arrival span = %.1fs, want ~118s", got)
+	}
+}
+
+func TestDurationWithOneHoldIsEnough(t *testing.T) {
+	// The documented short form: a window, a rate and one length.
+	cfg, err := Parse([]string{
+		"--duration", "600s", "--rate", "0.1", "--hold", "30s", "--out", t.TempDir(),
+	})
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if cfg.Sessions != 60 || len(cfg.Mix) != 1 || cfg.Mix[0].Count != 60 {
+		t.Fatalf("sessions=%d mix=%+v, want 60 in one bucket", cfg.Sessions, cfg.Mix)
+	}
+}
+
+func TestDurationWithoutLengthIsRefusedWithAReason(t *testing.T) {
+	_, err := Parse([]string{"--duration", "600s", "--rate", "0.1", "--out", t.TempDir()})
+	if err == nil {
+		t.Fatalf("a duration with no mix and no hold produced a run")
+	}
+	if !strings.Contains(err.Error(), "--mix") || !strings.Contains(err.Error(), "--hold") {
+		t.Fatalf("unhelpful error: %v", err)
 	}
 }

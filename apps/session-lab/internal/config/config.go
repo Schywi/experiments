@@ -80,13 +80,12 @@ func Parse(args []string) (*Config, error) {
 	if cfg.RunID == "" {
 		cfg.RunID = time.Now().UTC().Format("20060102T150405Z")
 	}
-	if err := cfg.buildMix(mix, hold); err != nil {
-		return nil, err
-	}
 	if duration > 0 {
-		if err := cfg.applyDuration(duration); err != nil {
+		if err := cfg.applyDuration(duration, mix, hold); err != nil {
 			return nil, err
 		}
+	} else if err := cfg.buildMix(mix, hold); err != nil {
+		return nil, err
 	}
 	if err := cfg.validate(); err != nil {
 		return nil, err
@@ -156,7 +155,7 @@ func ParseMix(spec string) ([]model.Bucket, error) {
 // untouched: arrivals stay offsets computed from the rate, so a window of D
 // seconds at R sessions/s is round(R*D) sessions whose last offset lands at D.
 // A mix keeps its proportions.
-func (c *Config) applyDuration(window time.Duration) error {
+func (c *Config) applyDuration(window time.Duration, mix string, hold time.Duration) error {
 	if c.Rate <= 0 {
 		return fmt.Errorf("--duration needs --rate: the window is the session count divided by the rate")
 	}
@@ -164,12 +163,28 @@ func (c *Config) applyDuration(window time.Duration) error {
 	if total < 1 {
 		return fmt.Errorf("--duration %s at %.3f/s is fewer than one session", window, c.Rate)
 	}
+	switch {
+	case mix != "":
+		buckets, err := ParseMix(mix)
+		if err != nil {
+			return err
+		}
+		c.Mix = buckets
+	case hold > 0:
+		// One length: the count is whatever the window and rate produce.
+		c.Mix = []model.Bucket{{Label: hold.String(), Hold: hold, Count: total}}
+		c.Sessions = total
+		c.Window = window
+		return nil
+	default:
+		return fmt.Errorf("--duration needs --mix (length proportions) or --hold (one length)")
+	}
 	var given int
 	for _, b := range c.Mix {
 		given += b.Count
 	}
 	if given == 0 {
-		return fmt.Errorf("--duration needs a mix or --hold to size the sessions")
+		return fmt.Errorf("--mix carried no sessions")
 	}
 	scaled := make([]model.Bucket, 0, len(c.Mix))
 	remaining := total
