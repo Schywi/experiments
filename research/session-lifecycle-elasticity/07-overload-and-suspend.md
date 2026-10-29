@@ -73,23 +73,38 @@ and it is measured rather than assumed.
 
 ## 4. The suspend run
 
-Eight sessions of 20 s, offered concurrency 4, pool 2, policy `suspend`:
+Ten sessions of 20 s, offered concurrency 5, pool 2, policy `suspend`:
+
+```bash
+session-lab --sessions 10 --mix 20s:10 --rate 0.25 \
+            --policy suspend --pool-replicas 2 --namespace sandbox-demo --pool browser-pool
+```
 
 | Quantity | Measured |
 |---|---|
-| outcomes | `success` 8 |
-| queue wait | p50 102 ms, max 202 ms |
-| hold | p50 20 014 ms |
-| CPU | 14.35 core-seconds total, 1.54 p50 |
-| memory | 140 MiB p50 peak, 136 MiB working-set max |
-| instances | 6, max 2 sessions per instance |
-| throttled | 8 of 8 |
-| node memory | floor 7701 MiB of 15924 MiB (48.4%), swap 3635 MiB |
+| outcomes | `success` 10 |
+| offered / measured concurrency | 5.0 / peak 5, mean 2.8 |
+| queue wait | p50 107 ms, max 1207 ms |
+| **resume** | **p50 2853 ms, p95 2859 ms, max 2918 ms** |
+| hold | p50 20 017 ms |
+| CPU | 15.22 core-seconds total, 1.44 p50, 1.90 max |
+| memory | 140 MiB p50 peak, 140 MiB working-set max |
+| instances | 5, two sessions each |
+| throttled | 10 of 10 |
+| node memory | floor 7675 MiB of 15924 MiB (48.2%), swap 3630 MiB |
 
-Two suspend/resume cycles ran to completion: an instance was suspended after its session, resumed
-for the next one, and the session succeeded. Resume latency is not reported as its own number — it
-is folded into the next session's acquire time, which is why the queue wait here is 102 ms and not
-a resume figure. That is a gap in the report, not in the mechanism.
+Five resume cycles ran, one per reused instance, all successful: an instance is suspended after its
+session, the next session resumes it, and the runner waits for Ready before holding.
+
+Resume costs about **2.9 seconds** against **107 ms** for warm adoption on the same cluster, so a
+suspended instance is roughly 27 times slower to hand to the next session than a warm one — and
+about 35 ms cheaper than creating one, which this run did not measure and the rebuild column of a
+`destroy` run would.
+
+What survives a suspend is narrower than it looks: the Sandbox object, its Service and its volumes
+survive, and the pod does not. The in-guest browser is gone, which is why there is nothing in this
+run about page state — the reset path is what a reuse session pays, and a suspend session pays a pod
+start instead.
 
 ## 5. Two defects these runs exposed
 
@@ -100,6 +115,10 @@ a resume figure. That is a gap in the report, not in the mechanism.
 2. **The replica trajectory was written but never read.** `EndRun` stored the samples in
    `runs.replicas`, and `report.Build` never loaded them, so every report carried an empty
    `replicas` array. `store.RunReplicas` now fills it.
+3. **Resume had no number of its own.** The first suspend run folded resume into the next session's
+   acquire time, so the report could not answer the question the policy exists to ask. The runner
+   now times the resume (patch to Ready) per session, stores it, and exports it as
+   `session_lab_resume_seconds`.
 
 ## 6. What to run next
 
@@ -111,7 +130,8 @@ a resume figure. That is a gap in the report, not in the mechanism.
 3. **Give the reset path its own budget.** One 502 at 18 concurrent browsers says the bridge's
    command timeout is tuned for a quiet cluster. Either raise it or record it as a boundary that the
    experiment must stay under.
-4. **Report resume latency separately** so a suspend run answers its own question.
+4. **Compare resume against rebuild.** A `destroy` run at the same offered load would give the
+   number this note is missing: 2.9 s of resume against the cost of deleting and cold-starting.
 
 ## 7. How to check this note
 

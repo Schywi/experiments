@@ -60,6 +60,7 @@ type Recorder interface {
 	Hold(policy, bucket string, seconds float64)
 	Reset(policy string, seconds float64)
 	Release(policy string, seconds float64)
+	Resume(policy string, seconds float64)
 	Resources(policy string, reading Reading)
 	Pool(desired, ready int32)
 	Template(cpuLimitCores, memLimitBytes float64)
@@ -328,6 +329,7 @@ func (r *Runner) session(ctx context.Context, planned schedule.Planned) {
 	if instance != nil {
 		session.Instance = instance.ID
 		if instance.Suspended {
+			session.ResumeStartNS = r.now().UnixNano()
 			if err := r.ad.Resume(ctx, instance); err != nil {
 				r.settle(session.ID, model.OutcomeResetFailed, "resume: "+err.Error(), nil)
 				r.put(instance)
@@ -342,9 +344,15 @@ func (r *Runner) session(ctx context.Context, planned schedule.Planned) {
 				return
 			}
 			session.ReadyNS = instance.ReadyNS
+			session.ResumeEndNS = r.now().UnixNano()
 			session.Node = instance.Node
 			session.PodUID = instance.PodUID
 			r.persistInstance(instance)
+			if r.rec != nil {
+				r.rec.Resume(string(r.cfg.Policy), float64(session.ResumeEndNS-session.ResumeStartNS)/1e9)
+			}
+			r.log.Printf("session %d: resumed %s in %dms", session.ID, instance.ID,
+				(session.ResumeEndNS-session.ResumeStartNS)/int64(time.Millisecond))
 		}
 	} else {
 		name := claimName(r.cfg.RunID, planned.ID)

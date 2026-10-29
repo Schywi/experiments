@@ -34,7 +34,7 @@ answers the Phase 8 questions:
 | Queue wait p50/p95/p99 | `session_lab_queue_wait_seconds_bucket` |
 | Acquisition by launch type | `session_lab_acquire_seconds_bucket` |
 | Hold by length bucket | `session_lab_hold_seconds_bucket` |
-| Reset and release cost | `session_lab_reset_seconds_bucket`, `session_lab_release_seconds_bucket` |
+| Reset, release and resume cost | `session_lab_reset_seconds_bucket`, `session_lab_release_seconds_bucket`, `session_lab_resume_seconds_bucket` |
 | Failures by outcome | `session_lab_sessions_total{outcome!="success"}` |
 | Throttled versus the CPU limit | `session_lab_throttled_seconds_total`, `session_lab_template_cpu_limit_cores` |
 | Working set peak | `session_lab_workingset_peak_bytes_bucket` |

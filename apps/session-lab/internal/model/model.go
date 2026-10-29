@@ -80,6 +80,8 @@ type Session struct {
 	ResetEndNS      int64 `json:"reset_end_ns,omitempty"`
 	RebuildStartNS  int64 `json:"rebuild_start_ns,omitempty"`
 	RebuildEndNS    int64 `json:"rebuild_end_ns,omitempty"`
+	ResumeStartNS   int64 `json:"resume_start_ns,omitempty"`
+	ResumeEndNS     int64 `json:"resume_end_ns,omitempty"`
 
 	LaunchType string `json:"launch_type,omitempty"`
 	Node       string `json:"node,omitempty"`

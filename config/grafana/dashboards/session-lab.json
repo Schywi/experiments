@@ -1,21 +1,49 @@
 {
   "uid": "session-lab",
-  "title": "session-lab — session lifecycle and resources",
-  "tags": ["session-lab", "sandbox", "phase-8"],
+  "title": "session-lab \u2014 session lifecycle and resources",
+  "tags": [
+    "session-lab",
+    "sandbox",
+    "phase-8"
+  ],
   "timezone": "browser",
   "schemaVersion": 39,
   "version": 1,
   "refresh": "10s",
-  "time": { "from": "now-30m", "to": "now" },
-  "templating": { "list": [] },
-  "annotations": { "list": [] },
+  "time": {
+    "from": "now-30m",
+    "to": "now"
+  },
+  "templating": {
+    "list": []
+  },
+  "annotations": {
+    "list": []
+  },
   "panels": [
     {
       "type": "timeseries",
       "title": "Session throughput (per second, by outcome)",
-      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
-      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "fillOpacity": 10, "lineWidth": 2 } }, "overrides": [] },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "victoriametrics"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": {
+            "fillOpacity": 10,
+            "lineWidth": 2
+          }
+        },
+        "overrides": []
+      },
       "targets": [
         {
           "refId": "A",
@@ -26,104 +54,341 @@
     },
     {
       "type": "timeseries",
-      "title": "Concurrency — active and waiting sessions",
-      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
-      "fieldConfig": { "defaults": { "unit": "short", "custom": { "fillOpacity": 10, "lineWidth": 2 } }, "overrides": [] },
+      "title": "Concurrency \u2014 active and waiting sessions",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "victoriametrics"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "fillOpacity": 10,
+            "lineWidth": 2
+          }
+        },
+        "overrides": []
+      },
       "targets": [
-        { "refId": "A", "expr": "session_lab_sessions_active", "legendFormat": "active" },
-        { "refId": "B", "expr": "session_lab_sessions_waiting", "legendFormat": "waiting" },
-        { "refId": "C", "expr": "session_lab_pool_ready", "legendFormat": "pool ready" },
-        { "refId": "D", "expr": "session_lab_pool_desired", "legendFormat": "pool desired" }
+        {
+          "refId": "A",
+          "expr": "session_lab_sessions_active",
+          "legendFormat": "active"
+        },
+        {
+          "refId": "B",
+          "expr": "session_lab_sessions_waiting",
+          "legendFormat": "waiting"
+        },
+        {
+          "refId": "C",
+          "expr": "session_lab_pool_ready",
+          "legendFormat": "pool ready"
+        },
+        {
+          "refId": "D",
+          "expr": "session_lab_pool_desired",
+          "legendFormat": "pool desired"
+        }
       ]
     },
     {
       "type": "timeseries",
-      "title": "Queue wait — claim create to Ready (p50/p95/p99)",
-      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
-      "fieldConfig": { "defaults": { "unit": "s", "custom": { "fillOpacity": 0, "lineWidth": 2 } }, "overrides": [] },
+      "title": "Queue wait \u2014 claim create to Ready (p50/p95/p99)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "victoriametrics"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "fillOpacity": 0,
+            "lineWidth": 2
+          }
+        },
+        "overrides": []
+      },
       "targets": [
-        { "refId": "A", "expr": "histogram_quantile(0.50, sum by (le) (rate(session_lab_queue_wait_seconds_bucket[$__rate_interval])))", "legendFormat": "p50" },
-        { "refId": "B", "expr": "histogram_quantile(0.95, sum by (le) (rate(session_lab_queue_wait_seconds_bucket[$__rate_interval])))", "legendFormat": "p95" },
-        { "refId": "C", "expr": "histogram_quantile(0.99, sum by (le) (rate(session_lab_queue_wait_seconds_bucket[$__rate_interval])))", "legendFormat": "p99" }
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(session_lab_queue_wait_seconds_bucket[$__rate_interval])))",
+          "legendFormat": "p50"
+        },
+        {
+          "refId": "B",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(session_lab_queue_wait_seconds_bucket[$__rate_interval])))",
+          "legendFormat": "p95"
+        },
+        {
+          "refId": "C",
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(session_lab_queue_wait_seconds_bucket[$__rate_interval])))",
+          "legendFormat": "p99"
+        }
       ]
     },
     {
       "type": "timeseries",
-      "title": "Acquisition — arrival to Ready, by launch type",
-      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
-      "fieldConfig": { "defaults": { "unit": "s", "custom": { "fillOpacity": 0, "lineWidth": 2 } }, "overrides": [] },
+      "title": "Acquisition \u2014 arrival to Ready, by launch type",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "victoriametrics"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "fillOpacity": 0,
+            "lineWidth": 2
+          }
+        },
+        "overrides": []
+      },
       "targets": [
-        { "refId": "A", "expr": "histogram_quantile(0.50, sum by (le, launch_type) (rate(session_lab_acquire_seconds_bucket[$__rate_interval])))", "legendFormat": "p50 {{launch_type}}" },
-        { "refId": "B", "expr": "histogram_quantile(0.95, sum by (le, launch_type) (rate(session_lab_acquire_seconds_bucket[$__rate_interval])))", "legendFormat": "p95 {{launch_type}}" }
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.50, sum by (le, launch_type) (rate(session_lab_acquire_seconds_bucket[$__rate_interval])))",
+          "legendFormat": "p50 {{launch_type}}"
+        },
+        {
+          "refId": "B",
+          "expr": "histogram_quantile(0.95, sum by (le, launch_type) (rate(session_lab_acquire_seconds_bucket[$__rate_interval])))",
+          "legendFormat": "p95 {{launch_type}}"
+        }
       ]
     },
     {
       "type": "timeseries",
       "title": "Hold duration by length bucket (p50)",
-      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
-      "fieldConfig": { "defaults": { "unit": "s", "custom": { "fillOpacity": 0, "lineWidth": 2 } }, "overrides": [] },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "victoriametrics"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 16
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "fillOpacity": 0,
+            "lineWidth": 2
+          }
+        },
+        "overrides": []
+      },
       "targets": [
-        { "refId": "A", "expr": "histogram_quantile(0.50, sum by (le, bucket) (rate(session_lab_hold_seconds_bucket[$__rate_interval])))", "legendFormat": "{{bucket}}" }
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.50, sum by (le, bucket) (rate(session_lab_hold_seconds_bucket[$__rate_interval])))",
+          "legendFormat": "{{bucket}}"
+        }
       ]
     },
     {
       "type": "timeseries",
-      "title": "Reset and release cost",
-      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
-      "fieldConfig": { "defaults": { "unit": "s", "custom": { "fillOpacity": 0, "lineWidth": 2 } }, "overrides": [] },
+      "title": "Reset, release and resume cost",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "victoriametrics"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 16
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "fillOpacity": 0,
+            "lineWidth": 2
+          }
+        },
+        "overrides": []
+      },
       "targets": [
-        { "refId": "A", "expr": "histogram_quantile(0.50, sum by (le) (rate(session_lab_reset_seconds_bucket[$__rate_interval])))", "legendFormat": "reset p50" },
-        { "refId": "B", "expr": "histogram_quantile(0.95, sum by (le) (rate(session_lab_reset_seconds_bucket[$__rate_interval])))", "legendFormat": "reset p95" },
-        { "refId": "C", "expr": "histogram_quantile(0.50, sum by (le) (rate(session_lab_release_seconds_bucket[$__rate_interval])))", "legendFormat": "release p50" }
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(session_lab_reset_seconds_bucket[$__rate_interval])))",
+          "legendFormat": "reset p50"
+        },
+        {
+          "refId": "B",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(session_lab_reset_seconds_bucket[$__rate_interval])))",
+          "legendFormat": "reset p95"
+        },
+        {
+          "refId": "C",
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(session_lab_release_seconds_bucket[$__rate_interval])))",
+          "legendFormat": "release p50"
+        },
+        {
+          "refId": "D",
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(session_lab_resume_seconds_bucket[$__rate_interval])))",
+          "legendFormat": "resume p50"
+        }
       ]
     },
     {
       "type": "timeseries",
       "title": "Failures by outcome (per second, excluding success)",
-      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 24 },
-      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "fillOpacity": 10, "lineWidth": 2 } }, "overrides": [] },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "victoriametrics"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 24
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": {
+            "fillOpacity": 10,
+            "lineWidth": 2
+          }
+        },
+        "overrides": []
+      },
       "targets": [
-        { "refId": "A", "expr": "sum by (outcome) (rate(session_lab_sessions_total{outcome!=\"success\"}[$__rate_interval]))", "legendFormat": "{{outcome}}" }
+        {
+          "refId": "A",
+          "expr": "sum by (outcome) (rate(session_lab_sessions_total{outcome!=\"success\"}[$__rate_interval]))",
+          "legendFormat": "{{outcome}}"
+        }
       ]
     },
     {
       "type": "timeseries",
       "title": "CPU throttled versus the template's CPU limit",
       "description": "Throttled seconds per second, with the limit the sandbox was held to. A non-zero line next to a limit means the session's latency is the limit's, not the workload's.",
-      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 24 },
-      "fieldConfig": { "defaults": { "custom": { "fillOpacity": 10, "lineWidth": 2 } }, "overrides": [] },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "victoriametrics"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 24
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 10,
+            "lineWidth": 2
+          }
+        },
+        "overrides": []
+      },
       "targets": [
-        { "refId": "A", "expr": "sum(rate(session_lab_throttled_seconds_total[$__rate_interval]))", "legendFormat": "throttled seconds/s" },
-        { "refId": "B", "expr": "session_lab_template_cpu_limit_cores", "legendFormat": "cpu limit (cores)" },
-        { "refId": "C", "expr": "sum(rate(session_lab_cpu_seconds_total[$__rate_interval]))", "legendFormat": "cpu used (cores)" }
+        {
+          "refId": "A",
+          "expr": "sum(rate(session_lab_throttled_seconds_total[$__rate_interval]))",
+          "legendFormat": "throttled seconds/s"
+        },
+        {
+          "refId": "B",
+          "expr": "session_lab_template_cpu_limit_cores",
+          "legendFormat": "cpu limit (cores)"
+        },
+        {
+          "refId": "C",
+          "expr": "sum(rate(session_lab_cpu_seconds_total[$__rate_interval]))",
+          "legendFormat": "cpu used (cores)"
+        }
       ]
     },
     {
       "type": "timeseries",
       "title": "Working set peak per session (p50/p95)",
-      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 32 },
-      "fieldConfig": { "defaults": { "unit": "bytes", "custom": { "fillOpacity": 0, "lineWidth": 2 } }, "overrides": [] },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "victoriametrics"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 32
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "custom": {
+            "fillOpacity": 0,
+            "lineWidth": 2
+          }
+        },
+        "overrides": []
+      },
       "targets": [
-        { "refId": "A", "expr": "histogram_quantile(0.50, sum by (le) (rate(session_lab_workingset_peak_bytes_bucket[$__rate_interval])))", "legendFormat": "p50" },
-        { "refId": "B", "expr": "histogram_quantile(0.95, sum by (le) (rate(session_lab_workingset_peak_bytes_bucket[$__rate_interval])))", "legendFormat": "p95" }
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(session_lab_workingset_peak_bytes_bucket[$__rate_interval])))",
+          "legendFormat": "p50"
+        },
+        {
+          "refId": "B",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(session_lab_workingset_peak_bytes_bucket[$__rate_interval])))",
+          "legendFormat": "p95"
+        }
       ]
     },
     {
       "type": "timeseries",
-      "title": "Boundaries — refusals, throttling, OOM, evictions by kind",
-      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 32 },
-      "fieldConfig": { "defaults": { "unit": "short", "custom": { "fillOpacity": 10, "lineWidth": 2 } }, "overrides": [] },
+      "title": "Boundaries \u2014 refusals, throttling, OOM, evictions by kind",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "victoriametrics"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 32
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "fillOpacity": 10,
+            "lineWidth": 2
+          }
+        },
+        "overrides": []
+      },
       "targets": [
-        { "refId": "A", "expr": "sum by (kind) (increase(session_lab_boundaries_total[$__rate_interval]))", "legendFormat": "{{kind}}" }
+        {
+          "refId": "A",
+          "expr": "sum by (kind) (increase(session_lab_boundaries_total[$__rate_interval]))",
+          "legendFormat": "{{kind}}"
+        }
       ]
     }
   ]

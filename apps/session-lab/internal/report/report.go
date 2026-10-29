@@ -36,6 +36,7 @@ type Report struct {
 	Hold           Latency            `json:"hold_ms"`
 	Reset          Latency            `json:"reset_ms"`
 	Release        Latency            `json:"release_ms"`
+	Resume         Latency            `json:"resume_ms"`
 	LaunchTypes    map[string]int     `json:"launch_types"`
 	Buckets        map[string]Bucket  `json:"buckets"`
 	Resources      Resources          `json:"resources"`
@@ -142,7 +143,7 @@ func Build(cfg model.RunConfig, plan schedule.Plan, st *store.Store) (*Report, e
 		Elasticity:  "not tested: the workload did not exceed what the platform served",
 	}
 
-	var queueMS, acquireMS, holdMS, resetMS, releaseMS []float64
+	var queueMS, acquireMS, holdMS, resetMS, releaseMS, resumeMS []float64
 	var concurrencySamples []float64
 	var cpuSeconds []float64
 	var memPeaks, workSetPeaks []float64
@@ -170,6 +171,9 @@ func Build(cfg model.RunConfig, plan schedule.Plan, st *store.Store) (*Report, e
 		}
 		if session.HoldEndNS > 0 && session.HoldStartNS > 0 {
 			holdMS = append(holdMS, ms(session.HoldEndNS-session.HoldStartNS))
+		}
+		if session.ResumeEndNS > 0 && session.ResumeStartNS > 0 {
+			resumeMS = append(resumeMS, ms(session.ResumeEndNS-session.ResumeStartNS))
 		}
 		if session.ResetEndNS > 0 && session.ResetStartNS > 0 {
 			resetMS = append(resetMS, ms(session.ResetEndNS-session.ResetStartNS))
@@ -210,6 +214,7 @@ func Build(cfg model.RunConfig, plan schedule.Plan, st *store.Store) (*Report, e
 	rep.Hold = summarise(holdMS)
 	rep.Reset = summarise(resetMS)
 	rep.Release = summarise(releaseMS)
+	rep.Resume = summarise(resumeMS)
 
 	rep.Concurrency = peakConcurrency(sessions)
 	if len(cpuSeconds) > 0 {
@@ -329,6 +334,9 @@ func (r *Report) Print(w io.Writer) {
 	fmt.Fprintf(w, "hold                      p50 %.0fms  p95 %.0fms\n", r.Hold.P50, r.Hold.P95)
 	if r.Reset.Count > 0 {
 		fmt.Fprintf(w, "reset                     p50 %.0fms  p95 %.0fms\n", r.Reset.P50, r.Reset.P95)
+	}
+	if r.Resume.Count > 0 {
+		fmt.Fprintf(w, "resume                    p50 %.0fms  p95 %.0fms  max %.0fms\n", r.Resume.P50, r.Resume.P95, r.Resume.Max)
 	}
 	if r.Release.Count > 0 {
 		fmt.Fprintf(w, "release                   p50 %.0fms  p95 %.0fms\n", r.Release.P50, r.Release.P95)

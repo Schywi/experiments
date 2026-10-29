@@ -37,6 +37,7 @@ type Recorder struct {
 	tplCPU   prometheus.Gauge
 	tplMem   prometheus.Gauge
 	boundary *prometheus.CounterVec
+	resume   *prometheus.HistogramVec
 
 	// The gauges are also tracked here so decrementing them cannot go negative
 	// when a session settles without ever having arrived through this recorder.
@@ -120,6 +121,11 @@ func New() *Recorder {
 			Name: "session_lab_template_memory_limit_bytes",
 			Help: "Memory limit the sandbox template applies, from the live object.",
 		}),
+		resume: prometheus.NewHistogramVec(prometheus.HistogramOpts{
+			Name:    "session_lab_resume_seconds",
+			Help:    "Resume of a suspended instance, from the patch to Ready again.",
+			Buckets: []float64{0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60},
+		}, []string{"policy"}),
 		boundary: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: "session_lab_boundaries_total",
 			Help: "Times the platform or the node refused, throttled or reclaimed, by kind.",
@@ -127,7 +133,7 @@ func New() *Recorder {
 	}
 	registry.MustRegister(r.active, r.waiting, r.sessions, r.queue, r.acquire, r.hold,
 		r.reset, r.release, r.cpu, r.throttle, r.oom, r.workSet, r.poolWant, r.poolHave,
-		r.tplCPU, r.tplMem, r.boundary)
+		r.tplCPU, r.tplMem, r.resume, r.boundary)
 	return r
 }
 
@@ -219,6 +225,11 @@ func (r *Recorder) Pool(desired, ready int32) {
 func (r *Recorder) Template(cpuLimitCores, memLimitBytes float64) {
 	r.tplCPU.Set(cpuLimitCores)
 	r.tplMem.Set(memLimitBytes)
+}
+
+// Resume implements run.Recorder.
+func (r *Recorder) Resume(policy string, seconds float64) {
+	r.resume.WithLabelValues(policy).Observe(seconds)
 }
 
 // Boundary implements run.Recorder.
