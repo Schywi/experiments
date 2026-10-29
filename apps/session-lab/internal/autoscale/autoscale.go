@@ -45,6 +45,7 @@ type Settings struct {
 	Target    int32   `json:"target"`
 	Ready     int32   `json:"ready"`
 	Pending   int32   `json:"pending"`
+	Failed    int32   `json:"failed,omitempty"`
 	Desired   int32   `json:"desired"`
 }
 
@@ -104,7 +105,8 @@ func (s *Scaler) Step(ctx context.Context) (Settings, error) {
 		Min: s.cfg.Min, Max: s.cfg.Max, IntervalS: s.cfg.Interval.Seconds(),
 		Namespace: s.cfg.Namespace, Pool: s.cfg.Pool,
 		UpdatedNS: time.Now().UnixNano(),
-		Target:    target, Ready: stats.Ready, Pending: stats.Pending, Desired: pool.Desired,
+		Target:    target, Ready: stats.Ready, Pending: stats.Pending, Failed: stats.Failed,
+		Desired: pool.Desired,
 	}
 
 	changed := false

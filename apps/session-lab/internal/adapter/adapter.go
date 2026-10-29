@@ -72,6 +72,9 @@ type TemplateLimits struct {
 type ClaimStats struct {
 	Pending int32
 	Ready   int32
+	// Failed counts claims the platform gave up on. They are not demand: no
+	// amount of extra replicas will make them Ready.
+	Failed int32
 }
 
 // Boundary is one observation that the platform refused or degraded something:

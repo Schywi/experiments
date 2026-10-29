@@ -188,6 +188,23 @@ func (k *Kube) fillFromSandbox(ctx context.Context, instance *Instance) (bool, e
 	return instance.PodIP != "" || instance.PodUID != "", nil
 }
 
+// claimFailed reports a claim whose Ready condition carries a failure reason, so
+// the autoscaler does not keep buying replicas for a claim that cannot be served.
+func claimFailed(claim *unstructured.Unstructured) bool {
+	conditions, _, _ := unstructured.NestedSlice(claim.Object, "status", "conditions")
+	for _, raw := range conditions {
+		condition, ok := raw.(map[string]any)
+		if !ok || condition["type"] != "Ready" || condition["status"] != "False" {
+			continue
+		}
+		switch condition["reason"] {
+		case "PodFailed", "Failed", "TemplateNotFound", "WarmPoolNotFound":
+			return true
+		}
+	}
+	return false
+}
+
 // claimState reports whether the claim is Ready and which sandbox it holds.
 func claimState(claim *unstructured.Unstructured) (bool, string) {
 	conditions, _, _ := unstructured.NestedSlice(claim.Object, "status", "conditions")
@@ -298,9 +315,13 @@ func (k *Kube) ClaimStats(ctx context.Context, namespace, pool string) (ClaimSta
 				continue
 			}
 		}
-		if ready, _ := claimState(claim); ready {
+		ready, _ := claimState(claim)
+		switch {
+		case ready:
 			stats.Ready++
-		} else {
+		case claimFailed(claim):
+			stats.Failed++
+		default:
 			stats.Pending++
 		}
 	}
