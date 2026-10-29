@@ -16,13 +16,13 @@ func writeCgroup(t *testing.T, root, podUID string) string {
 		t.Fatalf("mkdir: %v", err)
 	}
 	files := map[string]string{
-		"cpu.stat":        "usage_usec 1500000\nuser_usec 1000000\nsystem_usec 500000\nnr_periods 100\nnr_throttled 7\nthrottled_usec 250000\n",
-		"cpu.pressure":    "some avg10=1.00 avg60=2.00 avg300=0.50 total=123456\nfull avg10=0.50 avg60=1.00 avg300=0.25 total=65432\n",
-		"memory.current":  "104857600\n",
-		"memory.stat":     "anon 52428800\nfile 10485760\ninactive_file 4194304\nshmem 2097152\nworkingset_refault_anon 11\nworkingset_refault_file 22\npgscan 33\npgsteal 44\n",
+		"cpu.stat":            "usage_usec 1500000\nuser_usec 1000000\nsystem_usec 500000\nnr_periods 100\nnr_throttled 7\nthrottled_usec 250000\n",
+		"cpu.pressure":        "some avg10=1.00 avg60=2.00 avg300=0.50 total=123456\nfull avg10=0.50 avg60=1.00 avg300=0.25 total=65432\n",
+		"memory.current":      "104857600\n",
+		"memory.stat":         "anon 52428800\nfile 10485760\ninactive_file 4194304\nshmem 2097152\nworkingset_refault_anon 11\nworkingset_refault_file 22\npgscan 33\npgsteal 44\n",
 		"memory.swap.current": "8388608\n",
-		"memory.events":   "low 0\nhigh 3\nmax 1\noom 0\noom_kill 1\n",
-		"memory.pressure": "some avg10=0.10 avg60=0.20 avg300=0.30 total=777\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=88\n",
+		"memory.events":       "low 0\nhigh 3\nmax 1\noom 0\noom_kill 1\n",
+		"memory.pressure":     "some avg10=0.10 avg60=0.20 avg300=0.30 total=777\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=88\n",
 	}
 	for name, body := range files {
 		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {

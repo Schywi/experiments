@@ -69,57 +69,57 @@ type Session struct {
 	Outcome   Outcome `json:"outcome"`
 	Error     string  `json:"error,omitempty"`
 
-	ArrivalNS       int64 `json:"arrival_ns"`
-	ClaimCreatedNS  int64 `json:"claim_created_ns,omitempty"`
-	ReadyNS         int64 `json:"ready_ns,omitempty"`
-	HoldStartNS     int64 `json:"hold_start_ns,omitempty"`
-	HoldEndNS       int64 `json:"hold_end_ns,omitempty"`
-	DeleteCalledNS  int64 `json:"delete_called_ns,omitempty"`
-	GoneNS          int64 `json:"gone_ns,omitempty"`
-	ResetStartNS    int64 `json:"reset_start_ns,omitempty"`
-	ResetEndNS      int64 `json:"reset_end_ns,omitempty"`
-	RebuildStartNS  int64 `json:"rebuild_start_ns,omitempty"`
-	RebuildEndNS    int64 `json:"rebuild_end_ns,omitempty"`
-	ResumeStartNS   int64 `json:"resume_start_ns,omitempty"`
-	ResumeEndNS     int64 `json:"resume_end_ns,omitempty"`
+	ArrivalNS      int64 `json:"arrival_ns"`
+	ClaimCreatedNS int64 `json:"claim_created_ns,omitempty"`
+	ReadyNS        int64 `json:"ready_ns,omitempty"`
+	HoldStartNS    int64 `json:"hold_start_ns,omitempty"`
+	HoldEndNS      int64 `json:"hold_end_ns,omitempty"`
+	DeleteCalledNS int64 `json:"delete_called_ns,omitempty"`
+	GoneNS         int64 `json:"gone_ns,omitempty"`
+	ResetStartNS   int64 `json:"reset_start_ns,omitempty"`
+	ResetEndNS     int64 `json:"reset_end_ns,omitempty"`
+	RebuildStartNS int64 `json:"rebuild_start_ns,omitempty"`
+	RebuildEndNS   int64 `json:"rebuild_end_ns,omitempty"`
+	ResumeStartNS  int64 `json:"resume_start_ns,omitempty"`
+	ResumeEndNS    int64 `json:"resume_end_ns,omitempty"`
 
 	LaunchType string `json:"launch_type,omitempty"`
 	Node       string `json:"node,omitempty"`
 	PodUID     string `json:"pod_uid,omitempty"`
 
-	CPUUsec            int64 `json:"cpu_usec,omitempty"`
+	CPUUsec             int64 `json:"cpu_usec,omitempty"`
 	CPUPressureSomeUsec int64 `json:"cpu_pressure_some_usec,omitempty"`
 	CPUPressureFullUsec int64 `json:"cpu_pressure_full_usec,omitempty"`
-	ThrottledUsec      int64 `json:"throttled_usec,omitempty"`
-	NRThrottled        int64 `json:"nr_throttled,omitempty"`
-	MemPeakBytes       int64 `json:"mem_peak_bytes,omitempty"`
-	MemWorkingSetPeak  int64 `json:"mem_working_set_peak_bytes,omitempty"`
-	MemInactiveFile    int64 `json:"mem_inactive_file_bytes,omitempty"`
-	ShmemPeak          int64 `json:"shmem_peak_bytes,omitempty"`
-	AnonPeak           int64 `json:"anon_peak_bytes,omitempty"`
-	RefaultAnon        int64 `json:"workingset_refault_anon,omitempty"`
-	RefaultFile        int64 `json:"workingset_refault_file,omitempty"`
-	SwapPeakBytes      int64 `json:"swap_peak_bytes,omitempty"`
-	OOMKill            int64 `json:"oom_kill,omitempty"`
+	ThrottledUsec       int64 `json:"throttled_usec,omitempty"`
+	NRThrottled         int64 `json:"nr_throttled,omitempty"`
+	MemPeakBytes        int64 `json:"mem_peak_bytes,omitempty"`
+	MemWorkingSetPeak   int64 `json:"mem_working_set_peak_bytes,omitempty"`
+	MemInactiveFile     int64 `json:"mem_inactive_file_bytes,omitempty"`
+	ShmemPeak           int64 `json:"shmem_peak_bytes,omitempty"`
+	AnonPeak            int64 `json:"anon_peak_bytes,omitempty"`
+	RefaultAnon         int64 `json:"workingset_refault_anon,omitempty"`
+	RefaultFile         int64 `json:"workingset_refault_file,omitempty"`
+	SwapPeakBytes       int64 `json:"swap_peak_bytes,omitempty"`
+	OOMKill             int64 `json:"oom_kill,omitempty"`
 	MemPressureSomeUsec int64 `json:"mem_pressure_some_usec,omitempty"`
-	Samples            int64 `json:"samples,omitempty"`
+	Samples             int64 `json:"samples,omitempty"`
 }
 
 // Instance is one sandbox the run created or adopted, keyed to the session that
 // held it. A reused instance appears with several sessions.
 type Instance struct {
-	ID         string `json:"id"`
-	Kind       string `json:"kind"`
-	Namespace  string `json:"namespace,omitempty"`
-	Node       string `json:"node,omitempty"`
-	PodUID     string `json:"pod_uid,omitempty"`
-	CreatedNS  int64  `json:"created_ns,omitempty"`
-	ReadyNS    int64  `json:"ready_ns,omitempty"`
-	DeletedNS  int64  `json:"deleted_ns,omitempty"`
-	Suspends   int64  `json:"suspends,omitempty"`
-	Resumes    int64  `json:"resumes,omitempty"`
-	Resets     int64  `json:"resets,omitempty"`
-	Sessions   int64  `json:"sessions,omitempty"`
+	ID        string `json:"id"`
+	Kind      string `json:"kind"`
+	Namespace string `json:"namespace,omitempty"`
+	Node      string `json:"node,omitempty"`
+	PodUID    string `json:"pod_uid,omitempty"`
+	CreatedNS int64  `json:"created_ns,omitempty"`
+	ReadyNS   int64  `json:"ready_ns,omitempty"`
+	DeletedNS int64  `json:"deleted_ns,omitempty"`
+	Suspends  int64  `json:"suspends,omitempty"`
+	Resumes   int64  `json:"resumes,omitempty"`
+	Resets    int64  `json:"resets,omitempty"`
+	Sessions  int64  `json:"sessions,omitempty"`
 }
 
 // Event is one lifecycle transition, kept alongside the session row so a run can
@@ -135,11 +135,11 @@ type Event struct {
 // HostSample is one reading of the node's memory while the run was in progress.
 // It is what says whether the run reached the node's limit, and when.
 type HostSample struct {
-	AtNS           int64 `json:"at_ns"`
-	MemTotal       int64 `json:"mem_total"`
-	MemAvailable   int64 `json:"mem_available"`
-	SwapTotal      int64 `json:"swap_total,omitempty"`
-	SwapFree       int64 `json:"swap_free,omitempty"`
+	AtNS         int64 `json:"at_ns"`
+	MemTotal     int64 `json:"mem_total"`
+	MemAvailable int64 `json:"mem_available"`
+	SwapTotal    int64 `json:"swap_total,omitempty"`
+	SwapFree     int64 `json:"swap_free,omitempty"`
 }
 
 // Bucket is one session-length class: a hold duration and how many sessions of
@@ -155,21 +155,23 @@ type Bucket struct {
 // file or the command line"; the runner never substitutes a remembered number
 // for any of them.
 type RunConfig struct {
-	RunID          string        `json:"run_id"`
-	Sessions       int           `json:"sessions"`
-	Rate           float64       `json:"rate"`
-	FixedArrival   bool          `json:"fixed_arrival"`
-	Mix            []Bucket      `json:"mix,omitempty"`
-	Policy         Policy        `json:"policy"`
-	Namespace      string        `json:"namespace"`
-	Pool           string        `json:"pool"`
-	Template       string        `json:"template"`
-	PoolReplicas   *int32        `json:"pool_replicas,omitempty"`
-	Workers        int           `json:"workers"`
-	OverloadFactor float64       `json:"overload_factor,omitempty"`
+	RunID           string        `json:"run_id"`
+	Sessions        int           `json:"sessions"`
+	Rate            float64       `json:"rate"`
+	FixedArrival    bool          `json:"fixed_arrival"`
+	Mix             []Bucket      `json:"mix,omitempty"`
+	Policy          Policy        `json:"policy"`
+	Namespace       string        `json:"namespace"`
+	Pool            string        `json:"pool"`
+	Template        string        `json:"template"`
+	PoolReplicas    *int32        `json:"pool_replicas,omitempty"`
+	Workers         int           `json:"workers"`
+	OverloadFactor  float64       `json:"overload_factor,omitempty"`
 	SessionDeadline time.Duration `json:"session_deadline_ns,omitempty"`
-	SampleSeconds  float64       `json:"sample_seconds"`
-	CgroupRoot     string        `json:"cgroup_root,omitempty"`
-	OutDir         string        `json:"out_dir"`
-	DryRun         bool          `json:"dry_run"`
+	// Window is the intended arrival window when the operator asked for one.
+	Window        time.Duration `json:"arrival_window_ns,omitempty"`
+	SampleSeconds float64       `json:"sample_seconds"`
+	CgroupRoot    string        `json:"cgroup_root,omitempty"`
+	OutDir        string        `json:"out_dir"`
+	DryRun        bool          `json:"dry_run"`
 }

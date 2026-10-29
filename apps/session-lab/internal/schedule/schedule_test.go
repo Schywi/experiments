@@ -63,8 +63,8 @@ func TestOverloadFactorMultipliesOfferedLoad(t *testing.T) {
 func TestArrivalsAreOrdered(t *testing.T) {
 	for _, fixed := range []bool{true, false} {
 		cfg := model.RunConfig{
-			Mix:          []model.Bucket{{Label: "1s", Hold: time.Second, Count: 50}},
-			FixedArrival: fixed,
+			Mix:            []model.Bucket{{Label: "1s", Hold: time.Second, Count: 50}},
+			FixedArrival:   fixed,
 			OverloadFactor: 3,
 		}
 		plan, err := Generate(cfg, 7)

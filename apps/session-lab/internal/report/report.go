@@ -21,35 +21,42 @@ import (
 
 // Report is the machine-readable result of one run.
 type Report struct {
-	RunID          string             `json:"run_id"`
-	Config         model.RunConfig    `json:"config"`
-	StartedNS      int64              `json:"started_ns,omitempty"`
-	EndedNS        int64              `json:"ended_ns,omitempty"`
-	Planned        int                `json:"planned_sessions"`
-	Stored         int                `json:"stored_sessions"`
-	Outcomes       map[string]int     `json:"outcomes"`
-	Rate           float64            `json:"arrival_rate"`
-	OfferedPeak    float64            `json:"offered_concurrency"`
-	Concurrency    Concurrency        `json:"concurrency"`
-	Queue          Latency            `json:"queue_wait_ms"`
-	Acquire        Latency            `json:"acquire_ms"`
-	Hold           Latency            `json:"hold_ms"`
-	Reset          Latency            `json:"reset_ms"`
-	Release        Latency            `json:"release_ms"`
-	Resume         Latency            `json:"resume_ms"`
-	LaunchTypes    map[string]int     `json:"launch_types"`
-	Buckets        map[string]Bucket  `json:"buckets"`
-	Resources      Resources          `json:"resources"`
-	Instances      InstanceSummary    `json:"instances"`
-	Host           HostMemory         `json:"host_memory"`
-	Template       *TemplateLimits    `json:"template_limits,omitempty"`
-	Autoscaler     *AutoscalerState   `json:"autoscaler,omitempty"`
+	RunID          string                `json:"run_id"`
+	Config         model.RunConfig       `json:"config"`
+	StartedNS      int64                 `json:"started_ns,omitempty"`
+	EndedNS        int64                 `json:"ended_ns,omitempty"`
+	Planned        int                   `json:"planned_sessions"`
+	Stored         int                   `json:"stored_sessions"`
+	Outcomes       map[string]int        `json:"outcomes"`
+	Rate           float64               `json:"arrival_rate"`
+	OfferedPeak    float64               `json:"offered_concurrency"`
+	Concurrency    Concurrency           `json:"concurrency"`
+	Queue          Latency               `json:"queue_wait_ms"`
+	Acquire        Latency               `json:"acquire_ms"`
+	Hold           Latency               `json:"hold_ms"`
+	Reset          Latency               `json:"reset_ms"`
+	Release        Latency               `json:"release_ms"`
+	Resume         Latency               `json:"resume_ms"`
+	LaunchTypes    map[string]int        `json:"launch_types"`
+	Buckets        map[string]Bucket     `json:"buckets"`
+	Resources      Resources             `json:"resources"`
+	Instances      InstanceSummary       `json:"instances"`
+	Host           HostMemory            `json:"host_memory"`
+	Template       *TemplateLimits       `json:"template_limits,omitempty"`
+	Autoscaler     *AutoscalerState      `json:"autoscaler,omitempty"`
 	Replicas       []store.ReplicaSample `json:"replicas,omitempty"`
-	Boundary       string             `json:"first_boundary,omitempty"`
-	BoundaryEv     []string           `json:"boundary_evidence,omitempty"`
-	Elasticity     string             `json:"elasticity,omitempty"`
-	Next           string             `json:"next,omitempty"`
-	InvariantNotes []string           `json:"invariant_notes,omitempty"`
+	Boundary       string                `json:"first_boundary,omitempty"`
+	BoundaryEv     []string              `json:"boundary_evidence,omitempty"`
+	Elasticity     string                `json:"elasticity,omitempty"`
+	Next           string                `json:"next,omitempty"`
+	InvariantNotes []string              `json:"invariant_notes,omitempty"`
+
+	ArrivalWindowS  float64            `json:"arrival_window_s"`
+	PeakWaiting     int                `json:"peak_waiting_sessions"`
+	PeakInFlight    int                `json:"peak_in_flight_sessions"`
+	CleanupFailures int                `json:"cleanup_failures"`
+	AcquireByLaunch map[string]Latency `json:"acquire_by_launch_type,omitempty"`
+	ActiveAtCutoff  int                `json:"active_at_cutoff"`
 }
 
 // Latency is a distribution in milliseconds.
@@ -78,16 +85,16 @@ type Bucket struct {
 
 // Resources aggregates the per-session counters.
 type Resources struct {
-	SessionsWithSamples int     `json:"sessions_with_samples"`
-	CPUCoreSeconds      float64 `json:"cpu_core_seconds_total"`
-	CPUCoreSecondsP50   float64 `json:"cpu_core_seconds_p50"`
-	CPUCoreSecondsMax   float64 `json:"cpu_core_seconds_max"`
-	MemPeakP50MiB       float64 `json:"mem_peak_p50_mib"`
-	MemPeakMaxMiB       float64 `json:"mem_peak_max_mib"`
+	SessionsWithSamples  int     `json:"sessions_with_samples"`
+	CPUCoreSeconds       float64 `json:"cpu_core_seconds_total"`
+	CPUCoreSecondsP50    float64 `json:"cpu_core_seconds_p50"`
+	CPUCoreSecondsMax    float64 `json:"cpu_core_seconds_max"`
+	MemPeakP50MiB        float64 `json:"mem_peak_p50_mib"`
+	MemPeakMaxMiB        float64 `json:"mem_peak_max_mib"`
 	WorkingSetPeakMaxMiB float64 `json:"mem_working_set_peak_max_mib"`
-	ThrottledSessions   int     `json:"throttled_sessions"`
-	OOMKills            int     `json:"oom_kills"`
-	RefaultSessions     int     `json:"refault_sessions"`
+	ThrottledSessions    int     `json:"throttled_sessions"`
+	OOMKills             int     `json:"oom_kills"`
+	RefaultSessions      int     `json:"refault_sessions"`
 }
 
 // TemplateLimits is what the sandbox pods were held to. It is here so a
@@ -102,26 +109,26 @@ type TemplateLimits struct {
 
 // AutoscalerState is what was scaling the pool while the run executed.
 type AutoscalerState struct {
-	HPACount    int     `json:"hpa_count"`
-	KEDA        bool    `json:"keda_crd_present"`
-	PoolScaler *bool    `json:"session_lab_autoscaler_present,omitempty"`
-	Min         int32   `json:"min,omitempty"`
-	Max         int32   `json:"max,omitempty"`
-	IntervalS   float64 `json:"interval_s,omitempty"`
-	HeartbeatS  float64 `json:"heartbeat_age_s,omitempty"`
-	Stale       bool    `json:"heartbeat_stale,omitempty"`
+	HPACount   int     `json:"hpa_count"`
+	KEDA       bool    `json:"keda_crd_present"`
+	PoolScaler *bool   `json:"session_lab_autoscaler_present,omitempty"`
+	Min        int32   `json:"min,omitempty"`
+	Max        int32   `json:"max,omitempty"`
+	IntervalS  float64 `json:"interval_s,omitempty"`
+	HeartbeatS float64 `json:"heartbeat_age_s,omitempty"`
+	Stale      bool    `json:"heartbeat_stale,omitempty"`
 }
 
 // HostMemory is the node's memory story for the run: the floor it reached and
 // when, which is the difference between "the platform refused" and "the node ran
 // out".
 type HostMemory struct {
-	Samples          int     `json:"samples"`
-	TotalMiB         float64 `json:"total_mib"`
-	MinAvailableMiB  float64 `json:"min_available_mib"`
-	MinAtNS          int64   `json:"min_at_ns,omitempty"`
-	MinRatioPct      float64 `json:"min_ratio_pct"`
-	SwapUsedMiB      float64 `json:"swap_used_mib"`
+	Samples         int     `json:"samples"`
+	TotalMiB        float64 `json:"total_mib"`
+	MinAvailableMiB float64 `json:"min_available_mib"`
+	MinAtNS         int64   `json:"min_at_ns,omitempty"`
+	MinRatioPct     float64 `json:"min_ratio_pct"`
+	SwapUsedMiB     float64 `json:"swap_used_mib"`
 }
 
 // InstanceSummary counts instance reuse and rebuild cost.
@@ -157,6 +164,7 @@ func Build(cfg model.RunConfig, plan schedule.Plan, st *store.Store) (*Report, e
 	}
 
 	var queueMS, acquireMS, holdMS, resetMS, releaseMS, resumeMS []float64
+	acquireByLaunch := map[string][]float64{}
 	var concurrencySamples []float64
 	var cpuSeconds []float64
 	var memPeaks, workSetPeaks []float64
@@ -196,6 +204,10 @@ func Build(cfg model.RunConfig, plan schedule.Plan, st *store.Store) (*Report, e
 		}
 		if session.LaunchType != "" {
 			rep.LaunchTypes[session.LaunchType]++
+			if session.ReadyNS > 0 && session.ArrivalNS > 0 {
+				acquireByLaunch[session.LaunchType] = append(acquireByLaunch[session.LaunchType],
+					ms(session.ReadyNS-session.ArrivalNS))
+			}
 		}
 		if session.Samples > 0 {
 			seconds := ms(session.HoldEndNS-session.HoldStartNS) / 1000
@@ -222,6 +234,12 @@ func Build(cfg model.RunConfig, plan schedule.Plan, st *store.Store) (*Report, e
 		rep.Buckets[session.Bucket] = bucket
 	}
 
+	if len(acquireByLaunch) > 0 {
+		rep.AcquireByLaunch = map[string]Latency{}
+		for launchType, values := range acquireByLaunch {
+			rep.AcquireByLaunch[launchType] = summarise(values)
+		}
+	}
 	rep.Queue = summarise(queueMS)
 	rep.Acquire = summarise(acquireMS)
 	rep.Hold = summarise(holdMS)
@@ -253,6 +271,17 @@ func Build(cfg model.RunConfig, plan schedule.Plan, st *store.Store) (*Report, e
 			rep.Autoscaler = &state
 		}
 	}
+
+	if started, ended, err := st.RunWindow(cfg.RunID); err == nil {
+		rep.StartedNS, rep.EndedNS = started, ended
+	}
+	if facts, err := st.RunRuntime(cfg.RunID); err == nil {
+		rep.ArrivalWindowS = float64(facts.ArrivalWindowNS) / 1e9
+		rep.PeakWaiting = facts.PeakWaiting
+		rep.PeakInFlight = facts.PeakInFlight
+		rep.CleanupFailures = facts.CleanupFailures
+	}
+	rep.ActiveAtCutoff = rep.Outcomes[string(model.OutcomeWaiting)] + rep.Outcomes[string(model.OutcomePending)]
 
 	if replicas, err := st.RunReplicas(cfg.RunID); err == nil {
 		rep.Replicas = replicas
@@ -337,6 +366,16 @@ func (r *Report) Write(path string) error {
 // Print writes the human summary.
 func (r *Report) Print(w io.Writer) {
 	fmt.Fprintf(w, "\nrun %s — %s policy, %d planned, %d stored\n", r.RunID, r.Config.Policy, r.Planned, r.Stored)
+	if r.ArrivalWindowS > 0 {
+		window := r.ArrivalWindowS
+		target := r.Config.Window.Seconds()
+		suffix := ""
+		if target > 0 {
+			suffix = fmt.Sprintf(" of %.0fs requested (%.1f%%)", target, window/target*100)
+		}
+		fmt.Fprintf(w, "arrival window %.1fs%s, peak in flight %d, peak waiting %d, active at cutoff %d\n",
+			window, suffix, r.PeakInFlight, r.PeakWaiting, r.ActiveAtCutoff)
+	}
 	fmt.Fprintf(w, "offered concurrency %.1f at %.3f sessions/s; measured peak %d, mean %.1f\n",
 		r.OfferedPeak, r.Rate, r.Concurrency.Peak, r.Concurrency.Mean)
 	fmt.Fprintln(w, "\noutcomes")
@@ -351,6 +390,12 @@ func (r *Report) Print(w io.Writer) {
 		r.Queue.P50, r.Queue.P95, r.Queue.P99, r.Queue.Max)
 	fmt.Fprintf(w, "acquire (arrival→ready)   p50 %.0fms  p95 %.0fms  p99 %.0fms\n",
 		r.Acquire.P50, r.Acquire.P95, r.Acquire.P99)
+	for _, launchType := range []string{"warm", "cold"} {
+		if latency, ok := r.AcquireByLaunch[launchType]; ok {
+			fmt.Fprintf(w, "  %-6s acquisition       p50 %.0fms  p95 %.0fms  n=%d\n",
+				launchType, latency.P50, latency.P95, latency.Count)
+		}
+	}
 	fmt.Fprintf(w, "hold                      p50 %.0fms  p95 %.0fms\n", r.Hold.P50, r.Hold.P95)
 	if r.Reset.Count > 0 {
 		fmt.Fprintf(w, "reset                     p50 %.0fms  p95 %.0fms\n", r.Reset.P50, r.Reset.P95)
@@ -392,6 +437,9 @@ func (r *Report) Print(w io.Writer) {
 		r.Instances.Total, r.Instances.MaxSessions, r.Instances.MeanSessions)
 	if r.Instances.RebuildP50Ms > 0 {
 		fmt.Fprintf(w, ", rebuild p50 %.0fms", r.Instances.RebuildP50Ms)
+	}
+	if r.CleanupFailures > 0 {
+		fmt.Fprintf(w, "cleanup: %d instance(s) could not be deleted\n", r.CleanupFailures)
 	}
 	fmt.Fprintf(w, "\nelasticity: %s\n", r.Elasticity)
 	if r.Boundary != "" {

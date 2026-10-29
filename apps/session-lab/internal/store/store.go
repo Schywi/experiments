@@ -28,7 +28,8 @@ CREATE TABLE IF NOT EXISTS runs (
     ended_ns    INTEGER,
     replicas    TEXT NOT NULL DEFAULT '[]',
     limits      TEXT NOT NULL DEFAULT '',
-    autoscaler  TEXT NOT NULL DEFAULT ''
+    autoscaler  TEXT NOT NULL DEFAULT '',
+    runtime     TEXT NOT NULL DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS sessions (
@@ -151,14 +152,55 @@ func (s *Store) StartRun(cfg model.RunConfig, at time.Time) error {
 	return err
 }
 
-// EndRun closes a run and stores the pool replica trajectory the runner saw.
-func (s *Store) EndRun(runID string, at time.Time, replicas []ReplicaSample) error {
+// RunRuntime is what only the runner knows while it runs: how long arrivals
+// actually kept coming, how deep the queue got, and what it failed to clean up.
+type RunRuntime struct {
+	ArrivalWindowNS   int64 `json:"arrival_window_ns"`
+	PeakWaiting       int   `json:"peak_waiting"`
+	PeakInFlight      int   `json:"peak_in_flight"`
+	CleanupFailures   int   `json:"cleanup_failures"`
+	DispatchCompleted int64 `json:"dispatch_completed,omitempty"`
+	DispatchPlanned   int64 `json:"dispatch_planned,omitempty"`
+}
+
+// EndRun closes a run and stores the replica trajectory and runtime facts.
+func (s *Store) EndRun(runID string, at time.Time, replicas []ReplicaSample, runtimeFacts RunRuntime) error {
 	payload, err := json.Marshal(replicas)
 	if err != nil {
 		return fmt.Errorf("marshal replicas: %w", err)
 	}
-	_, err = s.db.Exec(`UPDATE runs SET ended_ns = ?, replicas = ? WHERE run_id = ?`, at.UnixNano(), string(payload), runID)
+	facts, err := json.Marshal(runtimeFacts)
+	if err != nil {
+		return fmt.Errorf("marshal runtime: %w", err)
+	}
+	_, err = s.db.Exec(`UPDATE runs SET ended_ns = ?, replicas = ?, runtime = ? WHERE run_id = ?`,
+		at.UnixNano(), string(payload), string(facts), runID)
 	return err
+}
+
+// RunWindow returns when the run started and ended, in unix nanoseconds.
+func (s *Store) RunWindow(runID string) (int64, int64, error) {
+	var started, ended sql.NullInt64
+	if err := s.db.QueryRow(`SELECT started_ns, ended_ns FROM runs WHERE run_id = ?`, runID).Scan(&started, &ended); err != nil {
+		return 0, 0, err
+	}
+	return started.Int64, ended.Int64, nil
+}
+
+// RunRuntime returns the runtime facts recorded at the end of the run.
+func (s *Store) RunRuntime(runID string) (RunRuntime, error) {
+	var raw string
+	if err := s.db.QueryRow(`SELECT runtime FROM runs WHERE run_id = ?`, runID).Scan(&raw); err != nil {
+		return RunRuntime{}, err
+	}
+	var facts RunRuntime
+	if raw == "" {
+		return facts, nil
+	}
+	if err := json.Unmarshal([]byte(raw), &facts); err != nil {
+		return RunRuntime{}, err
+	}
+	return facts, nil
 }
 
 // SaveTemplateLimits records the requests and limits the sandbox template
@@ -212,9 +254,9 @@ func (s *Store) TemplateLimits(runID string) (string, error) {
 
 // ReplicaSample is one reading of the warm pool's desired and ready counts.
 type ReplicaSample struct {
-	AtNS    int64 `json:"at_ns"`
-	Desired int32 `json:"desired"`
-	Ready   int32 `json:"ready"`
+	AtNS    int64  `json:"at_ns"`
+	Desired int32  `json:"desired"`
+	Ready   int32  `json:"ready"`
 	Note    string `json:"note,omitempty"`
 }
 

@@ -114,6 +114,16 @@ type Runner struct {
 	minAvailable   int64
 	minAvailableAt int64
 	memTotal       int64
+
+	// Runtime facts: the arrival window actually achieved, and the deepest
+	// queue and cleanup failures seen.
+	firstArrivalNS int64
+	lastArrivalNS  int64
+	waitingN       int64
+	inFlightN      int64
+	peakWaiting    int64
+	peakInFlight   int64
+	cleanupFailed  int64
 }
 
 // New assembles a runner.
@@ -184,7 +194,22 @@ func (r *Runner) Run(ctx context.Context) error {
 	} else {
 		r.log.Printf("boundaries: %v", bErr)
 	}
-	return r.st.EndRun(r.cfg.RunID, r.now(), r.reps)
+	r.mu.Lock()
+	first, last := r.firstArrivalNS, r.lastArrivalNS
+	facts := store.RunRuntime{
+		PeakWaiting:     int(r.peakWaiting),
+		PeakInFlight:    int(r.peakInFlight),
+		CleanupFailures: int(r.cleanupFailed),
+		DispatchPlanned: int64(len(r.plan.Sessions)),
+	}
+	for _, outcome := range r.counts {
+		facts.DispatchCompleted += int64(outcome)
+	}
+	r.mu.Unlock()
+	if first > 0 && last > first {
+		facts.ArrivalWindowNS = last - first
+	}
+	return r.st.EndRun(r.cfg.RunID, r.now(), r.reps, facts)
 }
 
 // preflight reads what the platform currently reports and, when asked, changes
@@ -319,6 +344,21 @@ func (r *Runner) dispatch(ctx context.Context) error {
 		wg.Add(1)
 		go func(p schedule.Planned) {
 			defer wg.Done()
+			r.mu.Lock()
+			nowNS := r.now().UnixNano()
+			if r.firstArrivalNS == 0 {
+				r.firstArrivalNS = nowNS
+			}
+			r.lastArrivalNS = nowNS
+			r.waitingN++
+			r.inFlightN++
+			if r.waitingN > r.peakWaiting {
+				r.peakWaiting = r.waitingN
+			}
+			if r.inFlightN > r.peakInFlight {
+				r.peakInFlight = r.inFlightN
+			}
+			r.mu.Unlock()
 			if r.rec != nil {
 				r.rec.SessionArrived()
 			}
@@ -415,6 +455,7 @@ func (r *Runner) session(ctx context.Context, planned schedule.Planned) {
 		}
 		session.ReadyNS = instance.ReadyNS
 		session.LaunchType = launchType(instance)
+		r.leaveQueue()
 		if r.rec != nil {
 			r.rec.SessionAcquired()
 			if session.ClaimCreatedNS > 0 {
@@ -631,6 +672,9 @@ func (r *Runner) release(ctx context.Context, instance *adapter.Instance) {
 	defer cancel()
 	if err := r.deleteWithRetry(releaseCtx, instance); err != nil {
 		r.log.Printf("release %s: %v", instance.ID, err)
+		r.mu.Lock()
+		r.cleanupFailed++
+		r.mu.Unlock()
 		return
 	}
 	r.persistInstance(instance)
@@ -687,10 +731,23 @@ func (r *Runner) settle(id int64, outcome model.Outcome, detail string, session 
 	}
 	r.mu.Lock()
 	r.counts[outcome]++
+	r.inFlightN--
+	if r.waitingN > 0 {
+		r.waitingN--
+	}
 	r.mu.Unlock()
 	if r.rec != nil {
 		r.rec.SessionSettled(string(r.cfg.Policy), outcome)
 	}
+}
+
+// leaveQueue drops a session out of the waiting count once it holds an instance.
+func (r *Runner) leaveQueue() {
+	r.mu.Lock()
+	if r.waitingN > 0 {
+		r.waitingN--
+	}
+	r.mu.Unlock()
 }
 
 // settlePending marks sessions that never started.

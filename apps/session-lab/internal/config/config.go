@@ -32,6 +32,7 @@ func Parse(args []string) (*Config, error) {
 
 	var mix string
 	var hold time.Duration
+	var duration time.Duration
 	var deadline time.Duration
 
 	fs.IntVar(&cfg.Sessions, "sessions", 0, "number of sessions to generate (required unless --mix carries counts)")
@@ -39,6 +40,7 @@ func Parse(args []string) (*Config, error) {
 	fs.BoolVar(&cfg.FixedArrival, "fixed-arrival", false, "space arrivals evenly instead of Poisson")
 	fs.StringVar(&mix, "mix", "", "length buckets as label:count pairs, e.g. 30s:25,2m:25,5m:25,10m:25")
 	fs.DurationVar(&hold, "hold", 0, "hold duration for a single-bucket run")
+	fs.DurationVar(&duration, "duration", 0, "arrival window; session counts are derived from --rate and the mix proportions")
 	fs.StringVar((*string)(&cfg.Policy), "policy", string(model.PolicyReuse), "instance policy: reuse|destroy|suspend")
 	fs.StringVar(&cfg.Namespace, "namespace", "sandbox-demo", "namespace holding the pool and the claims")
 	fs.StringVar(&cfg.Pool, "pool", "browser-pool", "SandboxWarmPool name")
@@ -80,6 +82,11 @@ func Parse(args []string) (*Config, error) {
 	}
 	if err := cfg.buildMix(mix, hold); err != nil {
 		return nil, err
+	}
+	if duration > 0 {
+		if err := cfg.applyDuration(duration); err != nil {
+			return nil, err
+		}
 	}
 	if err := cfg.validate(); err != nil {
 		return nil, err
@@ -143,6 +150,47 @@ func ParseMix(spec string) ([]model.Bucket, error) {
 		return nil, fmt.Errorf("mix parsed to no buckets")
 	}
 	return out, nil
+}
+
+// applyDuration turns an arrival window into session counts. The generator is
+// untouched: arrivals stay offsets computed from the rate, so a window of D
+// seconds at R sessions/s is round(R*D) sessions whose last offset lands at D.
+// A mix keeps its proportions.
+func (c *Config) applyDuration(window time.Duration) error {
+	if c.Rate <= 0 {
+		return fmt.Errorf("--duration needs --rate: the window is the session count divided by the rate")
+	}
+	total := int(window.Seconds() * c.Rate)
+	if total < 1 {
+		return fmt.Errorf("--duration %s at %.3f/s is fewer than one session", window, c.Rate)
+	}
+	var given int
+	for _, b := range c.Mix {
+		given += b.Count
+	}
+	if given == 0 {
+		return fmt.Errorf("--duration needs a mix or --hold to size the sessions")
+	}
+	scaled := make([]model.Bucket, 0, len(c.Mix))
+	remaining := total
+	for i, b := range c.Mix {
+		count := int(float64(b.Count) / float64(given) * float64(total))
+		if i == len(c.Mix)-1 {
+			count = remaining
+		}
+		if b.Count > 0 && count < 1 {
+			count = 1
+		}
+		if count > remaining {
+			count = remaining
+		}
+		remaining -= count
+		scaled = append(scaled, model.Bucket{Label: b.Label, Hold: b.Hold, Count: count})
+	}
+	c.Mix = scaled
+	c.Sessions = total
+	c.Window = window
+	return nil
 }
 
 func (c *Config) validate() error {

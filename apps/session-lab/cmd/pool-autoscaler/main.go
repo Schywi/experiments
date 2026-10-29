@@ -36,14 +36,14 @@ func main() {
 
 func run() error {
 	var (
-		namespace  = flag.String("namespace", "sandbox-demo", "namespace holding the pool and the claims")
-		pool       = flag.String("pool", "browser-pool", "SandboxWarmPool to size")
-		minR       = flag.Int("min", 1, "lower bound on replicas")
-		maxR       = flag.Int("max", 40, "upper bound on replicas")
-		interval   = flag.Duration("interval", 5*time.Second, "reconcile interval")
-		configMap  = flag.String("configmap", "session-lab-autoscaler", "ConfigMap to publish settings to")
-		metricsAt  = flag.String("metrics-addr", ":9110", "address to serve /metrics on; empty disables it")
-		kubeconfig = flag.String("kubeconfig", "", "kubeconfig path; empty uses the default config")
+		namespace   = flag.String("namespace", "sandbox-demo", "namespace holding the pool and the claims")
+		pool        = flag.String("pool", "browser-pool", "SandboxWarmPool to size")
+		minR        = flag.Int("min", 1, "lower bound on replicas")
+		maxR        = flag.Int("max", 40, "upper bound on replicas")
+		interval    = flag.Duration("interval", 5*time.Second, "reconcile interval")
+		configMap   = flag.String("configmap", "session-lab-autoscaler", "ConfigMap to publish settings to")
+		metricsAt   = flag.String("metrics-addr", ":9110", "address to serve /metrics on; empty disables it")
+		kubeconfig  = flag.String("kubeconfig", "", "kubeconfig path; empty uses the default config")
 		contextName = flag.String("context", "", "kubeconfig context")
 	)
 	flag.Parse()

@@ -54,9 +54,9 @@ func ReadHostMemory() HostMemory {
 
 // Boundary is one refusal or degradation, with the evidence that produced it.
 type Boundary struct {
-	At      int64
-	Kind    string
-	Detail  string
+	At     int64
+	Kind   string
+	Detail string
 }
 
 // Detector watches a run and reports what the platform refused.

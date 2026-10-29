@@ -67,9 +67,9 @@ func realMain() error {
 	}
 
 	sampler, err := measure.New(measure.Options{
-		CgroupRoot:   cfg.CgroupRoot,
-		Interval:     time.Duration(cfg.SampleSeconds * float64(time.Second)),
-		Log:          logger,
+		CgroupRoot: cfg.CgroupRoot,
+		Interval:   time.Duration(cfg.SampleSeconds * float64(time.Second)),
+		Log:        logger,
 	})
 	if err != nil {
 		return err
@@ -110,11 +110,11 @@ func realMain() error {
 	}
 
 	runner := run.New(cfg.RunConfig, run.Options{
-		Adapter: kube,
-		Store:   st,
-		Sampler: sampler,
-		Plan:    plan,
-		Log:     logger,
+		Adapter:        kube,
+		Store:          st,
+		Sampler:        sampler,
+		Plan:           plan,
+		Log:            logger,
 		Recorder:       recorder,
 		AutoscalerInfo: info,
 		HostMemory: func() (int64, int64, int64, int64) {

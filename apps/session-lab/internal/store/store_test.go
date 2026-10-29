@@ -136,7 +136,20 @@ func TestRunConfigIsRecorded(t *testing.T) {
 	if err := s.StartRun(cfg, now); err != nil {
 		t.Fatalf("start: %v", err)
 	}
-	if err := s.EndRun("r1", now.Add(time.Minute), []ReplicaSample{{AtNS: 1, Desired: 3, Ready: 2}}); err != nil {
+	if err := s.EndRun("r1", now.Add(time.Minute),
+		[]ReplicaSample{{AtNS: 1, Desired: 3, Ready: 2}},
+		RunRuntime{ArrivalWindowNS: 600_000_000_000, PeakWaiting: 7, CleanupFailures: 0}); err != nil {
 		t.Fatalf("end: %v", err)
+	}
+	facts, err := s.RunRuntime("r1")
+	if err != nil {
+		t.Fatalf("runtime: %v", err)
+	}
+	if facts.ArrivalWindowNS != 600_000_000_000 || facts.PeakWaiting != 7 {
+		t.Fatalf("runtime facts lost: %+v", facts)
+	}
+	started, ended, err := s.RunWindow("r1")
+	if err != nil || started == 0 || ended <= started {
+		t.Fatalf("window: started=%d ended=%d err=%v", started, ended, err)
 	}
 }
