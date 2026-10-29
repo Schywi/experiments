@@ -23,12 +23,32 @@ pinned release (`CILIUM_VERSION=1.20.1`), taken verbatim from
 | `hubble-l7-http-metrics-by-workload.json` | `hubble/dashboards/hubble-l7-http-metrics-by-workload.json` |
 | `hubble-network-overview-namespace.json` | `hubble/dashboards/hubble-network-overview-namespace.json` |
 
+`session-lab.json` is this repository's own dashboard, not an upstream import. It
+reads the series exported by `apps/session-lab` and is the one dashboard that
+answers the Phase 8 questions:
+
+| Panel | Series |
+| --- | --- |
+| Session throughput by outcome | `session_lab_sessions_total` |
+| Concurrency, active and waiting | `session_lab_sessions_active`, `session_lab_sessions_waiting`, pool desired/ready |
+| Queue wait p50/p95/p99 | `session_lab_queue_wait_seconds_bucket` |
+| Acquisition by launch type | `session_lab_acquire_seconds_bucket` |
+| Hold by length bucket | `session_lab_hold_seconds_bucket` |
+| Reset and release cost | `session_lab_reset_seconds_bucket`, `session_lab_release_seconds_bucket` |
+| Failures by outcome | `session_lab_sessions_total{outcome!="success"}` |
+| Throttled versus the CPU limit | `session_lab_throttled_seconds_total`, `session_lab_template_cpu_limit_cores` |
+| Working set peak | `session_lab_workingset_peak_bytes_bucket` |
+| Boundaries by kind | `session_lab_boundaries_total` |
+
+VictoriaMetrics scrapes the runner from a static target (`sessionLab.targets` in
+`config/victoriametrics/values.yaml`) because the runner runs on the node, where
+it can read the host's cgroup files.
+
 Each file was normalized for file-based provisioning (the `__inputs`/`__requires`
 import blocks are removed, the redundant `DS_PROMETHEUS` datasource template
 variable is dropped, and `${DS_PROMETHEUS}` datasource references are bound to the
 provisioned datasource UID `victoriametrics`). Regenerate from a reviewed Cilium
 release with:
-
 ```bash
 tag=v1.20.1
 base="https://raw.githubusercontent.com/cilium/cilium/${tag}/install/kubernetes/cilium/files"

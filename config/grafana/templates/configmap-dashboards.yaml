@@ -21,4 +21,6 @@ data:
 {{ .Files.Get "dashboards/hubble-l7-http-metrics-by-workload.json" | indent 4 }}
   hubble-network-overview-namespace.json: |-
 {{ .Files.Get "dashboards/hubble-network-overview-namespace.json" | indent 4 }}
+  session-lab.json: |-
+{{ .Files.Get "dashboards/session-lab.json" | indent 4 }}
 {{- end }}
