@@ -146,7 +146,19 @@ The one rule that pays for itself: **`internal/runtime/*` must not import `inter
 
 Move mechanics: `git mv` per package plus import rewrites, no behaviour change, `go build ./... && go test ./...` as the proof. Do it as one commit before the admission/context work, so later diffs are about behaviour instead of paths.
 
-## 7. What this deliberately leaves out
+## 7. Parallel research that may decide the class question
+
+A separate experiment, run by another agent under the `report` area, is measuring what happens to
+the *cost* of a session when its memory is compressed or swapped: whether a suspended or idle
+sandbox pays a latency tax when it wakes, and whether `batch` and `bulk` traffic can be parked in
+swap/zram instead of holding resident capacity.
+
+If that holds up, it answers the batch/bulk question better than an admission class can: a class
+that only reorders a queue keeps the capacity reserved, while compressed or swapped idle state
+releases it. None of it is production evidence yet, so this note does not depend on it — the classes
+in §2 stand on their own and are the smaller change.
+
+## 8. What this deliberately leaves out
 
 - Per-context CDP metrics beyond what section 4 lists. Pod CPU divided by contexts is honest if labelled; a per-target flamegraph is not needed to answer a capacity question.
 - Preemption between classes (`bulk` suspended to make room for `normal`). Recorded as an option, unbuilt.
