@@ -28,6 +28,9 @@
 | [10 — Autoscaler deployed](10-autoscaler-deployed.md) | Is elasticity a workload or a shell script? | The chart, RBAC, in-cluster image build and label-based scrape; live scaling 2 → 22 → 2 with 84.9 s scale-out, and the API outage that followed |
 | [11 — Verification](11-verification.md) | What is actually running, and what is not? | Five areas labelled implemented/deployed/configured/verified with commands, two defects found by comparing image digests, the claim-cleanup paths that fail, and the observability layer that is exposed but never scraped |
 | [12 — CPU: requests yes, limits no](12-cpu-requests-not-limits.md) | Why the template must not carry a CPU quota | The policy, what is configured today (requests 100m, limit 1), the 248-of-360 throttled sessions that justify it, and the two-line change that complies |
+| [13 — Client-go throughput, APF and Chromium density limits](13-client-go-apf-and-density-limits.md) | How do client-go limits, HTTP/2 connections, APF, and Chromium density interact? | The three throughput layers, upstream agent-sandbox QPS=-1 and connection sharding, 559 MiB Chromium footprint, and the four capacity cliffs |
+| [14 — Leaked claims, the 100ms polling storm, and claim ordering](14-leaked-claims-and-polling-storm.md) | Why do claims leak, how does 100ms polling throttle client-go, and how do old/new claims race? | The polling storm math (10 req/s per session), non-FIFO workqueue ordering race, reuse vs destroy, and upstream TTL gaps |
+| [15 — Capacity plane and demand plane](15-capacity-plane-and-demand-plane.md) | Where does Kubernetes stop and where does our runtime start? | Admission classes (normal/batch/bulk) with no reservation, one browser context per session instead of one claim, the accepted crash blast radius, and the internal/runtime vs internal/infra package split |
 
 Read 04 for what is being built and under which rules, 03 for the baseline, 02 for the experiment
 shape, 01 for the instrument.
