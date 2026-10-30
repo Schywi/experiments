@@ -125,26 +125,46 @@ apps/session-lab/
 │   ├── session-lab/            # experiment runner binary
 │   └── pool-autoscaler/        # capacity binary
 └── internal/
-    ├── runtime/                # DEMAND PLANE — never imports infra/kube
+    ├── runtime/                # DEMAND PLANE — imports infra/sandbox, never infra/kube
     │   ├── schedule/           # arrivals, plan, buckets
-    │   ├── admission/          # classes, queue, slot allocator
-    │   ├── session/            # lease, hold, release (today's run/)
+    │   ├── admission/          # classes, queue, gate (next step)
+    │   ├── session/            # lease, hold, release (was run/)
     │   └── report/             # JSON + text summary
     ├── infra/                  # CAPACITY PLANE — the only k8s caller
-    │   ├── sandbox/            # Adapter interface + Fake (today's adapter/)
-    │   ├── kube/               # kube.go + watch.go
-    │   ├── pool/               # autoscale/ + slot→replica policy
-    │   └── measure/            # cgroup, metrics-server, boundary
+    │   ├── sandbox/            # Adapter interface, Instance, ClaimStats, Fake
+    │   ├── kube/               # kube.go + watch.go + cgroup path helpers
+    │   ├── pool/               # autoscale (package pool)
+    │   └── measure/            # cgroup, metrics-server, boundary, Reading
     └── platform/               # shared, plane-agnostic
         ├── config/
         ├── model/
         ├── store/
         └── metrics/
+
+Applied in `e888f24`. `Reading` moved from the runner into `infra/measure` because
+`measure` was importing the runtime to name its own return type; the runner now
+aliases it (`type Reading = measure.Reading`), so the dependency points one way.
+Only `cmd/session-lab` imports `infra/kube` — checked with `rg "infra/kube" internal/runtime/`.
 ```
 
 The one rule that pays for itself: **`internal/runtime/*` must not import `internal/infra/kube`.** It imports `internal/infra/sandbox` (the interface), which is exactly the seam that lets the scheduler and admission be tested without a cluster — and the seam that keeps Kubernetes on the capacity side.
 
 Move mechanics: `git mv` per package plus import rewrites, no behaviour change, `go build ./... && go test ./...` as the proof. Do it as one commit before the admission/context work, so later diffs are about behaviour instead of paths.
+
+## 6a. What shipped
+
+| Piece | Where |
+|---|---|
+| `Class` (normal/batch/bulk), rank, `MayScale`, `Interruptible` | `internal/platform/model/model.go` |
+| `Queue` (per-class counts, never rejects) and `Gate` (bounded concurrent admissions, class-ordered, cancellation-aware) | `internal/runtime/admission/admission.go` |
+| `--class` and `--admit` flags; class recorded in the run config | `internal/platform/config/config.go` |
+| Claim label `session-lab.io/class`; bulk claims counted in their own bucket | `internal/infra/kube/kube.go`, `watch.go` |
+| Pool sizing ignores bulk: `target = ready + pending` | `internal/infra/pool/autoscale.go` (unchanged path, new data) |
+| Admission wait recorded per session and printed | `internal/runtime/session/run.go`, `internal/runtime/report/report.go` |
+
+Deliberately not built yet: browser contexts (`--contexts-per-browser`), a slot allocator, preemption.
+The gate bounds *concurrent acquisitions*, which is the part that hurts the API server; the slot
+allocator only becomes meaningful once one Chromium serves several sessions.
 
 ## 7. Parallel research that may decide the class question
 
