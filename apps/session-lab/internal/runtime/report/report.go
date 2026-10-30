@@ -449,9 +449,15 @@ func (r *Report) Print(w io.Writer) {
 		fmt.Fprintf(w, "autoscaling       hpa=%d keda=%v %s\n", r.Autoscaler.HPACount, r.Autoscaler.KEDA, scalerState)
 	}
 	if r.Template != nil {
-		fmt.Fprintf(w, "template %s      requests cpu=%dm mem=%.0fMiB, limits cpu=%dm mem=%.0fMiB\n",
+		// No CPU limit is the policy (note 12), and a zero there means exactly
+		// that: printing "cpu=0m" would read as a limit of nothing.
+		cpuLimit := "none"
+		if r.Template.CPULimitMilli > 0 {
+			cpuLimit = fmt.Sprintf("%dm", r.Template.CPULimitMilli)
+		}
+		fmt.Fprintf(w, "template %s      requests cpu=%dm mem=%.0fMiB, limits cpu=%s mem=%.0fMiB\n",
 			r.Template.Container, r.Template.CPURequestMilli, r.Template.MemRequestMiB,
-			r.Template.CPULimitMilli, r.Template.MemLimitMiB)
+			cpuLimit, r.Template.MemLimitMiB)
 	}
 	fmt.Fprintf(w, "throttled sessions %d, oom kills %d, sessions with refaults %d\n",
 		r.Resources.ThrottledSessions, r.Resources.OOMKills, r.Resources.RefaultSessions)
@@ -465,7 +471,7 @@ func (r *Report) Print(w io.Writer) {
 		fmt.Fprintf(w, ", rebuild p50 %.0fms", r.Instances.RebuildP50Ms)
 	}
 	if r.Config.ContextsPerBrowser > 1 {
-		fmt.Fprintf(w, "browsers: %d sessions per Chromium; %d of %d sessions shared a browser, so their CPU is the pod's usage divided by the contexts in flight\n",
+		fmt.Fprintf(w, "\nbrowsers: %d sessions per Chromium; %d of %d sessions shared a browser, so their CPU is the pod's usage divided by the contexts in flight\n",
 			r.Config.ContextsPerBrowser, r.SharedSessions, r.Stored)
 	}
 	if r.CleanupFailures > 0 {

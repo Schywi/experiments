@@ -89,7 +89,13 @@ func (r *Runner) sessionShared(ctx context.Context, planned schedule.Planned) {
 	}
 	session.Instance = lease.Instance.ID
 	session.LaunchType = launchType(lease.Instance)
+	// A reused browser was ready long before this session arrived. The session's
+	// own readiness is the later of the two, otherwise the acquisition latency
+	// comes out negative.
 	session.ReadyNS = lease.Instance.ReadyNS
+	if session.ReadyNS < session.ArrivalNS {
+		session.ReadyNS = session.ArrivalNS
+	}
 	session.CPUShared = lease.Shared
 	sharing := r.spool.InUseOn(lease.Instance)
 

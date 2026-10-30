@@ -190,14 +190,24 @@ async def _read_chunked(reader: asyncio.StreamReader, timeout: float) -> bytes:
         await asyncio.wait_for(reader.readexactly(2), timeout=timeout)  # CRLF
 
 
+# Domains Chromium only accepts on the browser endpoint. Target.createBrowserContext
+# on a page socket fails with "Not allowed", which is what a shared browser needs.
+BROWSER_DOMAINS = ("Target.", "Browser.", "SystemInfo.")
+
+
 class DevTools:
-    """One cached page socket, serialised, with a reconnect on failure."""
+    """Cached DevTools sockets, serialised, with a reconnect on failure.
+
+    Two endpoints: a page socket for Page./Runtime. and the browser socket for
+    Target., which is where browser contexts live.
+    """
 
     def __init__(self, host: str, port: int, timeout: float = COMMAND_TIMEOUT):
         self._host = host
         self._port = port
         self._timeout = timeout
         self._socket: DevToolsSocket | None = None
+        self._browser: DevToolsSocket | None = None
         self._lock = asyncio.Lock()
         self._ids = 0
 
@@ -215,6 +225,17 @@ class DevTools:
         # ws://127.0.0.1:9223/devtools/page/ABC -> /devtools/page/ABC
         return "/" + url.split("://", 1)[1].split("/", 1)[1]
 
+    async def _browser_path(self) -> str:
+        status, body = await http_get(self._host, self._port, "/json/version")
+        if status != 200:
+            raise WebSocketError(f"/json/version returned {status}")
+        info = json.loads(body or b"{}")
+        url = info.get("webSocketDebuggerUrl") or ""
+        if "://" not in url:
+            raise WebSocketError("browser endpoint has no webSocketDebuggerUrl")
+        # ws://127.0.0.1:9223/devtools/browser/ABC -> /devtools/browser/ABC
+        return "/" + url.split("://", 1)[1].split("/", 1)[1]
+
     async def _connect(self) -> DevToolsSocket:
         if self._socket is not None:
             return self._socket
@@ -222,9 +243,21 @@ class DevTools:
         self._socket = await DevToolsSocket.connect(self._host, self._port, path)
         return self._socket
 
+    async def _connect_browser(self) -> DevToolsSocket:
+        if self._browser is not None:
+            return self._browser
+        path = await self._browser_path()
+        self._browser = await DevToolsSocket.connect(self._host, self._port, path)
+        return self._browser
+
+    async def _socket_for(self, method: str) -> DevToolsSocket:
+        if method.startswith(BROWSER_DOMAINS):
+            return await self._connect_browser()
+        return await self._connect()
+
     async def call(self, method: str, params: dict | None = None) -> dict:
         async with self._lock:
-            socket = await self._connect()
+            socket = await self._socket_for(method)
             self._ids += 1
             message_id = self._ids
             await socket.send_text(json.dumps({"id": message_id, "method": method, "params": params or {}}))
@@ -245,6 +278,9 @@ class DevTools:
         if self._socket is not None:
             self._socket.close()
             self._socket = None
+        if self._browser is not None:
+            self._browser.close()
+            self._browser = None
 
 
 # --------------------------------------------------------------------------- #
