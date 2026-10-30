@@ -79,3 +79,25 @@ go test ./...
 
 The tests use an in-memory adapter and a synthetic cgroup directory, so they need no
 cluster and no root.
+
+## How it reads the API
+
+The runner and the autoscaler use Kubernetes watches, not polling. Two sites
+matter (`internal/adapter/watch.go`):
+
+| Read | Before | Now |
+|---|---|---|
+| Waiting for a session's claim to become Ready | `Get` the claim every 1 s, per waiting session | one `Watch` on that claim name, from the `resourceVersion` of an initial `Get` |
+| The autoscaler's demand counts | full `List` of claims every 5 s | one `List` at start, then a watch updates a map; the tick reads the map |
+
+A 150-session run used to put roughly 9 000 claim `GET`s a minute through a
+single apiserver on six cores; the same run now issues one watch per waiting
+claim and reads events. Interruptions are handled rather than assumed away: a
+watch that closes or returns `410 Gone` re-lists and resumes from the new
+`resourceVersion`, with backoff, and `ClaimStats` falls back to a direct list if
+the cache is not warm — a broken watch must not read as zero demand.
+
+Timestamps come from the event (`ReadyNS` is recorded when the transition is
+seen), so queue and acquisition latencies are no longer quantised to a
+one-second poll. The cgroup, PSI and host-memory samplers stay on their 2 s
+timer: they are not API objects.

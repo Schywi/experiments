@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -17,6 +18,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
@@ -44,6 +46,55 @@ type Kube struct {
 	dyn    dynamic.Interface
 	core   kubernetes.Interface
 	client *http.Client
+
+	// mu guards the claim cache below. The cache is filled by one watch so the
+	// autoscaler's tick costs no API request.
+	mu            sync.Mutex
+	claims        map[string]claimObservation
+	claimsReady   bool
+	claimsErr     error
+	claimsStarted bool
+}
+
+// setClaimCache replaces the cached claims and marks the cache warm.
+func (k *Kube) setClaimCache(cache map[string]claimObservation) {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	k.claims = cache
+	k.claimsReady = true
+}
+
+// setClaimCacheError records why the watch is not running, so ClaimStats can
+// fall back to a direct read instead of reporting zero demand.
+func (k *Kube) setClaimCacheError(err error) {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	k.claimsErr = err
+	if err != nil {
+		k.claimsReady = false
+	}
+}
+
+// applyClaimCacheEvent folds one watch event into the cache.
+func (k *Kube) applyClaimCacheEvent(event watch.Event) {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	if k.claims == nil {
+		k.claims = map[string]claimObservation{}
+	}
+	applyClaimEvent(k.claims, event)
+}
+
+// ensureClaimCache starts the watch the first time counts are asked for.
+func (k *Kube) ensureClaimCache(namespace string) {
+	k.mu.Lock()
+	if k.claimsStarted {
+		k.mu.Unlock()
+		return
+	}
+	k.claimsStarted = true
+	k.mu.Unlock()
+	go k.claimCacheLoop(namespace)
 }
 
 // NewKube builds an adapter from a kubeconfig path (empty uses the in-cluster
@@ -60,7 +111,7 @@ func NewKube(kubeconfig, contextName string) (*Kube, error) {
 	// The run creates and deletes one object per session; client-side throttling
 	// is the wrong place to cap that, so the limit is raised and the platform
 	// decides what it will accept.
-	cfg.QPS = 200
+	cfg.QPS = -1.0
 	cfg.Burst = 400
 
 	dyn, err := dynamic.NewForConfig(cfg)
@@ -101,39 +152,13 @@ func (k *Kube) Acquire(ctx context.Context, namespace, pool, name string) (*Inst
 	}, nil
 }
 
-// WaitReady polls the claim until it reports Ready, then fills in the pod
-// identity. Adoption is visible in the timestamps: a sandbox created before the
-// claim came from the pool, a sandbox created after it was a cold start.
+// WaitReady blocks until the claim reports Ready, then fills in the pod
+// identity. It watches that one claim: a Get every second per waiting session is
+// what made a 150-session run hammer the API server. Adoption is visible in the
+// timestamps: a sandbox created before the claim came from the pool, a sandbox
+// created after it was a cold start.
 func (k *Kube) WaitReady(ctx context.Context, instance *Instance) error {
-	ticker := time.NewTicker(100 * time.Millisecond)
-	defer ticker.Stop()
-	for {
-		claim, err := k.dyn.Resource(gvrClaims).Namespace(instance.Namespace).Get(ctx, instance.Claim, metav1.GetOptions{})
-		if err == nil {
-			ready, sandbox := claimState(claim)
-			if ready {
-				instance.ReadyNS = time.Now().UnixNano()
-				if sandbox != "" {
-					instance.Sandbox = sandbox
-					filled, err := k.fillFromSandbox(ctx, instance)
-					if err != nil {
-						return err
-					}
-					if filled {
-						return nil
-					}
-				}
-				return nil
-			}
-		} else if ctx.Err() == nil {
-			return fmt.Errorf("get claim %s/%s: %w", instance.Namespace, instance.Claim, err)
-		}
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-ticker.C:
-		}
-	}
+	return k.waitClaimReady(ctx, instance)
 }
 
 // fillFromSandbox reads the sandbox the claim adopted: creation order tells warm
@@ -300,8 +325,19 @@ func (k *Kube) Release(ctx context.Context, instance *Instance) error {
 	return nil
 }
 
-// ClaimStats counts claims by readiness for one pool.
+// ClaimStats counts claims by readiness for one pool. The counts come from the
+// watch-backed cache, so a five-second autoscaler tick costs no API request; if
+// the watch is down it falls back to a direct list rather than reporting zero
+// demand.
 func (k *Kube) ClaimStats(ctx context.Context, namespace, pool string) (ClaimStats, error) {
+	k.ensureClaimCache(namespace)
+	k.mu.Lock()
+	cache, warm, watchErr := k.claims, k.claimsReady, k.claimsErr
+	k.mu.Unlock()
+	if warm && watchErr == nil {
+		return countObservations(cache, pool), nil
+	}
+
 	claims, err := k.dyn.Resource(gvrClaims).Namespace(namespace).List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return ClaimStats{}, fmt.Errorf("list claims %s: %w", namespace, err)
