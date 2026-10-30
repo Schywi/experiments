@@ -305,13 +305,29 @@ Slices 1 and 2 need no change to `apps/browser-sandbox/` and no change to
 
 ## 9. To verify on the cluster
 
-None of these have been run against a live pod; each one changes a decision above.
+Question 1 is answered. Questions 2 and 3 are not.
 
 ```bash
 # 1. does a page session see every target, or only its own context?
 curl -s -XPOST "$POD_IP:9222/cdp" -H 'X-Sandbox-Port: 9222' \
   -d '{"method":"Target.getTargets"}' | head -c 400
+```
 
+Run against `claim-mvvlyivc` (`10.42.0.170`, Chrome/130.0.6723.31) on 2026-10-30:
+
+```
+{"result": {"targetInfos": [{"targetId": "8A37AF…", "type": "page",
+  "title": "Example Domain", "url": "https://example.com/", "attached": true,
+  "browserContextId": "8196E3649178E8DBF83DA9B05701977E"}]}}
+real 0m0,043s
+```
+
+A page session does see the browser's targets, `browserContextId` comes back on the
+target, and the round trip is 43 ms through the in-pod bridge. That is why slot
+discovery shipped without a bridge change — `Target.getTargets` is the only call the
+wall needs for occupancy.
+
+```bash
 # 2. does creating a context from a page session work, and what does it cost?
 curl -s -XPOST "$POD_IP:9222/cdp" -H 'X-Sandbox-Port: 9222' \
   -d '{"method":"Target.createBrowserContext"}'
@@ -321,9 +337,8 @@ curl -s -XPOST "$POD_IP:9222/cdp" -H 'X-Sandbox-Port: 9222' \
   -d '{"method":"Page.captureScreenshot","params":{"format":"jpeg","quality":45}}'
 ```
 
-Question 1 decides whether slot discovery ships before the bridge change or with it.
 Question 2 decides whether `Target.*` on the current page socket is the path, or whether
-connecting to `/devtools/browser/<id>` is required. Question 3 fixes the cadence.
+connecting to `/devtools/browser/<id>` is required. Question 3 fixes the capture cadence.
 
 ## 10. What shipped in this pass
 
@@ -355,6 +370,27 @@ Three things the implementation settled that the design left open:
   first real database read after this change (`20261030T231708Z`, twelve `reset_failed` rows)
   showed exactly that, and is why the order in `Session.state_at` is what it is.
 
+### Deployed
+
+Built in-cluster with `config/registry/kaniko-build.sh sandbox-console
+research/session-lifecycle-elasticity` and rolled with `helm upgrade --install sandbox-console
+apps/sandbox-console/chart --namespace sandbox-console` (revision 6). Read back from
+`http://192.168.0.250`:
+
+```
+GET /runs             200, 22 run rows from the hostPath mount
+GET /api/runs         200, 22 runs with stored/instances/outcomes, newest first
+GET /runs/20261029T182628Z   200, 12 holding + 1 waiting + 10 free positions at the peak cut
+GET /runs/20261029T215138Z   200 with live cluster reads enabled
+GET /                the Pool page carries the Run switch
+```
+
+The first rollout crashlooped: the image runs the app from `/app`, where
+`Path(__file__).parents[2]` is an `IndexError`. `_default_runs_dir` now searches upward for
+`docs/session-lab-runs` and falls back to `/runs`, with a test that resolves from both, and
+that fix is what revision 6 runs.
+
 Still open, in the order §8 lists them: slot capture and the `sessionId` field in
-`cdp-bridge.py` (slice 3), interaction with the `touched` mark (slice 4), and the three probe
-commands in §9, none of which have run against a pod.
+`cdp-bridge.py` (slice 3), interaction with the `touched` mark (slice 4), and §9 questions 2
+and 3 — whether `Target.createBrowserContext` works from the page socket, and what a per-slot
+capture costs.
