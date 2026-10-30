@@ -52,6 +52,7 @@ type Report struct {
 	InvariantNotes []string              `json:"invariant_notes,omitempty"`
 
 	ArrivalWindowS  float64            `json:"arrival_window_s"`
+	Admission       Latency            `json:"admission_ms"`
 	PeakWaiting     int                `json:"peak_waiting_sessions"`
 	PeakInFlight    int                `json:"peak_in_flight_sessions"`
 	CleanupFailures int                `json:"cleanup_failures"`
@@ -167,6 +168,7 @@ func Build(cfg model.RunConfig, plan schedule.Plan, st *store.Store) (*Report, e
 		Elasticity:  "not tested: the workload did not exceed what the platform served",
 	}
 
+	var admissionMS []float64
 	var queueMS, acquireMS, holdMS, resetMS, releaseMS, resumeMS []float64
 	acquireByLaunch := map[string][]float64{}
 	var concurrencySamples []float64
@@ -205,6 +207,9 @@ func Build(cfg model.RunConfig, plan schedule.Plan, st *store.Store) (*Report, e
 		}
 		if session.GoneNS > 0 && session.DeleteCalledNS > 0 {
 			releaseMS = append(releaseMS, ms(session.GoneNS-session.DeleteCalledNS))
+		}
+		if session.AdmissionWaitNS > 0 {
+			admissionMS = append(admissionMS, ms(session.AdmissionWaitNS))
 		}
 		if session.LaunchType != "" {
 			rep.LaunchTypes[session.LaunchType]++
@@ -245,6 +250,7 @@ func Build(cfg model.RunConfig, plan schedule.Plan, st *store.Store) (*Report, e
 			rep.AcquireByLaunch[launchType] = summarise(values)
 		}
 	}
+	rep.Admission = summarise(admissionMS)
 	rep.Queue = summarise(queueMS)
 	rep.Acquire = summarise(acquireMS)
 	rep.Hold = summarise(holdMS)

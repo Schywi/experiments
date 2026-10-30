@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/infra/sandbox"
+	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/platform/model"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -39,6 +40,9 @@ const (
 	// be traced to the run that made it.
 	managedBy    = "app.kubernetes.io/managed-by"
 	managedValue = "session-lab"
+	// labelClass records the workload class on a claim, so the pool's demand
+	// signal can leave bulk work out of the capacity calculation.
+	labelClass = "session-lab.io/class"
 	// cdpPath is the in-pod bridge's command endpoint (apps/browser-sandbox).
 	cdpPath = "/cdp"
 )
@@ -128,7 +132,7 @@ func NewKube(kubeconfig, contextName string) (*Kube, error) {
 }
 
 // Acquire creates the claim that will adopt (or cold-start) a sandbox.
-func (k *Kube) Acquire(ctx context.Context, namespace, pool, name string) (*sandbox.Instance, error) {
+func (k *Kube) Acquire(ctx context.Context, namespace, pool, name string, class model.Class) (*sandbox.Instance, error) {
 	claim := &unstructured.Unstructured{Object: map[string]any{
 		"apiVersion": "extensions.agents.x-k8s.io/v1beta1",
 		"kind":       "SandboxClaim",
@@ -346,18 +350,17 @@ func (k *Kube) ClaimStats(ctx context.Context, namespace, pool string) (sandbox.
 	}
 	var stats sandbox.ClaimStats
 	for i := range claims.Items {
-		claim := &claims.Items[i]
-		if pool != "" {
-			ref, _, _ := unstructured.NestedString(claim.Object, "spec", "warmPoolRef", "name")
-			if ref != "" && ref != pool {
-				continue
-			}
+		name, obs := observeClaim(&claims.Items[i])
+		_ = name
+		if pool != "" && obs.pool != "" && obs.pool != pool {
+			continue
 		}
-		ready, _ := claimState(claim)
 		switch {
-		case ready:
+		case obs.bulk:
+			stats.Bulk++
+		case obs.ready:
 			stats.Ready++
-		case claimFailed(claim):
+		case obs.failed:
 			stats.Failed++
 		default:
 			stats.Pending++

@@ -22,6 +22,7 @@ import (
 	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/infra/sandbox"
 	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/platform/model"
 	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/platform/store"
+	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/runtime/admission"
 	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/runtime/schedule"
 )
 
@@ -100,6 +101,11 @@ type Runner struct {
 	minAvailableAt int64
 	memTotal       int64
 
+	// gate bounds concurrent admissions and orders them by class; queue is the
+	// record of who is waiting. Both are built from the run configuration.
+	gate  *admission.Gate
+	queue *admission.Queue
+
 	// Runtime facts: the arrival window actually achieved, and the deepest
 	// queue and cleanup failures seen.
 	firstArrivalNS int64
@@ -121,8 +127,10 @@ func New(cfg model.RunConfig, opts Options) *Runner {
 	if logger == nil {
 		logger = log.Default()
 	}
+	gate := admission.NewGate(cfg.Admit)
 	return &Runner{
 		cfg: cfg, ad: opts.Adapter, st: opts.Store, smp: opts.Sampler, plan: opts.Plan,
+		gate: gate, queue: admission.NewQueue(),
 		log: logger, now: now, all: map[string]*sandbox.Instance{}, counts: map[model.Outcome]int{},
 		hostMemory: opts.HostMemory,
 		rec:        opts.Recorder,
@@ -404,8 +412,28 @@ func (r *Runner) session(ctx context.Context, planned schedule.Planned) {
 				(session.ResumeEndNS-session.ResumeStartNS)/int64(time.Millisecond))
 		}
 	} else {
+		// Admission: wait for this class's turn before touching the cluster, so
+		// a bulk run cannot crowd out interactive work and the number of
+		// concurrent acquisitions stays bounded when an operator asks for it.
+		if r.queue != nil {
+			r.queue.Push(claimName(r.cfg.RunID, planned.ID), r.cfg.Class)
+		}
+		admitStart := r.now()
+		if err := r.gate.Acquire(ctx, r.cfg.Class); err != nil {
+			if r.queue != nil {
+				r.queue.Pop(claimName(r.cfg.RunID, planned.ID))
+			}
+			r.settle(session.ID, model.OutcomeWaiting, "admission: "+err.Error(), nil)
+			return
+		}
+		if r.queue != nil {
+			r.queue.Pop(claimName(r.cfg.RunID, planned.ID))
+		}
+		session.AdmissionWaitNS = r.now().Sub(admitStart).Nanoseconds()
+
 		name := claimName(r.cfg.RunID, planned.ID)
-		acquired, err := r.ad.Acquire(ctx, r.cfg.Namespace, r.cfg.Pool, name)
+		acquired, err := r.ad.Acquire(ctx, r.cfg.Namespace, r.cfg.Pool, name, r.cfg.Class)
+		r.gate.Release()
 		if err != nil {
 			outcome := model.OutcomeAcquisitionFailed
 			if ctx.Err() != nil {

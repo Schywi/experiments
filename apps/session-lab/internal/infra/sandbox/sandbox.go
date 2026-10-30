@@ -8,6 +8,7 @@ package sandbox
 import (
 	"context"
 	"fmt"
+	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/platform/model"
 	"sync"
 	"time"
 )
@@ -81,6 +82,9 @@ type ClaimStats struct {
 	// Failed counts claims the platform gave up on. They are not demand: no
 	// amount of extra replicas will make them Ready.
 	Failed int32
+	// Bulk counts claims whose class never grows the pool. They hold capacity
+	// but do not create demand for it.
+	Bulk int32
 }
 
 // Boundary is one observation that the platform refused or degraded something:
@@ -96,7 +100,7 @@ type Boundary struct {
 type Adapter interface {
 	// Acquire creates a claim against the pool and returns as soon as the
 	// object exists; WaitReady does the waiting.
-	Acquire(ctx context.Context, namespace, pool, name string) (*Instance, error)
+	Acquire(ctx context.Context, namespace, pool, name string, class model.Class) (*Instance, error)
 	// WaitReady blocks until the instance reports Ready and fills Node, PodUID
 	// and PodIP from what the platform reports.
 	WaitReady(ctx context.Context, instance *Instance) error
@@ -168,7 +172,7 @@ func NewFake() *Fake {
 }
 
 // Acquire implements Adapter.
-func (f *Fake) Acquire(ctx context.Context, namespace, pool, name string) (*Instance, error) {
+func (f *Fake) Acquire(ctx context.Context, namespace, pool, name string, class model.Class) (*Instance, error) {
 	if err := sleep(ctx, f.AcquireLatency); err != nil {
 		return nil, err
 	}

@@ -6,6 +6,8 @@ import (
 	sandbox "github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/infra/sandbox"
 	"time"
 
+	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/platform/model"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/watch"
@@ -18,6 +20,9 @@ type claimObservation struct {
 	ready  bool
 	failed bool
 	pool   string
+	// bulk marks a claim whose class never grows the pool. It holds capacity
+	// without creating demand for more.
+	bulk bool
 }
 
 // observeClaim folds one claim object into an observation. Every watch event and
@@ -25,6 +30,9 @@ type claimObservation struct {
 func observeClaim(claim *unstructured.Unstructured) (string, claimObservation) {
 	var obs claimObservation
 	obs.pool, _, _ = unstructured.NestedString(claim.Object, "spec", "warmPoolRef", "name")
+	if class, ok, _ := unstructured.NestedString(claim.Object, "metadata", "labels", labelClass); ok {
+		obs.bulk = model.Class(class) == model.ClassBulk
+	}
 	obs.ready, _ = claimState(claim)
 	if !obs.ready {
 		obs.failed = claimFailed(claim)
@@ -40,6 +48,8 @@ func countObservations(cache map[string]claimObservation, pool string) sandbox.C
 			continue
 		}
 		switch {
+		case obs.bulk:
+			stats.Bulk++
 		case obs.ready:
 			stats.Ready++
 		case obs.failed:

@@ -33,6 +33,7 @@ func Parse(args []string) (*Config, error) {
 	var mix string
 	var hold time.Duration
 	var duration time.Duration
+	var class string
 	var deadline time.Duration
 
 	fs.IntVar(&cfg.Sessions, "sessions", 0, "number of sessions to generate (required unless --mix carries counts)")
@@ -40,6 +41,8 @@ func Parse(args []string) (*Config, error) {
 	fs.BoolVar(&cfg.FixedArrival, "fixed-arrival", false, "space arrivals evenly instead of Poisson")
 	fs.StringVar(&mix, "mix", "", "length buckets as label:count pairs, e.g. 30s:25,2m:25,5m:25,10m:25")
 	fs.DurationVar(&hold, "hold", 0, "hold duration for a single-bucket run")
+	fs.StringVar(&class, "class", "normal", "workload class: normal, batch or bulk")
+	fs.IntVar(&cfg.RunConfig.Admit, "admit", 0, "concurrent admissions; 0 is unbounded")
 	fs.DurationVar(&duration, "duration", 0, "arrival window; session counts are derived from --rate and the mix proportions")
 	fs.StringVar((*string)(&cfg.Policy), "policy", string(model.PolicyReuse), "instance policy: reuse|destroy|suspend")
 	fs.StringVar(&cfg.Namespace, "namespace", "sandbox-demo", "namespace holding the pool and the claims")
@@ -87,6 +90,11 @@ func Parse(args []string) (*Config, error) {
 	} else if err := cfg.buildMix(mix, hold); err != nil {
 		return nil, err
 	}
+	parsed, err := model.ParseClass(class)
+	if err != nil {
+		return nil, err
+	}
+	cfg.Class = parsed
 	if err := cfg.validate(); err != nil {
 		return nil, err
 	}

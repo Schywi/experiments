@@ -5,7 +5,10 @@
 // observed yet" rather than "zero".
 package model
 
-import "time"
+import (
+	"fmt"
+	"time"
+)
 
 // Outcome is the terminal state of one session. The set is fixed so the values
 // can be counted and used as a label.
@@ -41,6 +44,49 @@ var Failures = []Outcome{
 	OutcomeLostUnknown,
 }
 
+// Class is the workload class an operator assigns to a run. It decides queue
+// order and whether the run's claims count as demand for the pool. It never
+// rejects anything.
+type Class string
+
+const (
+	ClassNormal Class = "normal"
+	ClassBatch  Class = "batch"
+	ClassBulk   Class = "bulk"
+)
+
+// ParseClass validates a --class value.
+func ParseClass(value string) (Class, error) {
+	switch Class(value) {
+	case ClassNormal, ClassBatch, ClassBulk:
+		return Class(value), nil
+	case "":
+		return ClassNormal, nil
+	}
+	return "", fmt.Errorf("unknown class %q: want normal, batch or bulk", value)
+}
+
+// Rank orders the queue: lower is served first.
+func (c Class) Rank() int {
+	switch c {
+	case ClassNormal:
+		return 0
+	case ClassBatch:
+		return 1
+	case ClassBulk:
+		return 2
+	}
+	return 0
+}
+
+// MayScale reports whether demand from this class may grow the pool. Bulk work
+// uses capacity that already exists and never asks for more.
+func (c Class) MayScale() bool { return c != ClassBulk }
+
+// Interruptible reports whether a session of this class may be suspended to make
+// room. v1 does not preempt; the policy lives here so it is stated once.
+func (c Class) Interruptible() bool { return c == ClassBulk }
+
 // Policy is the instance lifecycle a run exercises.
 type Policy string
 
@@ -69,19 +115,22 @@ type Session struct {
 	Outcome   Outcome `json:"outcome"`
 	Error     string  `json:"error,omitempty"`
 
-	ArrivalNS      int64 `json:"arrival_ns"`
-	ClaimCreatedNS int64 `json:"claim_created_ns,omitempty"`
-	ReadyNS        int64 `json:"ready_ns,omitempty"`
-	HoldStartNS    int64 `json:"hold_start_ns,omitempty"`
-	HoldEndNS      int64 `json:"hold_end_ns,omitempty"`
-	DeleteCalledNS int64 `json:"delete_called_ns,omitempty"`
-	GoneNS         int64 `json:"gone_ns,omitempty"`
-	ResetStartNS   int64 `json:"reset_start_ns,omitempty"`
-	ResetEndNS     int64 `json:"reset_end_ns,omitempty"`
-	RebuildStartNS int64 `json:"rebuild_start_ns,omitempty"`
-	RebuildEndNS   int64 `json:"rebuild_end_ns,omitempty"`
-	ResumeStartNS  int64 `json:"resume_start_ns,omitempty"`
-	ResumeEndNS    int64 `json:"resume_end_ns,omitempty"`
+	ArrivalNS int64 `json:"arrival_ns"`
+	// AdmissionWaitNS is the time this session waited for its class to be
+	// admitted, before any cluster call.
+	AdmissionWaitNS int64 `json:"admission_wait_ns,omitempty"`
+	ClaimCreatedNS  int64 `json:"claim_created_ns,omitempty"`
+	ReadyNS         int64 `json:"ready_ns,omitempty"`
+	HoldStartNS     int64 `json:"hold_start_ns,omitempty"`
+	HoldEndNS       int64 `json:"hold_end_ns,omitempty"`
+	DeleteCalledNS  int64 `json:"delete_called_ns,omitempty"`
+	GoneNS          int64 `json:"gone_ns,omitempty"`
+	ResetStartNS    int64 `json:"reset_start_ns,omitempty"`
+	ResetEndNS      int64 `json:"reset_end_ns,omitempty"`
+	RebuildStartNS  int64 `json:"rebuild_start_ns,omitempty"`
+	RebuildEndNS    int64 `json:"rebuild_end_ns,omitempty"`
+	ResumeStartNS   int64 `json:"resume_start_ns,omitempty"`
+	ResumeEndNS     int64 `json:"resume_end_ns,omitempty"`
 
 	LaunchType string `json:"launch_type,omitempty"`
 	Node       string `json:"node,omitempty"`
@@ -161,11 +210,13 @@ type RunConfig struct {
 	FixedArrival    bool          `json:"fixed_arrival"`
 	Mix             []Bucket      `json:"mix,omitempty"`
 	Policy          Policy        `json:"policy"`
+	Class           Class         `json:"class,omitempty"`
 	Namespace       string        `json:"namespace"`
 	Pool            string        `json:"pool"`
 	Template        string        `json:"template"`
 	PoolReplicas    *int32        `json:"pool_replicas,omitempty"`
 	Workers         int           `json:"workers"`
+	Admit           int           `json:"admit,omitempty"`
 	OverloadFactor  float64       `json:"overload_factor,omitempty"`
 	SessionDeadline time.Duration `json:"session_deadline_ns,omitempty"`
 	// Window is the intended arrival window when the operator asked for one.
