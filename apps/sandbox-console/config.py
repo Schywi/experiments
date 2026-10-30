@@ -121,8 +121,22 @@ AUDIT_LOG = os.environ.get("AUDIT_LOG", "/var/log/sandbox-console/audit.jsonl")
 # Where the runner writes its per-run SQLite and report JSON. The default is the
 # repository checkout, which is what a console started by hand reads; the chart
 # mounts the same directory from the host at /runs.
-_default_runs = Path(__file__).resolve().parents[2] / "docs" / "session-lab-runs"
-RUNS_DIR = Path(os.environ.get("SANDBOX_CONSOLE_RUNS_DIR", str(_default_runs)))
+# Where the runner writes its per-run SQLite and report JSON. Resolved by search
+# rather than by a fixed depth: the checkout keeps the app at
+# `apps/sandbox-console/` while the image copies it to `/app/`, and
+# `Path.parents[2]` on `/app/config.py` is an IndexError -- which is how the first
+# rollout of this change crashlooped.
+def _default_runs_dir(start: Path | None = None) -> Path:
+    origin = Path(start or __file__).resolve()
+    for parent in origin.parents:
+        candidate = parent / "docs" / "session-lab-runs"
+        if candidate.is_dir():
+            return candidate
+    # In the image the directory arrives as the chart's mount.
+    return Path("/runs")
+
+
+RUNS_DIR = Path(os.environ.get("SANDBOX_CONSOLE_RUNS_DIR", str(_default_runs_dir())))
 # Slots one Chromium is expected to serve. Only a default for the wall's free
 # positions: a run's own config (`contexts_per_browser`) wins when it says
 # something, and an instance that has been seen carrying more slots than this

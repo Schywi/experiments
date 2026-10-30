@@ -8,6 +8,7 @@ runner's columns fails in one place.
 import asyncio
 import json
 import sqlite3
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -681,3 +682,16 @@ def test_the_route_draws_live_contexts_from_the_pod(client, runs_dir, monkeypatc
     assert response.status_code == 200
     assert "1 ctx" in response.text
     assert response.text.count('class="slot free"') == 3
+
+
+def test_the_runs_directory_resolves_from_the_checkout_and_from_the_image():
+    """The image copies the app to /app, where `parents[2]` does not exist.
+
+    That IndexError crashlooped the first rollout of this feature, so the default
+    is resolved by searching upwards for `docs/session-lab-runs` and falls back to
+    the chart's mount path.
+    """
+    assert config._default_runs_dir(__file__).name == "session-lab-runs"
+    assert str(config._default_runs_dir(__file__)).endswith("docs/session-lab-runs")
+    # Where the container puts the module, with no checkout above it.
+    assert config._default_runs_dir("/app/config.py") == Path("/runs")
