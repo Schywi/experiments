@@ -91,6 +91,14 @@ spec:
               value: /var/log/sandbox-console/audit.jsonl
             - name: CONSOLE_DB
               value: {{ .Values.persistence.path | default "/data/console.db" | quote }}
+            - name: SANDBOX_CONSOLE_RUNS_DIR
+              value: {{ .Values.runs.mountPath | default "/runs" | quote }}
+            - name: CONTEXTS_PER_BROWSER
+              value: {{ .Values.runs.contextsPerBrowser | default "1" | quote }}
+            - name: RUN_MAX_SESSIONS
+              value: {{ .Values.runs.maxSessions | default "4000" | quote }}
+            - name: RUN_REFRESH_SECONDS
+              value: {{ .Values.runs.refreshSeconds | default "5" | quote }}
           startupProbe:
             httpGet: {path: /healthz, port: http}
             periodSeconds: 3
@@ -119,6 +127,13 @@ spec:
             - name: data
               mountPath: /data
             {{- end }}
+            {{- if .Values.runs.enabled }}
+            # Read-only: the run wall never writes to a run database, so a bug in
+            # the console cannot corrupt an experiment's record.
+            - name: runs
+              mountPath: {{ .Values.runs.mountPath | default "/runs" }}
+              readOnly: true
+            {{- end }}
       volumes:
         # emptyDir on purpose: the audit trail is a per-pod log, not a database
         # (RFC §10). Losing it on restart is acceptable and cheaper than a PVC.
@@ -130,4 +145,12 @@ spec:
         - name: data
           persistentVolumeClaim:
             claimName: sandbox-console-data
+        {{- end }}
+        {{- if .Values.runs.enabled }}
+        # The runner's own output directory on the host. No `type` on purpose: a
+        # node without the checkout still mounts an empty directory, and the wall
+        # then says it found no run database instead of the pod failing to start.
+        - name: runs
+          hostPath:
+            path: {{ required "runs.hostPath is required when runs.enabled" .Values.runs.hostPath }}
         {{- end }}

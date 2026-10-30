@@ -83,6 +83,24 @@ persistence:
   size: 1Gi
   storageClassName: ""
 
+# The run wall reads session-lab's per-run SQLite directly, read-only
+# (research/session-lifecycle-elasticity/16-session-wall-ui.md §6). The runner
+# writes it on the host as `<run_id>.db` plus `<run_id>.json`, and the console
+# reads whatever is there, including a database of a run still in flight.
+runs:
+  enabled: true
+  # The checkout's docs/session-lab-runs on the live host. Gitignored, single-node,
+  # which is exactly the shape of this experiment.
+  hostPath: /home/dev/Documentos/git_repos/experiments/docs/session-lab-runs
+  mountPath: /runs
+  # Slots one Chromium is expected to serve. Only fills free positions on the
+  # wall; a run's recorded contexts_per_browser wins when it has one.
+  contextsPerBrowser: "1"
+  # Ceiling on sessions rendered from one run, so a 10k-row database cannot make
+  # one page load a million nodes. The wall says how many it left out.
+  maxSessions: "4000"
+  refreshSeconds: "5"
+
 # M7: how many tiles the demo fills, and the ceiling that refuses more. 9 is the
 # measured ~9.1 active-browser limit from experiment 02; the demo targets 8 so the
 # desktop keeps a little headroom.
