@@ -116,3 +116,16 @@ internal/platform/        shared: config, model, store (SQLite), metrics (Promet
 `internal/runtime` imports `internal/infra/sandbox` (the interface) and never
 `internal/infra/kube`, so the scheduler and the session lifecycle can be tested
 without a cluster. Only the binaries wire the real client.
+
+## Two layers to load-test
+
+| Layer | Command | One pod carries | Measures |
+|---|---|---|---|
+| infra | `scripts/session-lab-experiment.sh --layer infra ...` | one session | claims, sandboxes, pod scheduling |
+| session | `scripts/session-lab-experiment.sh --layer session ...` | up to 8 sessions | browser contexts, per-session cost inside a shared browser |
+
+`--contexts-per-browser N` sets the packing directly; `1` is the historical one-claim-per-session
+shape. With N > 1 each session gets its own `Target.createBrowserContext` inside the Chromium and
+the context is disposed at the end, so a session starts with no cookies, storage or cache from the
+one before it. The cgroup counter is the pod's, so with sharing the per-session CPU is the pod's
+usage divided by the contexts in flight, and the row is marked `cpu_shared`.

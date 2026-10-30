@@ -15,6 +15,17 @@
 # Destroy/rebuild instead of reuse/reset:
 #   scripts/session-lab-experiment.sh --duration 600s --rate 0.1 --hold 60s --policy destroy
 #
+# Two layers, two questions. --layer infra puts one session in one pod, so the run
+# measures claims, sandboxes and pod scheduling. --layer session packs up to
+# --contexts-per-browser sessions into each Chromium, so the run measures the
+# browser-session mechanic and the claim count stops tracking the session count.
+#
+#   scripts/session-lab-experiment.sh --layer infra   --duration 600s --rate 0.1 --mix ...
+#   scripts/session-lab-experiment.sh --layer session --duration 600s --rate 0.8 --mix ...
+#
+# --layer session defaults to 8 contexts per browser; pass --contexts-per-browser N
+# to change it. Without --layer, the runner's own default of one applies.
+#
 # Refuses to start if the control plane is unhealthy, because a run that begins
 # during an outage records a control-plane failure as if it were a capacity
 # result. Prints the run's report path and then checks for leaked claims.
@@ -43,6 +54,9 @@ validate_args() {
       --mix|--mix=*) has_mix=1 ;;
       --hold|--hold=*) has_hold=1 ;;
       --sessions|--sessions=*) has_sessions=1 ;;
+      --layer|--layer=*) ;;
+      --layer)
+        echo "--layer needs a value: infra or session" >&2; usage 2 ;;
     esac
   done
   if (( has_duration )); then
@@ -57,6 +71,29 @@ validate_args() {
 [[ $# -ge 1 ]] || usage 2
 validate_args "$@"
 
+
+cleanup() {
+      local exit_code=$?
+      echo "==> running automated teardown and cleanup..."
+
+      # Delete all claims created by session-lab
+      kubectl -n "${namespace}" delete sandboxclaims -l
+      app.kubernetes.io/managed-by=session-lab --wait=false 2>/dev/null || true
+
+      # Delete any cold-started sandboxes
+      kubectl -n "${namespace}" delete sandboxes -l app.kubernetes.io/managed-by=session-lab
+      --wait=false 2>/dev/null || true
+
+      # Optional: restore warm pool to a safe idle baseline (e.g. 2 replicas)
+      # kubectl -n "${namespace}" scale sandboxwarmpool "${pool}" --replicas=2 2>/dev/null ||
+      true
+
+      exit "${exit_code}"
+    }
+
+    trap cleanup EXIT INT TERM
+
+
 echo "==> control plane"
 kubectl get --raw=/readyz >/dev/null || { echo "apiserver not ready; refusing to run" >&2; exit 1; }
 kubectl get node --no-headers | grep -q ' Ready ' || { echo "no Ready node; refusing to run" >&2; exit 1; }
@@ -66,9 +103,36 @@ echo "==> build"
 ( cd "${app}" && go build -o "${out}/session-lab" ./cmd/session-lab )
 mkdir -p "${out}"
 
+# --layer is this script's word, not the runner's: it decides how many sessions
+# one Chromium carries.
+layer_args=()
+for ((i = 1; i <= $#; i++)); do
+  if [[ "${!i}" == "--layer" ]]; then
+    j=$((i + 1))
+    case "${!j}" in
+      infra)   layer_args+=(--contexts-per-browser 1) ;;
+      session) layer_args+=(--contexts-per-browser "${SESSION_LAB_CONTEXTS:-8}") ;;
+      *) echo "--layer must be infra or session, got '${!j}'" >&2; exit 2 ;;
+    esac
+  fi
+done
+filtered=()
+skip=0
+for arg in "$@"; do
+  if ((skip)); then skip=0; continue; fi
+  if [[ "${arg}" == "--layer" ]]; then skip=1; continue; fi
+  filtered+=("${arg}")
+done
+
+if ((${#layer_args[@]})); then
+  echo "==> layer: ${layer_args[*]}"
+else
+  echo "==> layer: runner default (one session per pod)"
+fi
+
 echo "==> run"
 set -x
-"${out}/session-lab" "$@" --namespace "${namespace}" --pool "${pool}" \
+"${out}/session-lab" "${filtered[@]}" "${layer_args[@]}" --namespace "${namespace}" --pool "${pool}" \
     --kubeconfig "${kubeconfig}" --out "${out}"
 set +x
 

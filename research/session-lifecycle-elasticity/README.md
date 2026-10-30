@@ -31,9 +31,12 @@
 | [13 — Client-go throughput, APF and Chromium density limits](13-client-go-apf-and-density-limits.md) | How do client-go limits, HTTP/2 connections, APF, and Chromium density interact? | The three throughput layers, upstream agent-sandbox QPS=-1 and connection sharding, 559 MiB Chromium footprint, and the four capacity cliffs |
 | [14 — Leaked claims, the 100ms polling storm, and claim ordering](14-leaked-claims-and-polling-storm.md) | Why do claims leak, how does 100ms polling throttle client-go, and how do old/new claims race? | The polling storm math (10 req/s per session), non-FIFO workqueue ordering race, reuse vs destroy, and upstream TTL gaps |
 | [15 — Capacity plane and demand plane](15-capacity-plane-and-demand-plane.md) | Where does Kubernetes stop and where does our runtime start? | Admission classes (normal/batch/bulk) with no reservation, one browser context per session instead of one claim, the accepted crash blast radius, and the internal/runtime vs internal/infra package split |
+| [16 — Browser contexts and slots](16-browser-contexts-and-slots.md) | How does one Chromium carry eight sessions, and what are we now load-testing? | The slot allocator, contexts via CDP, the two layers (`infra` = 1 pod per session, `session` = 8 contexts per pod), and the CPU-division caveat |
+
+| [16 — The session wall](16-session-wall-ui.md) | How does the console draw a run, now that a session is a slot? | Four zooms of one object — skyline, bucket/instance/slot glyphs, eight tracks per browser, one slot card — the `sessionId` gap in `cdp-bridge.py`, the read-only run SQLite, and the six slices |
 
 Read 04 for what is being built and under which rules, 03 for the baseline, 02 for the experiment
-shape, 01 for the instrument.
+shape, 01 for the instrument, 16 for the surface that shows it.
 
 ## The rule about numbers
 
