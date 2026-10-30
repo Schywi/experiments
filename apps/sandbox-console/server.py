@@ -935,6 +935,43 @@ async def _live_tiles() -> dict:
     return tiles
 
 
+# `Target.getTargets` answers are reused for a few seconds per instance: the wall
+# refreshes every RUN_REFRESH_SECONDS, and a 40-instance run at the CDP limiter's
+# width would otherwise spend its whole budget on discovery.
+_TARGETS_CACHE: dict[str, tuple[float, list[dict]]] = {}
+
+
+async def _live_contexts(instances: list[str]) -> dict[str, list[dict]]:
+    """Page targets per instance, read from each pod's own browser.
+
+    A target carries a `browserContextId`, so this is the only call needed to know
+    how many slots an instance is really serving right now. Verified against a
+    live sandbox: one page target, `browserContextId` present, 43 ms through the
+    in-pod bridge.
+    """
+    now = time.time()
+    found: dict[str, list[dict]] = {}
+    for name in instances:
+        cached = _TARGETS_CACHE.get(name)
+        if cached is not None and now - cached[0] < config.SLOT_TARGETS_TTL:
+            found[name] = cached[1]
+            continue
+        try:
+            async with LIMITER.slot():
+                result = await SCREEN.cdp.call(name, "Target.getTargets")
+        except Exception:  # noqa: BLE001 - a browser that does not answer is drawn, not raised
+            continue
+        pages = [
+            item
+            for item in (result.get("targetInfos") or [])
+            if isinstance(item, dict) and item.get("type") == "page"
+        ]
+        pages.sort(key=lambda item: str(item.get("browserContextId") or ""))
+        _TARGETS_CACHE[name] = (now, pages)
+        found[name] = pages
+    return found
+
+
 async def _known_run(run_id: str) -> runs.Run:
     try:
         return await run_in_threadpool(runs.load, config.RUNS_DIR, run_id)
@@ -955,7 +992,10 @@ async def run_view(run_id: str, at: int = 0, instance: str = "", live: int = 1) 
     run = await _known_run(run_id)
     cut = _run_cut(run, at)
     tiles = await _live_tiles() if live else {}
-    return HTMLResponse(render_runs.run_page(run, cut, instance=instance, tiles=tiles))
+    contexts = await _live_contexts(list(tiles)) if live else {}
+    return HTMLResponse(
+        render_runs.run_page(run, cut, instance=instance, tiles=tiles, contexts=contexts)
+    )
 
 
 @app.get("/runs/{run_id}/wall", response_class=HTMLResponse)

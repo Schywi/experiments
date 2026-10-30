@@ -135,3 +135,7 @@ RUN_MAX_SESSIONS = _int("RUN_MAX_SESSIONS", 4000)
 RUN_MAX_SKYLINE = _int("RUN_MAX_SKYLINE", 480)
 # How often a live run's wall re-reads the database.
 RUN_REFRESH_SECONDS = _int("RUN_REFRESH_SECONDS", 5)
+# How long a `Target.getTargets` answer is reused. One call per instance per
+# window keeps a 40-instance run at ~13 requests/second at the default 3s, which
+# the bounded CDP limiter can serve without starving screenshots.
+SLOT_TARGETS_TTL = _float("SLOT_TARGETS_TTL", 3.0)

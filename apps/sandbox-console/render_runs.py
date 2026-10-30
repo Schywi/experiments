@@ -125,8 +125,31 @@ def legend() -> str:
     return f'<div class="legend">{items}</div>'
 
 
-def _slot_strip(group: runs.InstanceGroup, cut_ns: int) -> str:
-    """One row of glyphs: one position per slot the browser has room for."""
+def _slot_strip(group: runs.InstanceGroup, cut_ns: int, contexts: list[dict] | None = None) -> str:
+    """One row of glyphs: one position per slot the browser has room for.
+
+    With `contexts` the row comes from the pod's own browser (`Target.getTargets`
+    through /cdp): a live page target is a busy slot, and the positions past the
+    last one are free. Without it the row comes from the run's rows, which can say
+    a slot was busy but not which context it was.
+    """
+    if contexts is not None:
+        cells = []
+        for index, context in enumerate(contexts):
+            identifier = str(context.get("browserContextId") or "default")
+            title = (
+                f"live context {identifier[:8]} · {context.get('url') or 'about:blank'}"
+                f" · target {str(context.get('targetId') or '')[:8]}"
+            )
+            cells.append(
+                f'<span class="slot s-holding live" title="{render.esc(title)}">{GLYPHS[runs.HOLDING]}</span>'
+            )
+        for position in range(len(contexts), max(group.capacity, len(contexts), 1)):
+            cells.append(
+                f'<span class="slot free" title="free slot {position}: the browser can take another '
+                f'context">{FREE}</span>'
+            )
+        return "".join(cells)
     cells = []
     for position in range(max(group.capacity, len(group.slots), 1)):
         slot = group.slots[position] if position < len(group.slots) else None
@@ -159,9 +182,15 @@ def _hold_of(session: runs.Session, cut_ns: int) -> int:
     return max(0, min(cut_ns, end if end > start else cut_ns) - start)
 
 
-def group_card(group: runs.InstanceGroup, cut_ns: int, window: tuple[int, int], live_tile) -> str:
-    holding = group.holding_at(cut_ns)
-    capacity = max(group.capacity, len(group.slots), 1)
+def group_card(
+    group: runs.InstanceGroup,
+    cut_ns: int,
+    window: tuple[int, int],
+    live_tile,
+    contexts: list[dict] | None = None,
+) -> str:
+    holding = len(contexts) if contexts is not None else group.holding_at(cut_ns)
+    capacity = max(group.capacity, len(group.slots), len(contexts or ()), 1)
     queue = runs.percentile([item.queue_ns / 1_000_000 for item in group.sessions], 0.5)
     state = "busy" if holding else "idle"
     live = ""
@@ -171,6 +200,12 @@ def group_card(group: runs.InstanceGroup, cut_ns: int, window: tuple[int, int], 
             f"{render.esc(live_tile.phase)}</span>"
             f'<span class="muted mono">{render.esc(live_tile.pod_ip or "no ip")}</span>'
         )
+    browser = (
+        f'<span class="badge badge-success" title="slots read from this pod\'s browser">'
+        f"{len(contexts)} ctx</span>"
+        if contexts is not None
+        else ""
+    )
     exact = (
         '<span class="badge badge-success" title="slot ids came from the run database">exact</span>'
         if group.exact
@@ -180,8 +215,8 @@ def group_card(group: runs.InstanceGroup, cut_ns: int, window: tuple[int, int], 
     return (
         f'<article class="group {state}" id="group-{render.esc(group.name)}">'
         f'<header><a class="group-name mono" href="{href}" title="open this instance\'s tracks">'
-        f"{render.esc(group.name)}</a>{live}{exact}</header>"
-        f'<div class="slots">{_slot_strip(group, cut_ns)}</div>'
+        f"{render.esc(group.name)}</a>{live}{browser}{exact}</header>"
+        f'<div class="slots">{_slot_strip(group, cut_ns, contexts)}</div>'
         f'<footer class="group-foot">'
         f'<span class="mono">{holding}/{capacity}</span><span class="muted">lit</span>'
         f'<span class="spacer"></span>'
@@ -192,9 +227,17 @@ def group_card(group: runs.InstanceGroup, cut_ns: int, window: tuple[int, int], 
     )
 
 
-def bucket_section(bucket: runs.Bucket, cut_ns: int, window: tuple[int, int], tiles: dict) -> str:
+def bucket_section(
+    bucket: runs.Bucket,
+    cut_ns: int,
+    window: tuple[int, int],
+    tiles: dict,
+    contexts: dict | None = None,
+) -> str:
+    contexts = contexts or {}
     groups = "".join(
-        group_card(group, cut_ns, window, tiles.get(group.name)) for group in bucket.instances
+        group_card(group, cut_ns, window, tiles.get(group.name), contexts.get(group.name))
+        for group in bucket.instances
     )
     if not groups:
         groups = (
@@ -312,12 +355,19 @@ def scrub(run: runs.Run, cut_ns: int, focus: str) -> str:
     )
 
 
-def wall(run: runs.Run, cut_ns: int, tiles: dict | None = None) -> str:
+def wall(
+    run: runs.Run,
+    cut_ns: int,
+    tiles: dict | None = None,
+    contexts: dict | None = None,
+) -> str:
     """Everything the wall owns: counts, skyline, scrubber, buckets or tracks."""
     tiles = tiles or {}
     window = run.window
     focus = ""
-    body = "".join(bucket_section(bucket, cut_ns, window, tiles) for bucket in run.buckets)
+    body = "".join(
+        bucket_section(bucket, cut_ns, window, tiles, contexts) for bucket in run.buckets
+    )
     if not run.sessions:
         body = (
             '<div class="empty"><strong>This run has no sessions.</strong>'
@@ -574,12 +624,19 @@ def index(refs: list[runs.RunRef]) -> str:
     )
 
 
-def run_page(run: runs.Run, cut_ns: int, *, instance: str = "", tiles: dict | None = None) -> str:
+def run_page(
+    run: runs.Run,
+    cut_ns: int,
+    *,
+    instance: str = "",
+    tiles: dict | None = None,
+    contexts: dict | None = None,
+) -> str:
     """One run, either the rack or one instance's tracks."""
     body = (
         tracks_page(run, cut_ns, instance)
         if instance
-        else wall(run, cut_ns, tiles)
+        else wall(run, cut_ns, tiles, contexts)
     )
     counts = run.counts(cut_ns)
     state = "live" if run.live else "finished"

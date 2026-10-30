@@ -5,6 +5,7 @@ The databases here are written by the fixture builder, with the same schema
 runner's columns fails in one place.
 """
 
+import asyncio
 import json
 import sqlite3
 
@@ -517,6 +518,14 @@ def fake_snapshot(namespace: str) -> kube.Snapshot:
 def client(runs_dir, monkeypatch):
     monkeypatch.setattr(kube, "snapshot", fake_snapshot)
     monkeypatch.setattr(server, "kube", kube)
+    monkeypatch.setattr(server, "_TARGETS_CACHE", {})
+
+    async def no_targets(instances):
+        return {}
+
+    # The wall reads each pod's browser for its live slots; a test with no cluster
+    # answers nothing, which is the state the wall has to render too.
+    monkeypatch.setattr(server, "_live_contexts", no_targets)
     with TestClient(server.app) as test_client:
         yield test_client
 
@@ -576,3 +585,99 @@ def test_api_runs_returns_the_index_and_one_run(client, runs_dir):
 def test_existing_routes_and_apis_are_untouched(client):
     for path in ("/", "/sandboxes", "/compare", "/recipes", "/healthz", "/api/sandboxes"):
         assert client.get(path).status_code == 200, path
+
+
+# --------------------------------------------------------------------------- #
+# Live slots: the pod's own browser is the truth about occupancy
+# --------------------------------------------------------------------------- #
+def test_live_contexts_draw_a_slot_per_context(runs_dir):
+    make_db(runs_dir, "live-ctx", [session(1)], ended=BASE + 40_000_000_000)
+    run = runs.load(runs_dir, "live-ctx")
+    contexts = {
+        "browser-7k2": [
+            {"type": "page", "targetId": "T1", "browserContextId": "ctx-aaaaaaaa",
+             "url": "https://example.com/"},
+            {"type": "page", "targetId": "T2", "browserContextId": "ctx-bbbbbbbb",
+             "url": "about:blank"},
+        ]
+    }
+    markup = render_runs.wall(run, run.default_cut(), {}, contexts)
+    assert "2 ctx" in markup
+    assert markup.count('class="slot s-holding live"') == 2
+    assert "https://example.com/" in markup
+    assert 'class="slot free"' not in markup
+
+
+def test_free_positions_are_the_room_the_browser_has_left(runs_dir):
+    make_db(
+        runs_dir,
+        "room",
+        [session(1)],
+        config_overrides={"contexts_per_browser": 4},
+        ended=BASE + 40_000_000_000,
+    )
+    run = runs.load(runs_dir, "room")
+    contexts = {"browser-7k2": [{"type": "page", "targetId": "T1", "browserContextId": "ctx-a"}]}
+    markup = render_runs.wall(run, run.default_cut(), {}, contexts)
+    assert markup.count('class="slot s-holding live"') == 1
+    assert markup.count('class="slot free"') == 3
+    assert "1/4" in markup
+
+
+def test_live_contexts_read_the_browser_once_per_ttl(monkeypatch):
+    calls = []
+
+    class FakeCDP:
+        async def call(self, sandbox_id, method, params=None):
+            calls.append((sandbox_id, method))
+            return {
+                "targetInfos": [
+                    {"type": "page", "targetId": "T1", "browserContextId": "c-b"},
+                    {"type": "page", "targetId": "T2", "browserContextId": "c-a"},
+                    {"type": "iframe", "targetId": "T3", "browserContextId": "c-a"},
+                ]
+            }
+
+    monkeypatch.setattr(server.SCREEN, "cdp", FakeCDP())
+    monkeypatch.setattr(server, "_TARGETS_CACHE", {})
+    first = asyncio.run(server._live_contexts(["browser-7k2"]))
+    second = asyncio.run(server._live_contexts(["browser-7k2"]))
+    assert calls == [("browser-7k2", "Target.getTargets")]
+    # Page targets only, ordered by context id so a card does not reshuffle.
+    assert [page["targetId"] for page in first["browser-7k2"]] == ["T2", "T1"]
+    assert second["browser-7k2"] == first["browser-7k2"]
+
+
+def test_a_browser_that_does_not_answer_is_skipped_not_raised(monkeypatch):
+    class DeadCDP:
+        async def call(self, sandbox_id, method, params=None):
+            raise RuntimeError("unreachable")
+
+    monkeypatch.setattr(server.SCREEN, "cdp", DeadCDP())
+    monkeypatch.setattr(server, "_TARGETS_CACHE", {})
+    assert asyncio.run(server._live_contexts(["browser-x"])) == {}
+    assert server._TARGETS_CACHE == {}
+
+
+def test_the_route_draws_live_contexts_from_the_pod(client, runs_dir, monkeypatch):
+    tile = fixtures_tile()
+    make_db(
+        runs_dir,
+        "20260101T000000Z",
+        [session(1, instance=tile.id)],
+        config_overrides={"contexts_per_browser": 4},
+        ended=BASE + 40_000_000_000,
+    )
+
+    async def contexts(instances):
+        return {
+            tile.id: [
+                {"type": "page", "targetId": "T1", "browserContextId": "ctx-a", "url": "about:blank"}
+            ]
+        }
+
+    monkeypatch.setattr(server, "_live_contexts", contexts)
+    response = client.get("/runs/20260101T000000Z")
+    assert response.status_code == 200
+    assert "1 ctx" in response.text
+    assert response.text.count('class="slot free"') == 3
