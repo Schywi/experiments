@@ -14,9 +14,9 @@ import (
 	"sort"
 	"time"
 
-	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/model"
-	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/schedule"
-	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/store"
+	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/platform/model"
+	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/platform/store"
+	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/runtime/schedule"
 )
 
 // Report is the machine-readable result of one run.
@@ -95,6 +95,10 @@ type Resources struct {
 	ThrottledSessions    int     `json:"throttled_sessions"`
 	OOMKills             int     `json:"oom_kills"`
 	RefaultSessions      int     `json:"refault_sessions"`
+	// SwapPeak*MiB come from the pod's memory.swap.current, read by the same
+	// cgroup sample as the memory peaks. Zero means "no sample", like the above.
+	SwapPeakP50MiB float64 `json:"swap_peak_p50_mib,omitempty"`
+	SwapPeakMaxMiB float64 `json:"swap_peak_max_mib,omitempty"`
 }
 
 // TemplateLimits is what the sandbox pods were held to. It is here so a
@@ -167,7 +171,7 @@ func Build(cfg model.RunConfig, plan schedule.Plan, st *store.Store) (*Report, e
 	acquireByLaunch := map[string][]float64{}
 	var concurrencySamples []float64
 	var cpuSeconds []float64
-	var memPeaks, workSetPeaks []float64
+	var memPeaks, workSetPeaks, swapPeaks []float64
 	ok := 0
 	failures := 0
 
@@ -226,6 +230,7 @@ func Build(cfg model.RunConfig, plan schedule.Plan, st *store.Store) (*Report, e
 			}
 			memPeaks = append(memPeaks, float64(session.MemPeakBytes)/(1<<20))
 			workSetPeaks = append(workSetPeaks, float64(session.MemWorkingSetPeak)/(1<<20))
+			swapPeaks = append(swapPeaks, float64(session.SwapPeakBytes)/(1<<20))
 			// Concurrency for this session, integrated from its own window.
 			if seconds > 0 {
 				concurrencySamples = append(concurrencySamples, 1)
@@ -261,6 +266,11 @@ func Build(cfg model.RunConfig, plan schedule.Plan, st *store.Store) (*Report, e
 	if len(workSetPeaks) > 0 {
 		sort.Float64s(workSetPeaks)
 		rep.Resources.WorkingSetPeakMaxMiB = workSetPeaks[len(workSetPeaks)-1]
+	}
+	if len(swapPeaks) > 0 {
+		sort.Float64s(swapPeaks)
+		rep.Resources.SwapPeakP50MiB = percentile(swapPeaks, 50)
+		rep.Resources.SwapPeakMaxMiB = swapPeaks[len(swapPeaks)-1]
 	}
 
 	rep.Instances = summariseInstances(instances)
@@ -411,6 +421,10 @@ func (r *Report) Print(w io.Writer) {
 		r.Resources.CPUCoreSecondsP50, r.Resources.CPUCoreSecondsMax)
 	fmt.Fprintf(w, "memory peak       p50 %.0f MiB  max %.0f MiB  working-set max %.0f MiB\n",
 		r.Resources.MemPeakP50MiB, r.Resources.MemPeakMaxMiB, r.Resources.WorkingSetPeakMaxMiB)
+	if r.Resources.SwapPeakMaxMiB > 0 {
+		fmt.Fprintf(w, "swap peak         p50 %.0f MiB  max %.0f MiB\n",
+			r.Resources.SwapPeakP50MiB, r.Resources.SwapPeakMaxMiB)
+	}
 	if r.Autoscaler != nil {
 		scalerState := "none"
 		if r.Autoscaler.PoolScaler != nil && *r.Autoscaler.PoolScaler {

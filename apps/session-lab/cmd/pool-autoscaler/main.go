@@ -23,8 +23,8 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 
-	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/adapter"
-	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/autoscale"
+	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/infra/kube"
+	poolscaler "github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/infra/pool"
 )
 
 func main() {
@@ -66,12 +66,12 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("clientset: %w", err)
 	}
-	kube, err := adapter.NewKube(*kubeconfig, *contextName)
+	kube, err := kube.NewKube(*kubeconfig, *contextName)
 	if err != nil {
 		return err
 	}
 
-	metrics := autoscale.NewMetrics()
+	metrics := poolscaler.NewMetrics()
 	if *metricsAt != "" {
 		go func() {
 			mux := http.NewServeMux()
@@ -83,7 +83,7 @@ func run() error {
 		}()
 	}
 
-	scaler := autoscale.New(autoscale.Config{
+	scaler := poolscaler.New(poolscaler.Config{
 		Namespace: *namespace, Pool: *pool,
 		Min: int32(*minR), Max: int32(*maxR),
 		Interval: *interval, ConfigMap: *configMap, Log: logger,
@@ -104,7 +104,7 @@ type publisher struct {
 	namespace string
 }
 
-func (p *publisher) Publish(ctx context.Context, name string, settings autoscale.Settings) error {
+func (p *publisher) Publish(ctx context.Context, name string, settings poolscaler.Settings) error {
 	payload, err := json.MarshalIndent(settings, "", "  ")
 	if err != nil {
 		return err
@@ -133,4 +133,4 @@ func (p *publisher) Publish(ctx context.Context, name string, settings autoscale
 	return err
 }
 
-var _ autoscale.Publisher = (*publisher)(nil)
+var _ poolscaler.Publisher = (*publisher)(nil)

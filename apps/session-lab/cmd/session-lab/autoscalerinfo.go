@@ -13,7 +13,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 
-	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/report"
+	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/runtime/report"
 )
 
 // autoscalerInfo asks the cluster what scales this pool, instead of being told.

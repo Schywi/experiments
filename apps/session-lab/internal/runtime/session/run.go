@@ -7,7 +7,7 @@
 //
 // There is no maximum concurrency here. --workers can bound the goroutines, and
 // when it is zero every session gets its own.
-package run
+package session
 
 import (
 	"context"
@@ -18,30 +18,15 @@ import (
 	"sync"
 	"time"
 
-	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/adapter"
-	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/model"
-	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/schedule"
-	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/store"
+	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/infra/measure"
+	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/infra/sandbox"
+	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/platform/model"
+	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/platform/store"
+	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/runtime/schedule"
 )
 
-// Reading is one resource sample for a sandbox pod.
-type Reading struct {
-	CPUUsec             int64
-	CPUPressureSomeUsec int64
-	CPUPressureFullUsec int64
-	ThrottledUsec       int64
-	NRThrottled         int64
-	MemCurrent          int64
-	MemWorkingSet       int64
-	MemInactiveFile     int64
-	Shmem               int64
-	Anon                int64
-	RefaultAnon         int64
-	RefaultFile         int64
-	SwapCurrent         int64
-	OOMKill             int64
-	MemPressureSomeUsec int64
-}
+// Reading is a resource sample, defined with the reader that produces it.
+type Reading = measure.Reading
 
 // Sampler reads resource counters for one sandbox pod. cumulative counters are
 // expected to grow monotonically; the runner differences them per session.
@@ -69,7 +54,7 @@ type Recorder interface {
 
 // Options are the runner's collaborators.
 type Options struct {
-	Adapter adapter.Adapter
+	Adapter sandbox.Adapter
 	Store   *store.Store
 	Sampler Sampler
 	Plan    schedule.Plan
@@ -87,7 +72,7 @@ type Options struct {
 // Runner executes one plan.
 type Runner struct {
 	cfg  model.RunConfig
-	ad   adapter.Adapter
+	ad   sandbox.Adapter
 	st   *store.Store
 	smp  Sampler
 	plan schedule.Plan
@@ -97,8 +82,8 @@ type Runner struct {
 	start time.Time
 
 	mu     sync.Mutex
-	free   []*adapter.Instance
-	all    map[string]*adapter.Instance
+	free   []*sandbox.Instance
+	all    map[string]*sandbox.Instance
 	reps   []store.ReplicaSample
 	counts map[model.Outcome]int
 
@@ -138,7 +123,7 @@ func New(cfg model.RunConfig, opts Options) *Runner {
 	}
 	return &Runner{
 		cfg: cfg, ad: opts.Adapter, st: opts.Store, smp: opts.Sampler, plan: opts.Plan,
-		log: logger, now: now, all: map[string]*adapter.Instance{}, counts: map[model.Outcome]int{},
+		log: logger, now: now, all: map[string]*sandbox.Instance{}, counts: map[model.Outcome]int{},
 		hostMemory: opts.HostMemory,
 		rec:        opts.Recorder,
 		autoscaler: opts.AutoscalerInfo,
@@ -548,7 +533,7 @@ func (r *Runner) session(ctx context.Context, planned schedule.Planned) {
 }
 
 // hold sleeps for the session's duration while sampling the instance.
-func (r *Runner) hold(ctx context.Context, instance *adapter.Instance, d time.Duration) (Reading, bool, bool) {
+func (r *Runner) hold(ctx context.Context, instance *sandbox.Instance, d time.Duration) (Reading, bool, bool) {
 	var merged Reading
 	var have bool
 	sample := func() {
@@ -638,7 +623,7 @@ func applyReading(session *model.Session, reading Reading, sampled bool) {
 	session.Samples++
 }
 
-func launchType(instance *adapter.Instance) string {
+func launchType(instance *sandbox.Instance) string {
 	if instance.Warm {
 		return "warm"
 	}
@@ -646,7 +631,7 @@ func launchType(instance *adapter.Instance) string {
 }
 
 // take pops a free instance, if the policy keeps one around.
-func (r *Runner) take() (*adapter.Instance, bool) {
+func (r *Runner) take() (*sandbox.Instance, bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if len(r.free) == 0 {
@@ -657,7 +642,7 @@ func (r *Runner) take() (*adapter.Instance, bool) {
 	return instance, true
 }
 
-func (r *Runner) put(instance *adapter.Instance) {
+func (r *Runner) put(instance *sandbox.Instance) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.free = append(r.free, instance)
@@ -667,7 +652,7 @@ func (r *Runner) put(instance *adapter.Instance) {
 // retries: a control-plane hiccup at the end of a run must not leave claims
 // behind, because a leftover claim looks like demand to an autoscaler and holds
 // replicas nobody asked for.
-func (r *Runner) release(ctx context.Context, instance *adapter.Instance) {
+func (r *Runner) release(ctx context.Context, instance *sandbox.Instance) {
 	releaseCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Minute)
 	defer cancel()
 	if err := r.deleteWithRetry(releaseCtx, instance); err != nil {
@@ -684,7 +669,7 @@ func (r *Runner) release(ctx context.Context, instance *adapter.Instance) {
 }
 
 // deleteWithRetry makes up to five attempts, backing off between them.
-func (r *Runner) deleteWithRetry(ctx context.Context, instance *adapter.Instance) error {
+func (r *Runner) deleteWithRetry(ctx context.Context, instance *sandbox.Instance) error {
 	var err error
 	for attempt := 1; attempt <= 5; attempt++ {
 		if err = r.ad.Release(ctx, instance); err == nil {
@@ -705,7 +690,7 @@ func (r *Runner) deleteWithRetry(ctx context.Context, instance *adapter.Instance
 
 func (r *Runner) releaseAll(ctx context.Context) {
 	r.mu.Lock()
-	instances := make([]*adapter.Instance, 0, len(r.all))
+	instances := make([]*sandbox.Instance, 0, len(r.all))
 	for _, instance := range r.all {
 		instances = append(instances, instance)
 	}
@@ -770,7 +755,7 @@ func (r *Runner) save(session model.Session) {
 	}
 }
 
-func (r *Runner) persistInstance(instance *adapter.Instance) {
+func (r *Runner) persistInstance(instance *sandbox.Instance) {
 	err := r.st.SaveInstance(model.Instance{
 		ID: instance.ID, Kind: string(instance.Kind), Namespace: instance.Namespace,
 		Node: instance.Node, PodUID: instance.PodUID, CreatedNS: instance.CreatedNS,
@@ -813,7 +798,7 @@ func (r *Runner) sampleReplicas(ctx context.Context) func() {
 	}
 }
 
-func (r *Runner) recordReplicas(state adapter.PoolState, note string) {
+func (r *Runner) recordReplicas(state sandbox.PoolState, note string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.reps = append(r.reps, store.ReplicaSample{
@@ -851,7 +836,7 @@ func (r *Runner) recordHost() {
 }
 
 // storeTemplateLimits writes the template's requests and limits into the run row.
-func (r *Runner) storeTemplateLimits(limits adapter.TemplateLimits) {
+func (r *Runner) storeTemplateLimits(limits sandbox.TemplateLimits) {
 	payload, err := json.Marshal(limits)
 	if err != nil {
 		r.log.Printf("template limits: %v", err)

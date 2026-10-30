@@ -1,4 +1,4 @@
-package autoscale
+package pool
 
 import (
 	"net/http"

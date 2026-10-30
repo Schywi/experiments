@@ -20,8 +20,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/adapter"
-	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/run"
+	kube "github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/infra/kube"
 )
 
 // Options configures the sampler.
@@ -34,7 +33,7 @@ type Options struct {
 	Log      *log.Logger
 }
 
-// Sampler implements run.Sampler.
+// Sampler implements the session runner's Sampler interface.
 type Sampler struct {
 	root  string
 	log   *log.Logger
@@ -48,7 +47,7 @@ type Sampler struct {
 func New(opts Options) (*Sampler, error) {
 	root := opts.CgroupRoot
 	if root == "" {
-		root = adapter.NodePathForCgroup()
+		root = kube.NodePathForCgroup()
 	}
 	logger := opts.Log
 	if logger == nil {
@@ -67,22 +66,22 @@ func New(opts Options) (*Sampler, error) {
 }
 
 // Sample reads one sandbox pod's counters.
-func (s *Sampler) Sample(ctx context.Context, podUID, node string) (run.Reading, bool, error) {
+func (s *Sampler) Sample(ctx context.Context, podUID, node string) (Reading, bool, error) {
 	if s.root == "" || podUID == "" {
-		return run.Reading{}, false, nil
+		return Reading{}, false, nil
 	}
 	dir, err := s.dirFor(podUID)
 	if err != nil {
 		// A pod whose cgroup is not there yet is a miss, not a failure: the run
 		// keeps its lifecycle timings and the report says how many sessions had
 		// samples.
-		return run.Reading{}, false, nil
+		return Reading{}, false, nil
 	}
-	reading := run.Reading{}
+	reading := Reading{}
 
 	cpu, err := readKV(filepath.Join(dir, "cpu.stat"))
 	if err != nil {
-		return run.Reading{}, false, err
+		return Reading{}, false, err
 	}
 	reading.CPUUsec = cpu["usage_usec"]
 	reading.ThrottledUsec = cpu["throttled_usec"]
@@ -98,7 +97,7 @@ func (s *Sampler) Sample(ctx context.Context, podUID, node string) (run.Reading,
 
 	mem, err := readKV(filepath.Join(dir, "memory.stat"))
 	if err != nil {
-		return run.Reading{}, false, err
+		return Reading{}, false, err
 	}
 	reading.MemInactiveFile = mem["inactive_file"]
 	reading.Shmem = mem["shmem"]
@@ -130,7 +129,7 @@ func (s *Sampler) dirFor(podUID string) (string, error) {
 	if dir, ok := s.dirs[podUID]; ok {
 		return dir, nil
 	}
-	dir, err := adapter.PodCgroupDir(s.root, podUID)
+	dir, err := kube.PodCgroupDir(s.root, podUID)
 	if err != nil {
 		return "", err
 	}
@@ -220,4 +219,24 @@ func (s *Sampler) String() string {
 	return fmt.Sprintf("measure: cgroup v2 at %s", s.root)
 }
 
-var _ run.Sampler = (*Sampler)(nil)
+// The runner depends on this shape (a Sample method); keeping the assertion here
+// would make the measurement layer import the runtime, so it lives there instead.
+
+// Reading is one resource sample for a sandbox pod.
+type Reading struct {
+	CPUUsec             int64
+	CPUPressureSomeUsec int64
+	CPUPressureFullUsec int64
+	ThrottledUsec       int64
+	NRThrottled         int64
+	MemCurrent          int64
+	MemWorkingSet       int64
+	MemInactiveFile     int64
+	Shmem               int64
+	Anon                int64
+	RefaultAnon         int64
+	RefaultFile         int64
+	SwapCurrent         int64
+	OOMKill             int64
+	MemPressureSomeUsec int64
+}

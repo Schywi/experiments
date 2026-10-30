@@ -11,7 +11,7 @@ import (
 	"math/rand"
 	"time"
 
-	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/model"
+	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/platform/model"
 )
 
 // Planned is one generated session, before it reaches the cluster.

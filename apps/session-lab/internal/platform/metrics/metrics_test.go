@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/model"
-	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/run"
+	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/platform/model"
+	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/runtime/session"
 )
 
 func scrape(t *testing.T, r *Recorder) string {
@@ -32,7 +32,7 @@ func TestRecorderExportsLifecycleSeries(t *testing.T) {
 	r.Acquire("reuse", "warm", 0.106)
 	r.Hold("reuse", "5s", 5.02)
 	r.Reset("reuse", 0.007)
-	r.Resources("reuse", run.Reading{CPUUsec: 1_190_000, ThrottledUsec: 250_000, NRThrottled: 7,
+	r.Resources("reuse", session.Reading{CPUUsec: 1_190_000, ThrottledUsec: 250_000, NRThrottled: 7,
 		MemWorkingSet: 148 << 20, OOMKill: 0})
 	r.Boundary("session_cpu_throttled")
 	r.SessionSettled("reuse", model.OutcomeSuccess)

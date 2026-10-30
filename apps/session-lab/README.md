@@ -101,3 +101,18 @@ Timestamps come from the event (`ReadyNS` is recorded when the transition is
 seen), so queue and acquisition latencies are no longer quantised to a
 one-second poll. The cgroup, PSI and host-memory samplers stay on their 2 s
 timer: they are not API objects.
+
+## Package map
+
+```
+cmd/session-lab/          the experiment runner binary
+cmd/pool-autoscaler/      the capacity binary
+internal/runtime/         DEMAND plane: schedule, session (lease/hold/release), report
+internal/infra/           CAPACITY plane: sandbox (interface + fake), kube (client),
+                          pool (pool sizing), measure (cgroup, metrics-server, boundary)
+internal/platform/        shared: config, model, store (SQLite), metrics (Prometheus)
+```
+
+`internal/runtime` imports `internal/infra/sandbox` (the interface) and never
+`internal/infra/kube`, so the scheduler and the session lifecycle can be tested
+without a cluster. Only the binaries wire the real client.

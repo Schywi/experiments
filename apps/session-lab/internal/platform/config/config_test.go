@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/schedule"
+	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/runtime/schedule"
 )
 
 func TestDurationDerivesAWindowNotABatch(t *testing.T) {

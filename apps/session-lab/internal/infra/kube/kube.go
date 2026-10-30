@@ -1,4 +1,4 @@
-package adapter
+package kube
 
 import (
 	"bytes"
@@ -13,12 +13,14 @@ import (
 	"sync"
 	"time"
 
+	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/infra/sandbox"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/watch"
+
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
@@ -64,7 +66,7 @@ func (k *Kube) setClaimCache(cache map[string]claimObservation) {
 	k.claimsReady = true
 }
 
-// setClaimCacheError records why the watch is not running, so ClaimStats can
+// setClaimCacheError records why the watch is not running, so sandbox.ClaimStats can
 // fall back to a direct read instead of reporting zero demand.
 func (k *Kube) setClaimCacheError(err error) {
 	k.mu.Lock()
@@ -126,7 +128,7 @@ func NewKube(kubeconfig, contextName string) (*Kube, error) {
 }
 
 // Acquire creates the claim that will adopt (or cold-start) a sandbox.
-func (k *Kube) Acquire(ctx context.Context, namespace, pool, name string) (*Instance, error) {
+func (k *Kube) Acquire(ctx context.Context, namespace, pool, name string) (*sandbox.Instance, error) {
 	claim := &unstructured.Unstructured{Object: map[string]any{
 		"apiVersion": "extensions.agents.x-k8s.io/v1beta1",
 		"kind":       "SandboxClaim",
@@ -143,9 +145,9 @@ func (k *Kube) Acquire(ctx context.Context, namespace, pool, name string) (*Inst
 	if err != nil {
 		return nil, fmt.Errorf("create claim %s/%s: %w", namespace, name, err)
 	}
-	return &Instance{
+	return &sandbox.Instance{
 		ID:        created.GetName(),
-		Kind:      KindClaim,
+		Kind:      sandbox.KindClaim,
 		Namespace: namespace,
 		Claim:     created.GetName(),
 		CreatedNS: created.GetCreationTimestamp().UnixNano(),
@@ -157,14 +159,14 @@ func (k *Kube) Acquire(ctx context.Context, namespace, pool, name string) (*Inst
 // what made a 150-session run hammer the API server. Adoption is visible in the
 // timestamps: a sandbox created before the claim came from the pool, a sandbox
 // created after it was a cold start.
-func (k *Kube) WaitReady(ctx context.Context, instance *Instance) error {
+func (k *Kube) WaitReady(ctx context.Context, instance *sandbox.Instance) error {
 	return k.waitClaimReady(ctx, instance)
 }
 
 // fillFromSandbox reads the sandbox the claim adopted: creation order tells warm
 // from cold, and the status carries the node, the pod IPs and the label selector
 // that identifies the pod the sampler needs.
-func (k *Kube) fillFromSandbox(ctx context.Context, instance *Instance) (bool, error) {
+func (k *Kube) fillFromSandbox(ctx context.Context, instance *sandbox.Instance) (bool, error) {
 	sandbox, err := k.dyn.Resource(gvrSandboxes).Namespace(instance.Namespace).Get(ctx, instance.Sandbox, metav1.GetOptions{})
 	if err != nil {
 		return false, nil
@@ -251,7 +253,7 @@ func claimState(claim *unstructured.Unstructured) (bool, string) {
 
 // Reset navigates the sandbox's browser to a blank page through the in-pod
 // bridge, which is the same transport the console uses for CDP commands.
-func (k *Kube) Reset(ctx context.Context, instance *Instance) error {
+func (k *Kube) Reset(ctx context.Context, instance *sandbox.Instance) error {
 	if instance.PodIP == "" {
 		return fmt.Errorf("reset %s: no pod IP", instance.ID)
 	}
@@ -283,16 +285,16 @@ func (k *Kube) Reset(ctx context.Context, instance *Instance) error {
 }
 
 // Suspend terminates the backing pod while keeping the sandbox and its volumes.
-func (k *Kube) Suspend(ctx context.Context, instance *Instance) error {
+func (k *Kube) Suspend(ctx context.Context, instance *sandbox.Instance) error {
 	return k.setOperatingMode(ctx, instance, "Suspended")
 }
 
 // Resume brings a suspended sandbox back by recreating its pod.
-func (k *Kube) Resume(ctx context.Context, instance *Instance) error {
+func (k *Kube) Resume(ctx context.Context, instance *sandbox.Instance) error {
 	return k.setOperatingMode(ctx, instance, "Running")
 }
 
-func (k *Kube) setOperatingMode(ctx context.Context, instance *Instance, mode string) error {
+func (k *Kube) setOperatingMode(ctx context.Context, instance *sandbox.Instance, mode string) error {
 	if instance.Sandbox == "" {
 		return fmt.Errorf("operating mode %s: %s has no sandbox", mode, instance.ID)
 	}
@@ -315,7 +317,7 @@ func (k *Kube) setOperatingMode(ctx context.Context, instance *Instance, mode st
 }
 
 // Release deletes the claim, which takes the sandbox and its pod with it.
-func (k *Kube) Release(ctx context.Context, instance *Instance) error {
+func (k *Kube) Release(ctx context.Context, instance *sandbox.Instance) error {
 	err := k.dyn.Resource(gvrClaims).Namespace(instance.Namespace).
 		Delete(ctx, instance.Claim, metav1.DeleteOptions{})
 	if err != nil {
@@ -325,11 +327,11 @@ func (k *Kube) Release(ctx context.Context, instance *Instance) error {
 	return nil
 }
 
-// ClaimStats counts claims by readiness for one pool. The counts come from the
+// sandbox.ClaimStats counts claims by readiness for one pool. The counts come from the
 // watch-backed cache, so a five-second autoscaler tick costs no API request; if
 // the watch is down it falls back to a direct list rather than reporting zero
 // demand.
-func (k *Kube) ClaimStats(ctx context.Context, namespace, pool string) (ClaimStats, error) {
+func (k *Kube) ClaimStats(ctx context.Context, namespace, pool string) (sandbox.ClaimStats, error) {
 	k.ensureClaimCache(namespace)
 	k.mu.Lock()
 	cache, warm, watchErr := k.claims, k.claimsReady, k.claimsErr
@@ -340,9 +342,9 @@ func (k *Kube) ClaimStats(ctx context.Context, namespace, pool string) (ClaimSta
 
 	claims, err := k.dyn.Resource(gvrClaims).Namespace(namespace).List(ctx, metav1.ListOptions{})
 	if err != nil {
-		return ClaimStats{}, fmt.Errorf("list claims %s: %w", namespace, err)
+		return sandbox.ClaimStats{}, fmt.Errorf("list claims %s: %w", namespace, err)
 	}
-	var stats ClaimStats
+	var stats sandbox.ClaimStats
 	for i := range claims.Items {
 		claim := &claims.Items[i]
 		if pool != "" {
@@ -365,12 +367,12 @@ func (k *Kube) ClaimStats(ctx context.Context, namespace, pool string) (ClaimSta
 }
 
 // Pool reports the warm pool's replica counts and template.
-func (k *Kube) Pool(ctx context.Context, namespace, name string) (PoolState, error) {
+func (k *Kube) Pool(ctx context.Context, namespace, name string) (sandbox.PoolState, error) {
 	pool, err := k.dyn.Resource(gvrPools).Namespace(namespace).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
-		return PoolState{}, fmt.Errorf("get pool %s/%s: %w", namespace, name, err)
+		return sandbox.PoolState{}, fmt.Errorf("get pool %s/%s: %w", namespace, name, err)
 	}
-	state := PoolState{Name: name}
+	state := sandbox.PoolState{Name: name}
 	if replicas, ok, _ := unstructured.NestedInt64(pool.Object, "spec", "replicas"); ok {
 		state.Desired = int32(replicas)
 	}
@@ -383,7 +385,7 @@ func (k *Kube) Pool(ctx context.Context, namespace, name string) (PoolState, err
 	if template, ok, _ := unstructured.NestedString(pool.Object, "spec", "sandboxTemplateRef", "name"); ok {
 		state.Template = template
 	}
-	if value, ok, _ := unstructured.NestedString(pool.Object, "metadata", "annotations", AnnotationAutoscalerPaused); ok && value == "disabled" {
+	if value, ok, _ := unstructured.NestedString(pool.Object, "metadata", "annotations", sandbox.AnnotationAutoscalerPaused); ok && value == "disabled" {
 		state.Paused = true
 	}
 	return state, nil
@@ -404,16 +406,16 @@ func (k *Kube) SetPoolReplicas(ctx context.Context, namespace, name string, repl
 
 // Template reads the requests and limits the template applies to a sandbox pod,
 // which is the context CPU throttling needs to mean anything.
-func (k *Kube) Template(ctx context.Context, namespace, name string) (TemplateLimits, error) {
+func (k *Kube) Template(ctx context.Context, namespace, name string) (sandbox.TemplateLimits, error) {
 	template, err := k.dyn.Resource(gvrTemplates).Namespace(namespace).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
-		return TemplateLimits{}, fmt.Errorf("get template %s/%s: %w", namespace, name, err)
+		return sandbox.TemplateLimits{}, fmt.Errorf("get template %s/%s: %w", namespace, name, err)
 	}
 	containers, found, _ := unstructured.NestedSlice(template.Object, "spec", "podTemplate", "spec", "containers")
 	if !found || len(containers) == 0 {
-		return TemplateLimits{}, fmt.Errorf("template %s has no containers", name)
+		return sandbox.TemplateLimits{}, fmt.Errorf("template %s has no containers", name)
 	}
-	limits := TemplateLimits{}
+	limits := sandbox.TemplateLimits{}
 	for _, raw := range containers {
 		container, ok := raw.(map[string]any)
 		if !ok {
@@ -485,7 +487,7 @@ func (k *Kube) SetPoolPaused(ctx context.Context, namespace, name string, paused
 		value = "disabled"
 	}
 	patch, err := json.Marshal(map[string]any{
-		"metadata": map[string]any{"annotations": map[string]any{AnnotationAutoscalerPaused: value}},
+		"metadata": map[string]any{"annotations": map[string]any{sandbox.AnnotationAutoscalerPaused: value}},
 	})
 	if err != nil {
 		return err
@@ -498,7 +500,7 @@ func (k *Kube) SetPoolPaused(ctx context.Context, namespace, name string, paused
 }
 
 // Node reads the allocatable budget of the node that holds the sandboxes.
-func (k *Kube) Node(ctx context.Context, namespace string) (NodeCapacity, error) {
+func (k *Kube) Node(ctx context.Context, namespace string) (sandbox.NodeCapacity, error) {
 	nodeName := ""
 	pods, err := k.core.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{Limit: 50})
 	if err == nil {
@@ -511,10 +513,10 @@ func (k *Kube) Node(ctx context.Context, namespace string) (NodeCapacity, error)
 	}
 	nodes, err := k.core.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
 	if err != nil {
-		return NodeCapacity{}, fmt.Errorf("list nodes: %w", err)
+		return sandbox.NodeCapacity{}, fmt.Errorf("list nodes: %w", err)
 	}
 	if len(nodes.Items) == 0 {
-		return NodeCapacity{}, fmt.Errorf("no nodes")
+		return sandbox.NodeCapacity{}, fmt.Errorf("no nodes")
 	}
 	node := nodes.Items[0]
 	for i := range nodes.Items {
@@ -524,7 +526,7 @@ func (k *Kube) Node(ctx context.Context, namespace string) (NodeCapacity, error)
 		}
 	}
 	allocatable := node.Status.Allocatable
-	return NodeCapacity{
+	return sandbox.NodeCapacity{
 		Name:     node.Name,
 		CPUMilli: allocatable.Cpu().MilliValue(),
 		MemBytes: allocatable.Memory().Value(),
@@ -533,12 +535,12 @@ func (k *Kube) Node(ctx context.Context, namespace string) (NodeCapacity, error)
 }
 
 // Boundaries reports refusals and degradations from the event stream.
-func (k *Kube) Boundaries(ctx context.Context, namespace string, since time.Time) ([]Boundary, error) {
+func (k *Kube) Boundaries(ctx context.Context, namespace string, since time.Time) ([]sandbox.Boundary, error) {
 	events, err := k.core.CoreV1().Events(namespace).List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("list events: %w", err)
 	}
-	out := make([]Boundary, 0, 8)
+	out := make([]sandbox.Boundary, 0, 8)
 	for _, event := range events.Items {
 		at := event.LastTimestamp.Time
 		if at.IsZero() {
@@ -549,7 +551,7 @@ func (k *Kube) Boundaries(ctx context.Context, namespace string, since time.Time
 		}
 		switch event.Reason {
 		case "OOMKilling", "Evicted", "FailedScheduling", "FailedCreate", "FailedAttachVolume":
-			out = append(out, Boundary{
+			out = append(out, sandbox.Boundary{
 				At:      at,
 				Kind:    event.Reason,
 				Object:  event.InvolvedObject.Kind + "/" + event.InvolvedObject.Name,
@@ -560,7 +562,7 @@ func (k *Kube) Boundaries(ctx context.Context, namespace string, since time.Time
 	return out, nil
 }
 
-var _ Adapter = (*Kube)(nil)
+var _ sandbox.Adapter = (*Kube)(nil)
 
 // NodePathForCgroup returns the cgroup directory root for pod scopes on this
 // host, or an empty string when it is not a cgroup v2 system.

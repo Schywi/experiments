@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/model"
+	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/platform/model"
 )
 
 // Config is the parsed command line.

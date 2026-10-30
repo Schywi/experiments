@@ -16,15 +16,15 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/adapter"
-	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/config"
-	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/measure"
-	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/metrics"
-	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/model"
-	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/report"
-	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/run"
-	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/schedule"
-	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/store"
+	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/infra/kube"
+	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/infra/measure"
+	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/platform/config"
+	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/platform/metrics"
+	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/platform/model"
+	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/platform/store"
+	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/runtime/report"
+	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/runtime/schedule"
+	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/runtime/session"
 )
 
 func main() {
@@ -61,7 +61,7 @@ func realMain() error {
 	}
 	defer st.Close()
 
-	kube, err := adapter.NewKube(cfg.Kubeconfig, cfg.Context)
+	kube, err := kube.NewKube(cfg.Kubeconfig, cfg.Context)
 	if err != nil {
 		return err
 	}
@@ -109,7 +109,7 @@ func realMain() error {
 		logger.Printf("autoscaler info: %v", err)
 	}
 
-	runner := run.New(cfg.RunConfig, run.Options{
+	runner := session.New(cfg.RunConfig, session.Options{
 		Adapter:        kube,
 		Store:          st,
 		Sampler:        sampler,

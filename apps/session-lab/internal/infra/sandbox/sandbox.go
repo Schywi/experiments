@@ -3,7 +3,7 @@
 // One interface, one Kubernetes implementation, and a fake for tests. The
 // adapter owns instance lifecycle calls only; session state belongs to the
 // scheduler in internal/run.
-package adapter
+package sandbox
 
 import (
 	"context"

@@ -1,8 +1,9 @@
-package adapter
+package kube
 
 import (
 	"context"
 	"fmt"
+	sandbox "github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/infra/sandbox"
 	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -32,8 +33,8 @@ func observeClaim(claim *unstructured.Unstructured) (string, claimObservation) {
 }
 
 // countObservations turns the cache into the counts the autoscaler decides on.
-func countObservations(cache map[string]claimObservation, pool string) ClaimStats {
-	var stats ClaimStats
+func countObservations(cache map[string]claimObservation, pool string) sandbox.ClaimStats {
+	var stats sandbox.ClaimStats
 	for _, obs := range cache {
 		if pool != "" && obs.pool != "" && obs.pool != pool {
 			continue
@@ -66,7 +67,7 @@ func applyClaimEvent(cache map[string]claimObservation, event watch.Event) {
 }
 
 // markReady records the transition and reads the sandbox the claim adopted.
-func (k *Kube) markReady(ctx context.Context, instance *Instance, sandbox string) error {
+func (k *Kube) markReady(ctx context.Context, instance *sandbox.Instance, sandbox string) error {
 	instance.ReadyNS = time.Now().UnixNano()
 	if sandbox == "" {
 		return nil
@@ -84,7 +85,7 @@ func (k *Kube) markReady(ctx context.Context, instance *Instance, sandbox string
 // one claim instead of a Get every second. It starts with a direct read so a
 // claim that is already Ready costs one request, and it re-lists whenever the
 // watch dies or the resource version expires (410).
-func (k *Kube) waitClaimReady(ctx context.Context, instance *Instance) error {
+func (k *Kube) waitClaimReady(ctx context.Context, instance *sandbox.Instance) error {
 	var lastErr error
 	backoff := 200 * time.Millisecond
 	for attempt := 0; attempt < 10; attempt++ {

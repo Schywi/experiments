@@ -1,4 +1,4 @@
-package autoscale
+package pool
 
 import (
 	"context"
@@ -7,12 +7,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/adapter"
+	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/infra/sandbox"
 )
 
-func newScaler(t *testing.T, min, max int32) (*Scaler, *adapter.Fake) {
+func newScaler(t *testing.T, min, max int32) (*Scaler, *sandbox.Fake) {
 	t.Helper()
-	fake := adapter.NewFake()
+	fake := sandbox.NewFake()
 	scaler := New(Config{
 		Namespace: "sandbox-demo", Pool: "browser-pool",
 		Min: min, Max: max, Interval: time.Second,
@@ -23,7 +23,7 @@ func newScaler(t *testing.T, min, max int32) (*Scaler, *adapter.Fake) {
 
 func TestTargetFollowsPendingDemand(t *testing.T) {
 	scaler, fake := newScaler(t, 1, 40)
-	fake.Stats = adapter.ClaimStats{Pending: 6, Ready: 4}
+	fake.Stats = sandbox.ClaimStats{Pending: 6, Ready: 4}
 	settings, err := scaler.Step(context.Background())
 	if err != nil {
 		t.Fatalf("step: %v", err)
@@ -40,7 +40,7 @@ func TestTargetFollowsPendingDemand(t *testing.T) {
 
 func TestConfiguredMaximumIsEnforced(t *testing.T) {
 	scaler, fake := newScaler(t, 1, 8)
-	fake.Stats = adapter.ClaimStats{Pending: 30, Ready: 5}
+	fake.Stats = sandbox.ClaimStats{Pending: 30, Ready: 5}
 	settings, err := scaler.Step(context.Background())
 	if err != nil {
 		t.Fatalf("step: %v", err)
@@ -58,7 +58,7 @@ func TestScaleDownWhenDemandDrops(t *testing.T) {
 	if err := fake.SetPoolReplicas(context.Background(), "sandbox-demo", "browser-pool", 9); err != nil {
 		t.Fatalf("seed replicas: %v", err)
 	}
-	fake.Stats = adapter.ClaimStats{Pending: 0, Ready: 2}
+	fake.Stats = sandbox.ClaimStats{Pending: 0, Ready: 2}
 	settings, err := scaler.Step(context.Background())
 	if err != nil {
 		t.Fatalf("step: %v", err)
@@ -70,7 +70,7 @@ func TestScaleDownWhenDemandDrops(t *testing.T) {
 
 func TestMinimumHoldsWhenIdle(t *testing.T) {
 	scaler, fake := newScaler(t, 3, 20)
-	fake.Stats = adapter.ClaimStats{}
+	fake.Stats = sandbox.ClaimStats{}
 	if _, err := scaler.Step(context.Background()); err != nil {
 		t.Fatalf("step: %v", err)
 	}
@@ -83,7 +83,7 @@ func TestMinimumHoldsWhenIdle(t *testing.T) {
 func TestNoChangeIsNotACounter(t *testing.T) {
 	// A steady pool must not look like scaling: the target equals what is there.
 	scaler, fake := newScaler(t, 1, 20)
-	fake.Stats = adapter.ClaimStats{Pending: 2, Ready: 3}
+	fake.Stats = sandbox.ClaimStats{Pending: 2, Ready: 3}
 	if _, err := scaler.Step(context.Background()); err != nil {
 		t.Fatalf("first step: %v", err)
 	}
@@ -106,7 +106,7 @@ func TestPausedPoolIsLeftAlone(t *testing.T) {
 	if err := fake.SetPoolPaused(context.Background(), "sandbox-demo", "browser-pool", true); err != nil {
 		t.Fatalf("pause: %v", err)
 	}
-	fake.Stats = adapter.ClaimStats{Pending: 12, Ready: 3}
+	fake.Stats = sandbox.ClaimStats{Pending: 12, Ready: 3}
 
 	settings, err := scaler.Step(context.Background())
 	if err != nil {

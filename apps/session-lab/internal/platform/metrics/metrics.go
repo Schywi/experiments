@@ -12,11 +12,11 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
-	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/model"
-	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/run"
+	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/platform/model"
+	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/runtime/session"
 )
 
-// Recorder holds the metric families and implements run.Recorder.
+// Recorder holds the metric families and implements session.Recorder.
 type Recorder struct {
 	registry *prometheus.Registry
 
@@ -142,7 +142,7 @@ func (r *Recorder) Handler() http.Handler {
 	return promhttp.HandlerFor(r.registry, promhttp.HandlerOpts{})
 }
 
-// SessionArrived implements run.Recorder.
+// SessionArrived implements session.Recorder.
 func (r *Recorder) SessionArrived() {
 	r.mu.Lock()
 	r.activeN++
@@ -152,7 +152,7 @@ func (r *Recorder) SessionArrived() {
 	r.mu.Unlock()
 }
 
-// SessionAcquired implements run.Recorder: the session stopped waiting.
+// SessionAcquired implements session.Recorder: the session stopped waiting.
 func (r *Recorder) SessionAcquired() {
 	r.mu.Lock()
 	if r.waitN > 0 {
@@ -162,7 +162,7 @@ func (r *Recorder) SessionAcquired() {
 	r.mu.Unlock()
 }
 
-// SessionSettled implements run.Recorder.
+// SessionSettled implements session.Recorder.
 func (r *Recorder) SessionSettled(policy string, outcome model.Outcome) {
 	r.mu.Lock()
 	if r.activeN > 0 {
@@ -173,12 +173,12 @@ func (r *Recorder) SessionSettled(policy string, outcome model.Outcome) {
 	r.sessions.WithLabelValues(policy, string(outcome)).Inc()
 }
 
-// QueueWait implements run.Recorder.
+// QueueWait implements session.Recorder.
 func (r *Recorder) QueueWait(policy string, seconds float64) {
 	r.queue.WithLabelValues(policy).Observe(seconds)
 }
 
-// Acquire implements run.Recorder.
+// Acquire implements session.Recorder.
 func (r *Recorder) Acquire(policy, launchType string, seconds float64) {
 	if launchType == "" {
 		launchType = "unknown"
@@ -186,23 +186,23 @@ func (r *Recorder) Acquire(policy, launchType string, seconds float64) {
 	r.acquire.WithLabelValues(policy, launchType).Observe(seconds)
 }
 
-// Hold implements run.Recorder.
+// Hold implements session.Recorder.
 func (r *Recorder) Hold(policy, bucket string, seconds float64) {
 	r.hold.WithLabelValues(policy, bucket).Observe(seconds)
 }
 
-// Reset implements run.Recorder.
+// Reset implements session.Recorder.
 func (r *Recorder) Reset(policy string, seconds float64) {
 	r.reset.WithLabelValues(policy).Observe(seconds)
 }
 
-// Release implements run.Recorder.
+// Release implements session.Recorder.
 func (r *Recorder) Release(policy string, seconds float64) {
 	r.release.WithLabelValues(policy).Observe(seconds)
 }
 
-// Resources implements run.Recorder.
-func (r *Recorder) Resources(policy string, reading run.Reading) {
+// Resources implements session.Recorder.
+func (r *Recorder) Resources(policy string, reading session.Reading) {
 	r.cpu.WithLabelValues(policy).Add(float64(reading.CPUUsec) / 1e6)
 	if reading.ThrottledUsec > 0 {
 		r.throttle.WithLabelValues(policy).Add(float64(reading.ThrottledUsec) / 1e6)
@@ -215,24 +215,24 @@ func (r *Recorder) Resources(policy string, reading run.Reading) {
 	}
 }
 
-// Pool implements run.Recorder.
+// Pool implements session.Recorder.
 func (r *Recorder) Pool(desired, ready int32) {
 	r.poolWant.Set(float64(desired))
 	r.poolHave.Set(float64(ready))
 }
 
-// Template implements run.Recorder.
+// Template implements session.Recorder.
 func (r *Recorder) Template(cpuLimitCores, memLimitBytes float64) {
 	r.tplCPU.Set(cpuLimitCores)
 	r.tplMem.Set(memLimitBytes)
 }
 
-// Resume implements run.Recorder.
+// Resume implements session.Recorder.
 func (r *Recorder) Resume(policy string, seconds float64) {
 	r.resume.WithLabelValues(policy).Observe(seconds)
 }
 
-// Boundary implements run.Recorder.
+// Boundary implements session.Recorder.
 func (r *Recorder) Boundary(kind string) {
 	if kind == "" {
 		kind = "unknown"
@@ -240,4 +240,4 @@ func (r *Recorder) Boundary(kind string) {
 	r.boundary.WithLabelValues(kind).Inc()
 }
 
-var _ run.Recorder = (*Recorder)(nil)
+var _ session.Recorder = (*Recorder)(nil)

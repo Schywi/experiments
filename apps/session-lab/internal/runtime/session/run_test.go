@@ -1,4 +1,4 @@
-package run_test
+package session_test
 
 import (
 	"context"
@@ -9,12 +9,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/adapter"
-	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/model"
-	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/report"
-	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/run"
-	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/schedule"
-	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/store"
+	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/infra/sandbox"
+	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/platform/model"
+	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/platform/store"
+	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/runtime/report"
+	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/runtime/schedule"
+	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/runtime/session"
 )
 
 func config(policy model.Policy, sessions int, hold time.Duration) model.RunConfig {
@@ -26,7 +26,7 @@ func config(policy model.Policy, sessions int, hold time.Duration) model.RunConf
 	}
 }
 
-func execute(t *testing.T, cfg model.RunConfig, fake *adapter.Fake) (*store.Store, schedule.Plan) {
+func execute(t *testing.T, cfg model.RunConfig, fake *sandbox.Fake) (*store.Store, schedule.Plan) {
 	t.Helper()
 	plan, err := schedule.Generate(cfg, 1)
 	if err != nil {
@@ -37,7 +37,7 @@ func execute(t *testing.T, cfg model.RunConfig, fake *adapter.Fake) (*store.Stor
 		t.Fatalf("store: %v", err)
 	}
 	t.Cleanup(func() { st.Close() })
-	runner := run.New(cfg, run.Options{
+	runner := session.New(cfg, session.Options{
 		Adapter: fake, Store: st, Plan: plan,
 		Log: log.New(io.Discard, "", 0),
 	})
@@ -49,7 +49,7 @@ func execute(t *testing.T, cfg model.RunConfig, fake *adapter.Fake) (*store.Stor
 
 func TestEverySessionGetsATerminalOutcome(t *testing.T) {
 	cfg := config(model.PolicyDestroy, 24, 5*time.Millisecond)
-	st, plan := execute(t, cfg, adapter.NewFake())
+	st, plan := execute(t, cfg, sandbox.NewFake())
 
 	rows, err := st.Sessions()
 	if err != nil {
@@ -80,7 +80,7 @@ func TestEverySessionGetsATerminalOutcome(t *testing.T) {
 
 func TestReuseServesManySessionsOnOneInstance(t *testing.T) {
 	cfg := config(model.PolicyReuse, 12, 5*time.Millisecond)
-	st, _ := execute(t, cfg, adapter.NewFake())
+	st, _ := execute(t, cfg, sandbox.NewFake())
 
 	instances, err := st.Instances()
 	if err != nil {
@@ -104,7 +104,7 @@ func TestConcurrencyNeverExceedsInstances(t *testing.T) {
 	// One instance is leased to one session at a time, so the measured peak can
 	// never be larger than the number of instances the run created.
 	cfg := config(model.PolicyReuse, 40, 20*time.Millisecond)
-	st, plan := execute(t, cfg, adapter.NewFake())
+	st, plan := execute(t, cfg, sandbox.NewFake())
 
 	rows, err := st.Sessions()
 	if err != nil {
@@ -129,7 +129,7 @@ func TestConcurrencyNeverExceedsInstances(t *testing.T) {
 func TestRefusalIsRecordedAndAccounted(t *testing.T) {
 	// A platform that refuses after four instances: every refusal is a row with
 	// a reason, and the counts still balance.
-	fake := adapter.NewFake()
+	fake := sandbox.NewFake()
 	fake.RefuseAfter = 4
 	// Overlapping sessions: the arrival rate and hold are chosen so the run
 	// needs more instances at once than the fake will hand out.
@@ -159,7 +159,7 @@ func TestRefusalIsRecordedAndAccounted(t *testing.T) {
 }
 
 func TestPoolReplicasAreRestored(t *testing.T) {
-	fake := adapter.NewFake()
+	fake := sandbox.NewFake()
 	cfg := config(model.PolicyDestroy, 2, time.Millisecond)
 	replicas := int32(6)
 	cfg.PoolReplicas = &replicas
@@ -178,8 +178,8 @@ func TestPoolReplicasAreRestored(t *testing.T) {
 func TestTemplateLimitsAreRecorded(t *testing.T) {
 	// A throttling count is unreadable without the limit that caused it, so the
 	// run row carries the template's requests and limits.
-	fake := adapter.NewFake()
-	fake.Limits = adapter.TemplateLimits{
+	fake := sandbox.NewFake()
+	fake.Limits = sandbox.TemplateLimits{
 		Container: "browser", CPURequestMilli: 100, CPULimitMilli: 1000,
 		MemRequestBytes: 256 << 20, MemLimitBytes: 768 << 20,
 	}

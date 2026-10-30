@@ -10,7 +10,7 @@
 // Limits are explicit and configured: --min and --max bound what the autoscaler
 // may ask for. The observed capacity is whatever a run measures; this package
 // never assumes it.
-package autoscale
+package pool
 
 import (
 	"context"
@@ -18,7 +18,7 @@ import (
 	"log"
 	"time"
 
-	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/adapter"
+	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/infra/sandbox"
 )
 
 // Config is one autoscaler's settings.
@@ -64,7 +64,7 @@ type Recorder interface {
 // Scaler runs one reconcile loop.
 type Scaler struct {
 	cfg     Config
-	ad      adapter.Adapter
+	ad      sandbox.Adapter
 	pub     Publisher
 	rec     Recorder
 	log     *log.Logger
@@ -72,7 +72,7 @@ type Scaler struct {
 }
 
 // New builds a scaler.
-func New(cfg Config, ad adapter.Adapter, pub Publisher, rec Recorder) *Scaler {
+func New(cfg Config, ad sandbox.Adapter, pub Publisher, rec Recorder) *Scaler {
 	logger := cfg.Log
 	if logger == nil {
 		logger = log.Default()

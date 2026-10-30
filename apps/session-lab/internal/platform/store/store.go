@@ -14,7 +14,7 @@ import (
 
 	_ "modernc.org/sqlite"
 
-	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/model"
+	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/platform/model"
 )
 
 const schema = `
