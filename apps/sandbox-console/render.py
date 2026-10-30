@@ -163,6 +163,15 @@ a { color: inherit; text-decoration: none; }
 }
 .brand h1 { font-size: var(--text-lg); }
 .meta { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+/* The mode switch. Pool is the pod view, Run is the session-lab wall; the two
+   share one shell so a run is one click from the sandboxes it holds. */
+.app-header nav { display: flex; align-items: center; gap: 2px; }
+.app-header nav a {
+  display: inline-flex; align-items: center; height: 26px; padding: 0 var(--space-2);
+  border-radius: 999px; font-size: var(--text-sm); color: hsl(var(--muted-foreground));
+}
+.app-header nav a:hover { background: hsl(var(--secondary)); color: hsl(var(--foreground)); }
+.app-header nav a[aria-current="page"] { background: hsl(var(--primary) / .18); color: hsl(var(--foreground)); }
 main { max-width: 1440px; margin: 0 auto; padding: var(--space-6); }
 
 .toolbar { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; padding-bottom: var(--space-4); }
@@ -1219,6 +1228,10 @@ PAGE = """<!doctype html>
 <body data-open="__OPEN__">
 <header class="app-header">
   <div class="brand"><span class="brand-mark"></span><h1>sandbox-console</h1></div>
+  <nav>
+    <a href="/" aria-current="page">Pool</a>
+    <a href="/runs">Run</a>
+  </nav>
   <div class="meta">
     <span class="badge badge-outline">agent-sandbox</span>
     <span class="badge badge-outline">__NAMESPACE__</span>

@@ -6,6 +6,7 @@ names through `values.yaml`; see `chart/values.yaml`.
 """
 
 import os
+from pathlib import Path
 
 
 def _int(name: str, default: int) -> int:
@@ -114,3 +115,23 @@ CDP_QUEUE_SIZE = _int("CDP_QUEUE_SIZE", 32)
 RETRY_AFTER_SECONDS = _int("CDP_RETRY_AFTER_SECONDS", 3)
 # Leaked refusal when the queue is full: the console never blocks unboundedly.
 AUDIT_LOG = os.environ.get("AUDIT_LOG", "/var/log/sandbox-console/audit.jsonl")
+
+# Run wall (research/session-lifecycle-elasticity/16-session-wall-ui.md).
+#
+# Where the runner writes its per-run SQLite and report JSON. The default is the
+# repository checkout, which is what a console started by hand reads; the chart
+# mounts the same directory from the host at /runs.
+_default_runs = Path(__file__).resolve().parents[2] / "docs" / "session-lab-runs"
+RUNS_DIR = Path(os.environ.get("SANDBOX_CONSOLE_RUNS_DIR", str(_default_runs)))
+# Slots one Chromium is expected to serve. Only a default for the wall's free
+# positions: a run's own config (`contexts_per_browser`) wins when it says
+# something, and an instance that has been seen carrying more slots than this
+# renders as many as it carried.
+CONTEXTS_PER_BROWSER = _int("CONTEXTS_PER_BROWSER", 1)
+# Ceiling on sessions read from one run, so a 10k-session database cannot make
+# one page load a million DOM nodes. The wall says how many it left out.
+RUN_MAX_SESSIONS = _int("RUN_MAX_SESSIONS", 4000)
+# Skyline cells: sessions are bucketed into at most this many columns.
+RUN_MAX_SKYLINE = _int("RUN_MAX_SKYLINE", 480)
+# How often a live run's wall re-reads the database.
+RUN_REFRESH_SECONDS = _int("RUN_REFRESH_SECONDS", 5)

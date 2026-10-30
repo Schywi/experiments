@@ -42,6 +42,8 @@ import probes
 import records
 import recipes
 import render
+import render_runs
+import runs
 from concurrency import BoundedFIFO, QueueFull
 
 LIMITER = BoundedFIFO(config.CDP_CONCURRENCY, config.CDP_QUEUE_SIZE)
@@ -898,6 +900,83 @@ async def demo_teardown() -> JSONResponse:
             failed.append({"name": name, "error": str(error)})
     audit.record(config.AUDIT_LOG, "demo_teardown", removed=removed, failed=failed)
     return JSONResponse(status_code=200, content={"removed": removed, "failed": failed})
+
+
+# --------------------------------------------------------------------------- #
+# The run wall: session-lab runs, drawn as slots
+#
+# Additive to every route above it. The wall reads a run database read-only, so
+# nothing here can write to a run that is still executing. See
+# research/session-lifecycle-elasticity/16-session-wall-ui.md.
+# --------------------------------------------------------------------------- #
+def _run_cut(run: runs.Run, at: int) -> int:
+    """The instant the wall draws: the one asked for, inside the run's window."""
+    start, end = run.window
+    if at and start <= at <= end:
+        return at
+    return run.default_cut()
+
+
+async def _live_tiles() -> dict:
+    """Instance name -> live tile, for the badges on an instance group.
+
+    A wall renders whether or not the cluster answers: an unreachable API server
+    is a fact about the console, and the run's own rows are still readable.
+    """
+    try:
+        report = await SCREEN.report()
+    except Exception:  # noqa: BLE001 - the wall renders without live state
+        return {}
+    tiles: dict = {}
+    for tile in report.tiles:
+        tiles[tile.id] = tile
+        if tile.claim:
+            tiles.setdefault(tile.claim, tile)
+    return tiles
+
+
+async def _known_run(run_id: str) -> runs.Run:
+    try:
+        return await run_in_threadpool(runs.load, config.RUNS_DIR, run_id)
+    except runs.RunNotFound:
+        raise HTTPException(status_code=404, detail=f"no run {run_id}")
+
+
+@app.get("/runs", response_class=HTMLResponse)
+async def runs_index() -> HTMLResponse:
+    """Every run database the console can see, newest first."""
+    refs = await run_in_threadpool(runs.discover, config.RUNS_DIR)
+    return HTMLResponse(render_runs.index(refs))
+
+
+@app.get("/runs/{run_id}", response_class=HTMLResponse)
+async def run_view(run_id: str, at: int = 0, instance: str = "", live: int = 1) -> Response:
+    """One run: the rack, or one instance's tracks when `instance` is given."""
+    run = await _known_run(run_id)
+    cut = _run_cut(run, at)
+    tiles = await _live_tiles() if live else {}
+    return HTMLResponse(render_runs.run_page(run, cut, instance=instance, tiles=tiles))
+
+
+@app.get("/runs/{run_id}/wall", response_class=HTMLResponse)
+async def run_wall_fragment(run_id: str, at: int = 0) -> Response:
+    """The wall alone, for the live refresh. No cluster call on this path."""
+    run = await _known_run(run_id)
+    return HTMLResponse(render_runs.wall(run, _run_cut(run, at)))
+
+
+@app.get("/api/runs")
+async def api_runs() -> JSONResponse:
+    """The runs index as JSON, for a caller that is not a browser."""
+    refs = await run_in_threadpool(runs.discover, config.RUNS_DIR)
+    return JSONResponse([ref.to_dict() for ref in refs])
+
+
+@app.get("/api/runs/{run_id}")
+async def api_run(run_id: str, at: int = 0) -> JSONResponse:
+    """One run's counts, buckets and slots as JSON."""
+    run = await _known_run(run_id)
+    return JSONResponse(runs.to_json(run, _run_cut(run, at)))
 
 
 @app.get("/healthz")
