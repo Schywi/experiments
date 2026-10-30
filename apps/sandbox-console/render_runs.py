@@ -182,6 +182,34 @@ def _hold_of(session: runs.Session, cut_ns: int) -> int:
     return max(0, min(cut_ns, end if end > start else cut_ns) - start)
 
 
+def _frame(group: runs.InstanceGroup, live_tile, large: bool = False) -> str:
+    """The browser of one instance, photographed.
+
+    A frame comes from `/sandboxes/{id}/shot`, the same route the Pool tile uses:
+    a browser-level `Page.captureScreenshot` of the page its renderer is showing.
+    It is one frame per Chromium, which is what a Chromium can show — the other
+    contexts are not composited, and photographing them separately needs the
+    per-target attach that note 16 §3.1 lists as slice 3.
+    """
+    css = "frame frame-large" if large else "frame"
+    if live_tile is None:
+        return (
+            f'<figure class="{css}"><div class="placeholder">'
+            "no live instance to photograph: this run's browser is gone</div></figure>"
+        )
+    if not live_tile.ready:
+        return (
+            f'<figure class="{css}"><div class="placeholder">'
+            f"{render.esc(live_tile.id)} is {render.esc(live_tile.phase)}, not ready</div></figure>"
+        )
+    url = f"/sandboxes/{render.esc(live_tile.id)}/shot?v={live_tile.screenshot_ts}"
+    return (
+        f'<figure class="{css}">'
+        f'<img src="{url}" alt="live frame of {render.esc(live_tile.id)}" loading="lazy"/>'
+        "</figure>"
+    )
+
+
 def group_card(
     group: runs.InstanceGroup,
     cut_ns: int,
@@ -216,6 +244,7 @@ def group_card(
         f'<article class="group {state}" id="group-{render.esc(group.name)}">'
         f'<header><a class="group-name mono" href="{href}" title="open this instance\'s tracks">'
         f"{render.esc(group.name)}</a>{live}{browser}{exact}</header>"
+        f"{_frame(group, live_tile)}"
         f'<div class="slots">{_slot_strip(group, cut_ns, contexts)}</div>'
         f'<footer class="group-foot">'
         f'<span class="mono">{holding}/{capacity}</span><span class="muted">lit</span>'
@@ -390,9 +419,10 @@ def wall(
     )
 
 
-def tracks_page(run: runs.Run, cut_ns: int, instance: str) -> str:
+def tracks_page(run: runs.Run, cut_ns: int, instance: str, tiles: dict | None = None) -> str:
     """The focus view for one instance, plus every other instance as a link."""
     window = run.window
+    tiles = tiles or {}
     found = None
     for bucket in run.buckets:
         for group in bucket.instances:
@@ -413,7 +443,7 @@ def tracks_page(run: runs.Run, cut_ns: int, instance: str) -> str:
             "<span>It may have been cleaned up, or it belonged to a different run.</span></div>"
         )
     else:
-        body = tracks(found, cut_ns, window)
+        body = _frame(found, tiles.get(found.name), large=True) + tracks(found, cut_ns, window)
     return (
         f'<div id="wall-inner" data-cut="{cut_ns}">{stats(run, cut_ns)}'
         f"{scrub(run, cut_ns, instance)}"
@@ -460,6 +490,17 @@ RUN_CSS = """
 .slots .slot.free { opacity: .45; }
 .group-foot { display: flex; align-items: center; gap: var(--space-2); font-size: 11px;
   color: hsl(var(--muted-foreground)); }
+/* The browser of one instance. A Chromium composites one page, so this is one
+   frame per instance and the contexts are counted beside it, not photographed. */
+.frame { position: relative; margin: var(--space-2) 0; aspect-ratio: 16 / 9;
+  background: hsl(240 10% 2%); border: 1px solid hsl(var(--border)); border-radius: 6px;
+  overflow: hidden; }
+.frame img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.frame .placeholder { position: absolute; inset: 0; display: flex; align-items: center;
+  justify-content: center; padding: 6px; text-align: center; font-size: 10px;
+  color: hsl(var(--muted-foreground)); }
+.frame-large { max-width: 760px; margin: var(--space-3) auto; }
+.frame-large .placeholder { font-size: var(--text-xs); }
 .tracks { display: flex; flex-direction: column; gap: 6px; }
 .track { display: grid; grid-template-columns: 64px 1fr 78px; gap: var(--space-2); align-items: center; }
 .track-name { font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -634,7 +675,7 @@ def run_page(
 ) -> str:
     """One run, either the rack or one instance's tracks."""
     body = (
-        tracks_page(run, cut_ns, instance)
+        tracks_page(run, cut_ns, instance, tiles)
         if instance
         else wall(run, cut_ns, tiles, contexts)
     )

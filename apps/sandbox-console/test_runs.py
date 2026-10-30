@@ -695,3 +695,44 @@ def test_the_runs_directory_resolves_from_the_checkout_and_from_the_image():
     assert str(config._default_runs_dir(__file__)).endswith("docs/session-lab-runs")
     # Where the container puts the module, with no checkout above it.
     assert config._default_runs_dir("/app/config.py") == Path("/runs")
+
+
+# --------------------------------------------------------------------------- #
+# Frames: the browser of each instance, photographed
+# --------------------------------------------------------------------------- #
+def test_a_group_card_photographs_its_live_browser(runs_dir):
+    tile = fixtures_tile()
+    make_db(runs_dir, "shot", [session(1, instance=tile.id)], ended=BASE + 40_000_000_000)
+    run = runs.load(runs_dir, "shot")
+    markup = render_runs.wall(run, run.default_cut(), {tile.id: tile})
+    # The same route the Pool tile uses: one browser-level screenshot.
+    assert f'src="/sandboxes/{tile.id}/shot?v={tile.screenshot_ts}"' in markup
+    assert f'alt="live frame of {tile.id}"' in markup
+
+
+def test_a_group_with_no_live_instance_says_why_it_has_no_frame(runs_dir):
+    make_db(runs_dir, "noshot", [session(1)], ended=BASE + 40_000_000_000)
+    run = runs.load(runs_dir, "noshot")
+    markup = render_runs.wall(run, run.default_cut(), {})
+    assert "no live instance to photograph" in markup
+    assert "/shot?v=" not in markup
+
+
+def test_a_group_that_is_not_ready_says_so_instead_of_showing_a_blank(runs_dir):
+    tile = fixtures_tile().replace(phase="pending")
+    make_db(runs_dir, "pending", [session(1, instance=tile.id)], ended=BASE + 40_000_000_000)
+    run = runs.load(runs_dir, "pending")
+    markup = render_runs.wall(run, run.default_cut(), {tile.id: tile})
+    assert "is pending, not ready" in markup
+    assert "/shot?v=" not in markup
+
+
+def test_the_tracks_page_shows_the_big_frame(runs_dir):
+    tile = fixtures_tile()
+    make_db(runs_dir, "big", [session(1, instance=tile.id)], ended=BASE + 40_000_000_000)
+    run = runs.load(runs_dir, "big")
+    markup = render_runs.run_page(
+        run, run.default_cut(), instance=tile.id, tiles={tile.id: tile}
+    )
+    assert "frame frame-large" in markup
+    assert f'src="/sandboxes/{tile.id}/shot' in markup
