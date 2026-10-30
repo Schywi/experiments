@@ -42,6 +42,15 @@ type Instance struct {
 	Suspended bool
 }
 
+// BrowserSession is one session's own browsing context inside a Chromium. It
+// separates cookies, storage and cache from every other session in the same
+// browser, and shares that browser's process: a crash takes all of them.
+type BrowserSession struct {
+	InstanceID string
+	ContextID  string
+	TargetID   string
+}
+
 // PoolState is what the warm pool reports right now.
 type PoolState struct {
 	Name     string
@@ -104,6 +113,11 @@ type Adapter interface {
 	// WaitReady blocks until the instance reports Ready and fills Node, PodUID
 	// and PodIP from what the platform reports.
 	WaitReady(ctx context.Context, instance *Instance) error
+	// OpenSession creates an isolated browsing context for one session inside a
+	// shared Chromium, and returns the identifiers needed to close it.
+	OpenSession(ctx context.Context, instance *Instance, url string) (BrowserSession, error)
+	// CloseSession closes the session's page and disposes its context.
+	CloseSession(ctx context.Context, instance *Instance, session BrowserSession) error
 	// Reset returns the browser to a blank page so the next session starts
 	// from a known state.
 	Reset(ctx context.Context, instance *Instance) error
@@ -146,6 +160,11 @@ type Fake struct {
 	FailAcquire bool
 	FailReset   bool
 	FailRelease bool
+
+	// OpenSessionErr and CloseSessionErr fail the browser-context calls.
+	OpenSessionErr  error
+	CloseSessionErr error
+	sessionSeq      int
 
 	// ReadyAfter is how many acquisitions adopt a warm instance; later ones
 	// cold-start. Zero means every acquisition is warm.
@@ -211,6 +230,32 @@ func (f *Fake) WaitReady(ctx context.Context, instance *Instance) error {
 	instance.Node = "fake"
 	instance.PodUID = instance.ID + "-pod"
 	instance.PodIP = "127.0.0.1"
+	return nil
+}
+
+// OpenSession implements Adapter.
+func (f *Fake) OpenSession(ctx context.Context, instance *Instance, url string) (BrowserSession, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.OpenSessionErr != nil {
+		return BrowserSession{}, f.OpenSessionErr
+	}
+	f.sessionSeq++
+	instance.Sessions++
+	return BrowserSession{
+		InstanceID: instance.ID,
+		ContextID:  fmt.Sprintf("ctx-%d", f.sessionSeq),
+		TargetID:   fmt.Sprintf("target-%d", f.sessionSeq),
+	}, nil
+}
+
+// CloseSession implements Adapter.
+func (f *Fake) CloseSession(ctx context.Context, instance *Instance, session BrowserSession) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.CloseSessionErr != nil {
+		return f.CloseSessionErr
+	}
 	return nil
 }
 

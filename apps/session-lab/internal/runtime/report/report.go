@@ -51,8 +51,11 @@ type Report struct {
 	Next           string                `json:"next,omitempty"`
 	InvariantNotes []string              `json:"invariant_notes,omitempty"`
 
-	ArrivalWindowS  float64            `json:"arrival_window_s"`
-	Admission       Latency            `json:"admission_ms"`
+	ArrivalWindowS float64 `json:"arrival_window_s"`
+	Admission      Latency `json:"admission_ms"`
+	// SharedSessions counts sessions that ran in a browser shared with others,
+	// so their CPU figure is a division of the pod's usage.
+	SharedSessions  int                `json:"shared_sessions"`
 	PeakWaiting     int                `json:"peak_waiting_sessions"`
 	PeakInFlight    int                `json:"peak_in_flight_sessions"`
 	CleanupFailures int                `json:"cleanup_failures"`
@@ -207,6 +210,9 @@ func Build(cfg model.RunConfig, plan schedule.Plan, st *store.Store) (*Report, e
 		}
 		if session.GoneNS > 0 && session.DeleteCalledNS > 0 {
 			releaseMS = append(releaseMS, ms(session.GoneNS-session.DeleteCalledNS))
+		}
+		if session.CPUShared {
+			rep.SharedSessions++
 		}
 		if session.AdmissionWaitNS > 0 {
 			admissionMS = append(admissionMS, ms(session.AdmissionWaitNS))
@@ -457,6 +463,10 @@ func (r *Report) Print(w io.Writer) {
 		r.Instances.Total, r.Instances.MaxSessions, r.Instances.MeanSessions)
 	if r.Instances.RebuildP50Ms > 0 {
 		fmt.Fprintf(w, ", rebuild p50 %.0fms", r.Instances.RebuildP50Ms)
+	}
+	if r.Config.ContextsPerBrowser > 1 {
+		fmt.Fprintf(w, "browsers: %d sessions per Chromium; %d of %d sessions shared a browser, so their CPU is the pod's usage divided by the contexts in flight\n",
+			r.Config.ContextsPerBrowser, r.SharedSessions, r.Stored)
 	}
 	if r.CleanupFailures > 0 {
 		fmt.Fprintf(w, "cleanup: %d instance(s) could not be deleted\n", r.CleanupFailures)

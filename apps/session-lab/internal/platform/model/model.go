@@ -119,18 +119,24 @@ type Session struct {
 	// AdmissionWaitNS is the time this session waited for its class to be
 	// admitted, before any cluster call.
 	AdmissionWaitNS int64 `json:"admission_wait_ns,omitempty"`
-	ClaimCreatedNS  int64 `json:"claim_created_ns,omitempty"`
-	ReadyNS         int64 `json:"ready_ns,omitempty"`
-	HoldStartNS     int64 `json:"hold_start_ns,omitempty"`
-	HoldEndNS       int64 `json:"hold_end_ns,omitempty"`
-	DeleteCalledNS  int64 `json:"delete_called_ns,omitempty"`
-	GoneNS          int64 `json:"gone_ns,omitempty"`
-	ResetStartNS    int64 `json:"reset_start_ns,omitempty"`
-	ResetEndNS      int64 `json:"reset_end_ns,omitempty"`
-	RebuildStartNS  int64 `json:"rebuild_start_ns,omitempty"`
-	RebuildEndNS    int64 `json:"rebuild_end_ns,omitempty"`
-	ResumeStartNS   int64 `json:"resume_start_ns,omitempty"`
-	ResumeEndNS     int64 `json:"resume_end_ns,omitempty"`
+	// CPUShared is set when this session shared its Chromium with others, so
+	// the per-session CPU figure is the pod's usage divided by the contexts in
+	// flight rather than an observation of this session alone.
+	CPUShared bool `json:"cpu_shared,omitempty"`
+	// BrowserContext and Target identify the context this session ran in.
+	BrowserContext string `json:"browser_context,omitempty"`
+	ClaimCreatedNS int64  `json:"claim_created_ns,omitempty"`
+	ReadyNS        int64  `json:"ready_ns,omitempty"`
+	HoldStartNS    int64  `json:"hold_start_ns,omitempty"`
+	HoldEndNS      int64  `json:"hold_end_ns,omitempty"`
+	DeleteCalledNS int64  `json:"delete_called_ns,omitempty"`
+	GoneNS         int64  `json:"gone_ns,omitempty"`
+	ResetStartNS   int64  `json:"reset_start_ns,omitempty"`
+	ResetEndNS     int64  `json:"reset_end_ns,omitempty"`
+	RebuildStartNS int64  `json:"rebuild_start_ns,omitempty"`
+	RebuildEndNS   int64  `json:"rebuild_end_ns,omitempty"`
+	ResumeStartNS  int64  `json:"resume_start_ns,omitempty"`
+	ResumeEndNS    int64  `json:"resume_end_ns,omitempty"`
 
 	LaunchType string `json:"launch_type,omitempty"`
 	Node       string `json:"node,omitempty"`
@@ -204,19 +210,25 @@ type Bucket struct {
 // file or the command line"; the runner never substitutes a remembered number
 // for any of them.
 type RunConfig struct {
-	RunID           string        `json:"run_id"`
-	Sessions        int           `json:"sessions"`
-	Rate            float64       `json:"rate"`
-	FixedArrival    bool          `json:"fixed_arrival"`
-	Mix             []Bucket      `json:"mix,omitempty"`
-	Policy          Policy        `json:"policy"`
-	Class           Class         `json:"class,omitempty"`
-	Namespace       string        `json:"namespace"`
-	Pool            string        `json:"pool"`
-	Template        string        `json:"template"`
-	PoolReplicas    *int32        `json:"pool_replicas,omitempty"`
-	Workers         int           `json:"workers"`
-	Admit           int           `json:"admit,omitempty"`
+	RunID        string   `json:"run_id"`
+	Sessions     int      `json:"sessions"`
+	Rate         float64  `json:"rate"`
+	FixedArrival bool     `json:"fixed_arrival"`
+	Mix          []Bucket `json:"mix,omitempty"`
+	Policy       Policy   `json:"policy"`
+	Class        Class    `json:"class,omitempty"`
+	Namespace    string   `json:"namespace"`
+	Pool         string   `json:"pool"`
+	Template     string   `json:"template"`
+	PoolReplicas *int32   `json:"pool_replicas,omitempty"`
+	Workers      int      `json:"workers"`
+	Admit        int      `json:"admit,omitempty"`
+	// ContextsPerBrowser is how many sessions one Chromium serves. One keeps
+	// the historical one-claim-per-session shape; more turns each session into
+	// an isolated browser context inside a shared browser.
+	ContextsPerBrowser int `json:"contexts_per_browser,omitempty"`
+	// TargetURL is the page a session starts on, inside its own context.
+	TargetURL       string        `json:"target_url,omitempty"`
 	OverloadFactor  float64       `json:"overload_factor,omitempty"`
 	SessionDeadline time.Duration `json:"session_deadline_ns,omitempty"`
 	// Window is the intended arrival window when the operator asked for one.

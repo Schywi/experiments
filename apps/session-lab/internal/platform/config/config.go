@@ -42,6 +42,8 @@ func Parse(args []string) (*Config, error) {
 	fs.StringVar(&mix, "mix", "", "length buckets as label:count pairs, e.g. 30s:25,2m:25,5m:25,10m:25")
 	fs.DurationVar(&hold, "hold", 0, "hold duration for a single-bucket run")
 	fs.StringVar(&class, "class", "normal", "workload class: normal, batch or bulk")
+	fs.IntVar(&cfg.RunConfig.ContextsPerBrowser, "contexts-per-browser", 1, "sessions one Chromium serves; 1 keeps one claim per session")
+	fs.StringVar(&cfg.RunConfig.TargetURL, "target-url", "", "page each session opens inside its context (default about:blank)")
 	fs.IntVar(&cfg.RunConfig.Admit, "admit", 0, "concurrent admissions; 0 is unbounded")
 	fs.DurationVar(&duration, "duration", 0, "arrival window; session counts are derived from --rate and the mix proportions")
 	fs.StringVar((*string)(&cfg.Policy), "policy", string(model.PolicyReuse), "instance policy: reuse|destroy|suspend")
@@ -230,6 +232,17 @@ func (c *Config) validate() error {
 	}
 	if c.SampleSeconds <= 0 {
 		return fmt.Errorf("--sample-seconds must be positive")
+	}
+	if c.ContextsPerBrowser < 1 {
+		return fmt.Errorf("--contexts-per-browser must be one or more, got %d", c.ContextsPerBrowser)
+	}
+	// A browser context has no pod of its own, so there is nothing to suspend.
+	if c.ContextsPerBrowser > 1 && c.Policy == model.PolicySuspend {
+		return fmt.Errorf("--policy suspend parks a pod, which a shared browser does not have; use reuse or destroy with --contexts-per-browser")
+	}
+	if c.ContextsPerBrowser == 1 && c.TargetURL != "" {
+		// Harmless, but the target only takes effect with browser contexts.
+		c.TargetURL = ""
 	}
 	if c.PoolReplicas != nil && *c.PoolReplicas < 0 {
 		return fmt.Errorf("--pool-replicas must be zero or more")

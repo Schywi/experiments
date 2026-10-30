@@ -10,6 +10,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -56,6 +57,9 @@ CREATE TABLE IF NOT EXISTS sessions (
     resume_start_ns INTEGER NOT NULL DEFAULT 0,
     resume_end_ns  INTEGER NOT NULL DEFAULT 0,
     launch_type    TEXT NOT NULL DEFAULT '',
+    browser_context TEXT NOT NULL DEFAULT '',
+    cpu_shared     INTEGER NOT NULL DEFAULT 0,
+    admission_wait_ns INTEGER NOT NULL DEFAULT 0,
     node           TEXT NOT NULL DEFAULT '',
     pod_uid        TEXT NOT NULL DEFAULT '',
     cpu_usec       INTEGER NOT NULL DEFAULT 0,
@@ -132,6 +136,19 @@ func Open(path string) (*Store, error) {
 		db.Close()
 		return nil, fmt.Errorf("schema %s: %w", path, err)
 	}
+	// Databases written before shared browsers existed get the new columns
+	// added; a duplicate-column error means the column is already there.
+	for _, column := range []string{
+		"browser_context TEXT NOT NULL DEFAULT ''",
+		"cpu_shared INTEGER NOT NULL DEFAULT 0",
+		"admission_wait_ns INTEGER NOT NULL DEFAULT 0",
+	} {
+		if _, err := db.Exec("ALTER TABLE sessions ADD COLUMN " + column); err != nil &&
+			!strings.Contains(err.Error(), "duplicate column name") {
+			db.Close()
+			return nil, fmt.Errorf("migrate %s (%s): %w", path, column, err)
+		}
+	}
 	return &Store{db: db}, nil
 }
 
@@ -150,6 +167,14 @@ func (s *Store) StartRun(cfg model.RunConfig, at time.Time) error {
 		 ON CONFLICT(run_id) DO UPDATE SET config = excluded.config, started_ns = excluded.started_ns`,
 		cfg.RunID, string(payload), at.UnixNano())
 	return err
+}
+
+// boolInt stores a boolean as SQLite's 0/1.
+func boolInt(value bool) int64 {
+	if value {
+		return 1
+	}
+	return 0
 }
 
 // RunRuntime is what only the runner knows while it runs: how long arrivals
@@ -282,6 +307,7 @@ func (s *Store) UpdateSession(session model.Session) error {
 		    delete_called_ns = ?, gone_ns = ?, reset_start_ns = ?, reset_end_ns = ?,
 		    rebuild_start_ns = ?, rebuild_end_ns = ?, resume_start_ns = ?, resume_end_ns = ?,
 		    launch_type = ?, node = ?, pod_uid = ?,
+		    browser_context = ?, cpu_shared = ?, admission_wait_ns = ?,
 		    cpu_usec = ?, cpu_pressure_some_usec = ?, cpu_pressure_full_usec = ?,
 		    throttled_usec = ?, nr_throttled = ?, mem_peak_bytes = ?,
 		    mem_working_set_peak_bytes = ?, mem_inactive_file_bytes = ?, shmem_peak_bytes = ?,
@@ -293,6 +319,7 @@ func (s *Store) UpdateSession(session model.Session) error {
 		session.DeleteCalledNS, session.GoneNS, session.ResetStartNS, session.ResetEndNS,
 		session.RebuildStartNS, session.RebuildEndNS, session.ResumeStartNS, session.ResumeEndNS,
 		session.LaunchType, session.Node, session.PodUID,
+		session.BrowserContext, boolInt(session.CPUShared), session.AdmissionWaitNS,
 		session.CPUUsec, session.CPUPressureSomeUsec, session.CPUPressureFullUsec,
 		session.ThrottledUsec, session.NRThrottled, session.MemPeakBytes,
 		session.MemWorkingSetPeak, session.MemInactiveFile, session.ShmemPeak,
@@ -362,7 +389,7 @@ func (s *Store) Sessions() ([]model.Session, error) {
 		        arrival_ns, claim_created_ns, ready_ns, hold_start_ns, hold_end_ns,
 		        delete_called_ns, gone_ns, reset_start_ns, reset_end_ns, rebuild_start_ns, rebuild_end_ns,
 		        resume_start_ns, resume_end_ns,
-		        launch_type, node, pod_uid, cpu_usec, cpu_pressure_some_usec, cpu_pressure_full_usec,
+		        launch_type, node, pod_uid, browser_context, cpu_shared, admission_wait_ns, cpu_usec, cpu_pressure_some_usec, cpu_pressure_full_usec,
 		        throttled_usec, nr_throttled, mem_peak_bytes, mem_working_set_peak_bytes,
 		        mem_inactive_file_bytes, shmem_peak_bytes, anon_peak_bytes,
 		        workingset_refault_anon, workingset_refault_file, swap_peak_bytes, oom_kill,
@@ -377,12 +404,13 @@ func (s *Store) Sessions() ([]model.Session, error) {
 	for rows.Next() {
 		var s model.Session
 		var policy, outcome string
+		var cpuShared int64
 		if err := rows.Scan(
 			&s.ID, &s.Bucket, &policy, &s.Namespace, &s.Template, &s.Pool, &s.Instance, &outcome, &s.Error,
 			&s.ArrivalNS, &s.ClaimCreatedNS, &s.ReadyNS, &s.HoldStartNS, &s.HoldEndNS,
 			&s.DeleteCalledNS, &s.GoneNS, &s.ResetStartNS, &s.ResetEndNS, &s.RebuildStartNS, &s.RebuildEndNS,
 			&s.ResumeStartNS, &s.ResumeEndNS,
-			&s.LaunchType, &s.Node, &s.PodUID, &s.CPUUsec, &s.CPUPressureSomeUsec, &s.CPUPressureFullUsec,
+			&s.LaunchType, &s.Node, &s.PodUID, &s.BrowserContext, &cpuShared, &s.AdmissionWaitNS, &s.CPUUsec, &s.CPUPressureSomeUsec, &s.CPUPressureFullUsec,
 			&s.ThrottledUsec, &s.NRThrottled, &s.MemPeakBytes, &s.MemWorkingSetPeak,
 			&s.MemInactiveFile, &s.ShmemPeak, &s.AnonPeak,
 			&s.RefaultAnon, &s.RefaultFile, &s.SwapPeakBytes, &s.OOMKill,
@@ -391,6 +419,7 @@ func (s *Store) Sessions() ([]model.Session, error) {
 		}
 		s.Policy = model.Policy(policy)
 		s.Outcome = model.Outcome(outcome)
+		s.CPUShared = cpuShared != 0
 		out = append(out, s)
 	}
 	return out, rows.Err()

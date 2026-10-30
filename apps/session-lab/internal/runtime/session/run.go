@@ -24,6 +24,7 @@ import (
 	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/platform/store"
 	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/runtime/admission"
 	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/runtime/schedule"
+	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/runtime/slots"
 )
 
 // Reading is a resource sample, defined with the reader that produces it.
@@ -106,6 +107,11 @@ type Runner struct {
 	gate  *admission.Gate
 	queue *admission.Queue
 
+	// spool hands out browsing slots when one Chromium serves several
+	// sessions. Nil means the historical one-session-per-instance path.
+	spool       *slots.Pool
+	instanceSeq int
+
 	// Runtime facts: the arrival window actually achieved, and the deepest
 	// queue and cleanup failures seen.
 	firstArrivalNS int64
@@ -128,7 +134,7 @@ func New(cfg model.RunConfig, opts Options) *Runner {
 		logger = log.Default()
 	}
 	gate := admission.NewGate(cfg.Admit)
-	return &Runner{
+	runner := &Runner{
 		cfg: cfg, ad: opts.Adapter, st: opts.Store, smp: opts.Sampler, plan: opts.Plan,
 		gate: gate, queue: admission.NewQueue(),
 		log: logger, now: now, all: map[string]*sandbox.Instance{}, counts: map[model.Outcome]int{},
@@ -136,6 +142,10 @@ func New(cfg model.RunConfig, opts Options) *Runner {
 		rec:        opts.Recorder,
 		autoscaler: opts.AutoscalerInfo,
 	}
+	if cfg.ContextsPerBrowser > 1 {
+		runner.spool = slots.New(cfg.ContextsPerBrowser, runner.acquireInstance)
+	}
+	return runner
 }
 
 // Run performs the whole experiment and returns when every session is settled.
@@ -379,6 +389,11 @@ func (r *Runner) session(ctx context.Context, planned schedule.Planned) {
 		Namespace: r.cfg.Namespace, Template: r.cfg.Template, Pool: r.cfg.Pool,
 		Outcome: model.OutcomePending, ArrivalNS: r.start.Add(planned.Offset).UnixNano(),
 	}
+	if r.spool != nil {
+		r.sessionShared(ctx, planned)
+		return
+	}
+
 	sampleCtx, stopSampler := context.WithCancel(ctx)
 	defer stopSampler()
 

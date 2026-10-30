@@ -255,36 +255,107 @@ func claimState(claim *unstructured.Unstructured) (bool, string) {
 	return false, ""
 }
 
-// Reset navigates the sandbox's browser to a blank page through the in-pod
-// bridge, which is the same transport the console uses for CDP commands.
-func (k *Kube) Reset(ctx context.Context, instance *sandbox.Instance) error {
+// cdpCommand sends one DevTools command through the in-pod bridge and returns
+// its result. The bridge holds the WebSocket Chromium will not expose on the pod
+// IP, so this is the transport for every browser-side operation.
+func (k *Kube) cdpCommand(ctx context.Context, instance *sandbox.Instance, method string, params map[string]any) (map[string]any, error) {
 	if instance.PodIP == "" {
-		return fmt.Errorf("reset %s: no pod IP", instance.ID)
+		return nil, fmt.Errorf("%s: no pod IP", instance.ID)
 	}
-	body, err := json.Marshal(map[string]any{
-		"method": "Page.navigate",
-		"params": map[string]any{"url": "about:blank"},
-	})
+	if params == nil {
+		params = map[string]any{}
+	}
+	body, err := json.Marshal(map[string]any{"method": method, "params": params})
 	if err != nil {
-		return err
+		return nil, err
 	}
 	url := fmt.Sprintf("http://%s:9222%s", instance.PodIP, cdpPath)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
-		return err
+		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Sandbox-Port", "9222")
 	resp, err := k.client.Do(req)
 	if err != nil {
-		return fmt.Errorf("reset %s: %w", instance.ID, err)
+		return nil, fmt.Errorf("%s: %s: %w", instance.ID, method, err)
 	}
 	defer resp.Body.Close()
-	payload, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+	payload, _ := io.ReadAll(io.LimitReader(resp.Body, 8192))
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("reset %s: %s: %s", instance.ID, resp.Status, string(payload))
+		return nil, fmt.Errorf("%s: %s: %s: %s", instance.ID, method, resp.Status, string(payload))
+	}
+	var decoded struct {
+		Result map[string]any `json:"result"`
+	}
+	if err := json.Unmarshal(payload, &decoded); err != nil {
+		return nil, fmt.Errorf("%s: %s: decode: %w", instance.ID, method, err)
+	}
+	return decoded.Result, nil
+}
+
+// Reset navigates the sandbox's browser to a blank page through the in-pod
+// bridge, which is the same transport the console uses for CDP commands.
+func (k *Kube) Reset(ctx context.Context, instance *sandbox.Instance) error {
+	if _, err := k.cdpCommand(ctx, instance, "Page.navigate", map[string]any{"url": "about:blank"}); err != nil {
+		return fmt.Errorf("reset %s", err)
 	}
 	instance.Resets++
+	return nil
+}
+
+// OpenSession gives one session its own browser context inside a shared
+// Chromium, and returns the identifiers needed to close it again. A context
+// separates cookies, storage and cache, so two sessions in one browser do not
+// see each other's state. It shares the browser process: a browser crash takes
+// every session in it.
+func (k *Kube) OpenSession(ctx context.Context, instance *sandbox.Instance, url string) (sandbox.BrowserSession, error) {
+	created, err := k.cdpCommand(ctx, instance, "Target.createBrowserContext", map[string]any{})
+	if err != nil {
+		return sandbox.BrowserSession{}, fmt.Errorf("open session on %s: %w", instance.ID, err)
+	}
+	contextID, _ := created["browserContextId"].(string)
+	if contextID == "" {
+		return sandbox.BrowserSession{}, fmt.Errorf("open session on %s: no browserContextId in %v", instance.ID, created)
+	}
+	if url == "" {
+		url = "about:blank"
+	}
+	target, err := k.cdpCommand(ctx, instance, "Target.createTarget", map[string]any{
+		"url": url, "browserContextId": contextID,
+	})
+	if err != nil {
+		// Leave nothing behind: the context outlives a failed page creation.
+		_, _ = k.cdpCommand(ctx, instance, "Target.disposeBrowserContext", map[string]any{"browserContextId": contextID})
+		return sandbox.BrowserSession{}, fmt.Errorf("open session on %s: %w", instance.ID, err)
+	}
+	session := sandbox.BrowserSession{
+		InstanceID: instance.ID,
+		ContextID:  contextID,
+		TargetID:   fmt.Sprint(target["targetId"]),
+	}
+	instance.Sessions++
+	return session, nil
+}
+
+// CloseSession closes the page and disposes the context, so the next session on
+// this browser starts with no residue.
+func (k *Kube) CloseSession(ctx context.Context, instance *sandbox.Instance, session sandbox.BrowserSession) error {
+	if session.TargetID != "" {
+		if _, err := k.cdpCommand(ctx, instance, "Target.closeTarget", map[string]any{"targetId": session.TargetID}); err != nil {
+			// A page that is already gone is not a failure to clean up after.
+			if !strings.Contains(err.Error(), "No target with given id") {
+				return fmt.Errorf("close session on %s: %w", instance.ID, err)
+			}
+		}
+	}
+	if _, err := k.cdpCommand(ctx, instance, "Target.disposeBrowserContext", map[string]any{
+		"browserContextId": session.ContextID,
+	}); err != nil {
+		if !strings.Contains(err.Error(), "Failed to find context") {
+			return fmt.Errorf("close session on %s: %w", instance.ID, err)
+		}
+	}
 	return nil
 }
 

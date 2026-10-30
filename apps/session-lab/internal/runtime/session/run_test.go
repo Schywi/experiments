@@ -199,3 +199,67 @@ func TestTemplateLimitsAreRecorded(t *testing.T) {
 		}
 	}
 }
+
+func TestOneBrowserServesSeveralSessions(t *testing.T) {
+	// Eight contexts per browser: sixteen overlapping sessions must fit in two
+	// instances, not sixteen. This is the whole point of the shared path.
+	cfg := config(model.PolicyReuse, 16, 30*time.Millisecond)
+	cfg.ContextsPerBrowser = 8
+	cfg.Rate = 2000
+	fake := sandbox.NewFake()
+	st, plan := execute(t, cfg, fake)
+
+	rows, err := st.Sessions()
+	if err != nil {
+		t.Fatalf("sessions: %v", err)
+	}
+	if len(rows) != len(plan.Sessions) {
+		t.Fatalf("planned %d, stored %d", len(plan.Sessions), len(rows))
+	}
+	instances := map[string]bool{}
+	contexts := map[string]bool{}
+	for _, row := range rows {
+		if row.Outcome != model.OutcomeSuccess {
+			t.Fatalf("session %d ended %q: %s", row.ID, row.Outcome, row.Error)
+		}
+		instances[row.Instance] = true
+		if row.BrowserContext == "" {
+			t.Fatalf("session %d has no browser context", row.ID)
+		}
+		contexts[row.BrowserContext] = true
+	}
+	if len(contexts) != len(rows) {
+		t.Fatalf("%d sessions shared %d contexts; each session needs its own", len(rows), len(contexts))
+	}
+	if len(instances) > 3 {
+		t.Fatalf("%d sessions used %d instances, want at most 3 with eight slots each",
+			len(rows), len(instances))
+	}
+	if len(instances) < 2 {
+		t.Fatalf("16 sessions fit in %d instance(s); slots were not respected", len(instances))
+	}
+}
+
+func TestSharedInstanceCpuIsDividedByContexts(t *testing.T) {
+	// With several sessions in one browser, the pod counter belongs to all of
+	// them: the per-session figure is the pod's usage divided by the contexts
+	// that were in flight, and the row says so.
+	cfg := config(model.PolicyReuse, 4, 40*time.Millisecond)
+	cfg.ContextsPerBrowser = 4
+	cfg.Rate = 2000
+	st, _ := execute(t, cfg, sandbox.NewFake())
+
+	rows, err := st.Sessions()
+	if err != nil {
+		t.Fatalf("sessions: %v", err)
+	}
+	shared := 0
+	for _, row := range rows {
+		if row.CPUShared {
+			shared++
+		}
+	}
+	if shared == 0 {
+		t.Fatalf("no session reported a shared browser, so the CPU figure is presented as exclusive")
+	}
+}
