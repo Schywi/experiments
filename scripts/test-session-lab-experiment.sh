@@ -48,6 +48,57 @@ check "duration without a length is refused" 2 bash "${script}" --duration 600s 
 contains "the refusal names the flags" "--mix" bash "${script}" --duration 600s --rate 0.1
 check "nothing to run is refused" 2 bash "${script}" --policy reuse
 
+echo "== --riot url list"
+# Source the script: it only runs a experiment when executed, so its helpers can be
+# tested without touching the cluster.
+# shellcheck disable=SC1090
+source "${script}"
+
+urls="$(riot_urls 4)"
+first="${urls%%,*}"
+rest="${urls#*,}"
+if [[ "${first}" != *"leagueoflegends.com/pt-br/champions/"* ]]; then
+  printf 'FAIL first session is not the heavy champion page: %s\n' "${first}" >&2
+  failures=$((failures + 1))
+else
+  printf 'ok   first session is the heavy champion page\n'
+fi
+splash_count="$(grep -o 'ddragon' <<<"${rest}" | wc -l)"
+if [[ "${splash_count}" != "3" ]]; then
+  printf 'FAIL expected 3 splash urls for 4 sessions, got %s\n' "${splash_count}" >&2
+  failures=$((failures + 1))
+else
+  printf 'ok   the other sessions get splashes\n'
+fi
+distinct="$(tr ',' '\n' <<<"${urls}" | sort -u | wc -l)"
+if [[ "${distinct}" != "4" ]]; then
+  printf 'FAIL urls repeat: %s distinct of 4\n' "${distinct}" >&2
+  failures=$((failures + 1))
+else
+  printf 'ok   every session gets a distinct page\n'
+fi
+if ! grep -q '_0\.jpg' <<<"${rest}"; then
+  printf 'FAIL splashes carry no skin number\n' >&2
+  failures=$((failures + 1))
+else
+  printf 'ok   splashes carry a skin number\n'
+fi
+# After a full pass over the champion list, the skin number steps.
+last="$(riot_urls 20 | tr ',' '\n' | tail -1)"
+if [[ "${last}" != *_1.jpg ]]; then
+  printf 'FAIL session 20 is %s, want skin 1 once the champion list wraps\n' "${last}" >&2
+  failures=$((failures + 1))
+else
+  printf 'ok   the skin number steps after a full champion pass\n'
+fi
+count="$(session_count --duration 60s --rate 0.5)"
+if [[ "${count}" != "30" ]]; then
+  printf 'FAIL session_count for 60s at 0.5/s = %s, want 30\n' "${count}" >&2
+  failures=$((failures + 1))
+else
+  printf 'ok   session_count handles a fractional rate\n'
+fi
+
 echo "== summary"
 if (( failures > 0 )); then
   printf '%d check(s) failed\n' "${failures}" >&2

@@ -157,7 +157,7 @@ func (r *Runner) sessionShared(ctx context.Context, planned schedule.Planned) {
 		logging.F("slot", lease.Index), logging.F("sharing", sharing),
 		logging.F("warm", session.LaunchType))
 
-	isolatedState, err := r.openIsolated(ctx, lease.Instance)
+	isolatedState, err := r.openIsolated(ctx, lease.Instance, session.ID)
 	if err != nil {
 		r.lg.Error("isolate failed", logging.F("session", session.ID),
 			logging.F("instance", lease.Instance.ID), logging.F("transport", r.cfg.CDPTransport),

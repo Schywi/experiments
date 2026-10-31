@@ -36,6 +36,7 @@ func Parse(args []string) (*Config, error) {
 	var hold time.Duration
 	var duration time.Duration
 	var class string
+	var targetURL string
 	var deadline time.Duration
 
 	fs.IntVar(&cfg.Sessions, "sessions", 0, "number of sessions to generate (required unless --mix carries counts)")
@@ -47,7 +48,7 @@ func Parse(args []string) (*Config, error) {
 	fs.IntVar(&cfg.RunConfig.ContextsPerBrowser, "contexts-per-browser", 1, "sessions one Chromium serves; 1 keeps one claim per session")
 	fs.StringVar(&cfg.RunConfig.CDPTransport, "cdp-transport", "http", "http (in-pod bridge) or ws (direct DevTools connection)")
 	fs.IntVar(&cfg.RunConfig.CDPPort, "cdp-ws-port", 9224, "port the forwarding sidecar publishes on the pod IP")
-	fs.StringVar(&cfg.RunConfig.TargetURL, "target-url", "", "page each session opens inside its context (default about:blank)")
+	fs.StringVar(&targetURL, "target-url", "", "page each session opens inside its context; a comma-separated list cycles one URL per session (default about:blank)")
 	fs.IntVar(&cfg.RunConfig.Admit, "admit", 0, "concurrent admissions; 0 is unbounded")
 	fs.DurationVar(&duration, "duration", 0, "arrival window; session counts are derived from --rate and the mix proportions")
 	fs.StringVar((*string)(&cfg.Policy), "policy", string(model.PolicyReuse), "instance policy: reuse|destroy|suspend")
@@ -97,6 +98,15 @@ func Parse(args []string) (*Config, error) {
 	} else if err := cfg.buildMix(mix, hold); err != nil {
 		return nil, err
 	}
+	for _, url := range strings.Split(targetURL, ",") {
+		if trimmed := strings.TrimSpace(url); trimmed != "" {
+			cfg.TargetURLs = append(cfg.TargetURLs, trimmed)
+		}
+	}
+	if len(cfg.TargetURLs) > 0 {
+		cfg.TargetURL = cfg.TargetURLs[0]
+	}
+
 	parsed, err := model.ParseClass(class)
 	if err != nil {
 		return nil, err
@@ -251,8 +261,9 @@ func (c *Config) validate() error {
 		return fmt.Errorf("--policy suspend parks a pod, which a shared browser does not have; use reuse or destroy with --contexts-per-browser")
 	}
 	if c.ContextsPerBrowser == 1 && c.TargetURL != "" {
-		// Harmless, but the target only takes effect with browser contexts.
+		// Harmless, but a target only takes effect with browser contexts.
 		c.TargetURL = ""
+		c.TargetURLs = nil
 	}
 	if c.PoolReplicas != nil && *c.PoolReplicas < 0 {
 		return fmt.Errorf("--pool-replicas must be zero or more")

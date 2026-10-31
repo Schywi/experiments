@@ -27,6 +27,12 @@
 # direct DevTools connection per browser); pass --contexts-per-browser N to change
 # the packing. Without --layer, the runner's defaults apply: one context, http.
 #
+# --riot loads real pages instead of about:blank: one heavy champion page plus a
+# distinct splash per session. Testing only, and it needs --layer session (targets
+# only exist where there are browser contexts).
+#
+#   scripts/session-lab-experiment.sh --layer session --duration 60s --rate 0.5 --hold 30s --riot
+#
 # Refuses to start if the control plane is unhealthy, because a run that begins
 # during an outage records a control-plane failure as if it were a capacity
 # result. Prints the run's report path and then checks for leaked claims.
@@ -38,6 +44,53 @@ out="${SESSION_LAB_OUT:-${repo}/docs/session-lab-runs}"
 kubeconfig="${KUBECONFIG:-${HOME}/.kube/config}"
 namespace="${SESSION_LAB_NAMESPACE:-sandbox-demo}"
 pool="${SESSION_LAB_POOL:-browser-pool}"
+
+# --riot: testing only. The first session loads a real champion page (it renders a
+# full SPA, so it is the loud neighbour), and every other session loads its own
+# splash image so a screenshot shows a different champion per session. The runner
+# knows none of this; it only takes a list of URLs and cycles them.
+riot_champions=(Yasuo LeBlanc Ahri Darius Jinx Lux Ezreal Katarina Garen Thresh
+                LeeSin Vayne Zed Akali Riven Sona Teemo Ashe)
+riot_heavy="https://www.leagueoflegends.com/pt-br/champions/leblanc/"
+riot_splash_prefix="https://ddragon.leagueoflegends.com/cdn/img/champion/splash"
+
+# riot_urls <count> prints a comma-separated list: one heavy page, then a splash
+# per session with the champion rotating and the skin number stepping after each
+# full pass, so two sessions never show the same image.
+riot_urls() {
+  local count="$1" urls=() index champion skin
+  urls+=("${riot_heavy}")
+  for ((index = 1; index < count; index++)); do
+    champion="${riot_champions[$(((index - 1) % ${#riot_champions[@]}))]}"
+    skin=$(((index - 1) / ${#riot_champions[@]}))
+    urls+=("${riot_splash_prefix}/${champion}_${skin}.jpg")
+  done
+  (IFS=,; printf '%s' "${urls[*]}")
+}
+
+# session_count works out how many sessions a run will offer, from the same two
+# spellings the runner accepts.
+session_count() {
+  local sessions="" duration="" rate=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --sessions|--sessions=*)
+        [[ "$1" == --sessions=* ]] && sessions="${1#*=}" || { sessions="$2"; shift; } ;;
+      --duration|--duration=*)
+        [[ "$1" == --duration=* ]] && duration="${1#*=}" || { duration="$2"; shift; } ;;
+      --rate|--rate=*)
+        [[ "$1" == --rate=* ]] && rate="${1#*=}" || { rate="$2"; shift; } ;;
+    esac
+    shift
+  done
+  if [[ -n "${sessions}" ]]; then printf '%s' "${sessions}"; return; fi
+  local seconds="${duration%s}"
+  case "${duration}" in
+    *m) seconds=$(( ${duration%m} * 60 )) ;;
+    *h) seconds=$(( ${duration%h} * 3600 )) ;;
+  esac
+  awk -v seconds="${seconds}" -v rate="${rate}" 'BEGIN { printf "%d", seconds * rate }' 
+}
 
 usage() {
   sed -n '2,20p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
@@ -68,9 +121,6 @@ validate_args() {
   fi
 }
 
-[[ "${1:-}" == "-h" || "${1:-}" == "--help" ]] && usage 0
-[[ $# -ge 1 ]] || usage 2
-validate_args "$@"
 
 
 cleanup() {
@@ -93,76 +143,104 @@ cleanup() {
       exit "${exit_code}"
     }
 
-    trap cleanup EXIT INT TERM
-
 
 # Every line the script prints is timestamped and mirrored into the run's
 # directory, so a failed experiment leaves a log next to its report.
-log_file="${SESSION_LAB_LOG:-${out}/session-lab-script-$(date -u +%Y%m%dT%H%M%SZ).log}"
-mkdir -p "${out}"
-exec > >(tee -a "${log_file}") 2>&1
+# The whole flow lives in main() so this file can be sourced by the script's own
+# tests without launching a run.
+main() {
+  trap cleanup EXIT
 
-say()  { printf '%s script: %s\n' "$(date -u +%H:%M:%S)" "$*"; }
-warn() { printf '%s script: WARN %s\n' "$(date -u +%H:%M:%S)" "$*" >&2; }
-fail() { printf '%s script: ERROR %s\n' "$(date -u +%H:%M:%S)" "$*" >&2; }
+  [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]] && usage 0
+  [[ $# -ge 1 ]] || usage 2
+  validate_args "$@"
 
-say "log file: ${log_file}"
-say "args: $*"
+  log_file="${SESSION_LAB_LOG:-${out}/session-lab-script-$(date -u +%Y%m%dT%H%M%SZ).log}"
+  mkdir -p "${out}"
+  exec > >(tee -a "${log_file}") 2>&1
 
-echo "==> control plane"
-kubectl get --raw=/readyz >/dev/null || { echo "apiserver not ready; refusing to run" >&2; exit 1; }
-kubectl get node --no-headers | grep -q ' Ready ' || { echo "no Ready node; refusing to run" >&2; exit 1; }
-say "control plane ok, node Ready, pool replicas=$(kubectl -n "${namespace}" get sandboxwarmpool "${pool}" -o jsonpath='{.spec.replicas}' 2>/dev/null || echo '?')"
+  say()  { printf '%s script: %s\n' "$(date -u +%H:%M:%S)" "$*"; }
+  warn() { printf '%s script: WARN %s\n' "$(date -u +%H:%M:%S)" "$*" >&2; }
+  fail() { printf '%s script: ERROR %s\n' "$(date -u +%H:%M:%S)" "$*" >&2; }
 
-echo "==> build"
-( cd "${app}" && go build -o "${out}/session-lab" ./cmd/session-lab )
-mkdir -p "${out}"
+  say "log file: ${log_file}"
+  say "args: $*"
 
-# --layer is this script's word, not the runner's: it decides how many sessions
-# one Chromium carries.
-layer_args=()
-for ((i = 1; i <= $#; i++)); do
-  if [[ "${!i}" == "--layer" ]]; then
-    j=$((i + 1))
-    case "${!j}" in
-      infra)   layer_args+=(--contexts-per-browser 1) ;;
-      session) layer_args+=(--contexts-per-browser "${SESSION_LAB_CONTEXTS:-8}" --cdp-transport ws) ;;
-      *) echo "--layer must be infra or session, got '${!j}'" >&2; exit 2 ;;
-    esac
+  echo "==> control plane"
+  kubectl get --raw=/readyz >/dev/null || { echo "apiserver not ready; refusing to run" >&2; exit 1; }
+  kubectl get node --no-headers | grep -q ' Ready ' || { echo "no Ready node; refusing to run" >&2; exit 1; }
+  say "control plane ok, node Ready, pool replicas=$(kubectl -n "${namespace}" get sandboxwarmpool "${pool}" -o jsonpath='{.spec.replicas}' 2>/dev/null || echo '?')"
+
+  echo "==> build"
+  ( cd "${app}" && go build -o "${out}/session-lab" ./cmd/session-lab )
+  mkdir -p "${out}"
+
+  # --layer is this script's word, not the runner's: it decides how many sessions
+  # one Chromium carries.
+  layer_args=()
+  for ((i = 1; i <= $#; i++)); do
+    if [[ "${!i}" == "--layer" ]]; then
+      j=$((i + 1))
+      case "${!j}" in
+        infra)   layer_args+=(--contexts-per-browser 1) ;;
+        session) layer_args+=(--contexts-per-browser "${SESSION_LAB_CONTEXTS:-8}" --cdp-transport ws) ;;
+        *) echo "--layer must be infra or session, got '${!j}'" >&2; exit 2 ;;
+      esac
+    fi
+  done
+  filtered=()
+  skip=0
+  for arg in "$@"; do
+    if ((skip)); then skip=0; continue; fi
+    if [[ "${arg}" == "--layer" ]]; then skip=1; continue; fi
+    filtered+=("${arg}")
+  done
+
+  riot=0
+  for arg in "${filtered[@]}"; do
+    [[ "${arg}" == "--riot" ]] && riot=1
+  done
+  if (( riot )); then
+    filtered=("${filtered[@]/--riot/}")
+    count="$(session_count "${filtered[@]}")"
+    if [[ -z "${count}" || "${count}" -lt 1 ]]; then
+      echo "--riot needs a session count: pass --sessions, or --duration with --rate" >&2
+      exit 2
+    fi
+    urls="$(riot_urls "${count}")"
+    say "riot: 1 heavy page (${riot_heavy}) and $((count - 1)) splashes, one champion each"
+    layer_args+=(--target-url "${urls}")
   fi
-done
-filtered=()
-skip=0
-for arg in "$@"; do
-  if ((skip)); then skip=0; continue; fi
-  if [[ "${arg}" == "--layer" ]]; then skip=1; continue; fi
-  filtered+=("${arg}")
-done
 
-if [[ -n "${SESSION_LAB_LOG_LEVEL:-}" ]]; then
-  layer_args+=(--log-level "${SESSION_LAB_LOG_LEVEL}")
+  if [[ -n "${SESSION_LAB_LOG_LEVEL:-}" ]]; then
+    layer_args+=(--log-level "${SESSION_LAB_LOG_LEVEL}")
+  fi
+
+  if ((${#layer_args[@]})); then
+    echo "==> layer: ${layer_args[*]}"
+  else
+    echo "==> layer: runner default (one session per pod)"
+  fi
+
+  echo "==> run"
+  set -x
+  "${out}/session-lab" "${filtered[@]}" "${layer_args[@]}" --namespace "${namespace}" --pool "${pool}" \
+      --kubeconfig "${kubeconfig}" --out "${out}"
+  set +x
+
+  say "run finished; checking for leaked resources"
+  left=$(kubectl -n "${namespace}" get sandboxclaims -o name 2>/dev/null | grep -c 'lab-' || true)
+  if [[ "${left}" != "0" ]]; then
+    warn "leaked lab- claims: ${left} (delete: kubectl -n ${namespace} delete sandboxclaims -l app.kubernetes.io/managed-by=session-lab)"
+  else
+    say "leaked lab- claims: 0"
+  fi
+  say "pool replicas now: $(kubectl -n "${namespace}" get sandboxwarmpool "${pool}" -o jsonpath='{.spec.replicas}')"
+  say "paused annotation: \"$(kubectl -n "${namespace}" get sandboxwarmpool "${pool}" -o jsonpath='{.metadata.annotations.session-lab\.io/autoscaler}')\""
+  say "newest report: $(ls -t "${out}"/*.json | head -1)"
+  [[ "${left}" == "0" ]] || { echo "    WARNING: leaked claims; delete with: kubectl -n ${namespace} delete sandboxclaims -l app.kubernetes.io/managed-by=session-lab" >&2; exit 3; }
+}
+
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  main "$@"
 fi
-
-if ((${#layer_args[@]})); then
-  echo "==> layer: ${layer_args[*]}"
-else
-  echo "==> layer: runner default (one session per pod)"
-fi
-
-echo "==> run"
-set -x
-"${out}/session-lab" "${filtered[@]}" "${layer_args[@]}" --namespace "${namespace}" --pool "${pool}" \
-    --kubeconfig "${kubeconfig}" --out "${out}"
-set +x
-
-say "run finished; checking for leaked resources"
-left=$(kubectl -n "${namespace}" get sandboxclaims -o name 2>/dev/null | grep -c 'lab-' || true)
-if [[ "${left}" != "0" ]]; then
-  warn "leaked lab- claims: ${left} (delete: kubectl -n ${namespace} delete sandboxclaims -l app.kubernetes.io/managed-by=session-lab)"
-else
-  say "leaked lab- claims: 0"
-fi
-say "pool replicas now: $(kubectl -n "${namespace}" get sandboxwarmpool "${pool}" -o jsonpath='{.spec.replicas}')"
-say "paused annotation: \"$(kubectl -n "${namespace}" get sandboxwarmpool "${pool}" -o jsonpath='{.metadata.annotations.session-lab\.io/autoscaler}')\""
-say "newest report: $(ls -t "${out}"/*.json | head -1)"
-[[ "${left}" == "0" ]] || { echo "    WARNING: leaked claims; delete with: kubectl -n ${namespace} delete sandboxclaims -l app.kubernetes.io/managed-by=session-lab" >&2; exit 3; }

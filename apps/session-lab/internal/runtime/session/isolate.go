@@ -26,10 +26,11 @@ type isolated struct {
 }
 
 // openIsolated gives a session its own state on an instance, using whichever
-// transport the run was configured with.
-func (r *Runner) openIsolated(ctx context.Context, instance *sandbox.Instance) (isolated, error) {
+// transport the run was configured with. sessionID selects the page when the run
+// named a list of them.
+func (r *Runner) openIsolated(ctx context.Context, instance *sandbox.Instance, sessionID int64) (isolated, error) {
 	if r.cfg.CDPTransport != "ws" {
-		session, err := r.ad.OpenSession(ctx, instance, r.cfg.TargetURL)
+		session, err := r.ad.OpenSession(ctx, instance, r.targetURL(sessionID))
 		if err != nil {
 			return isolated{}, err
 		}
@@ -44,7 +45,7 @@ func (r *Runner) openIsolated(ctx context.Context, instance *sandbox.Instance) (
 	if err != nil {
 		return isolated{}, err
 	}
-	targetID, err := conn.NewTarget(ctx, r.targetURL(), contextID)
+	targetID, err := conn.NewTarget(ctx, r.targetURL(sessionID), contextID)
 	if err != nil {
 		// Leave nothing behind: a context outlives a failed page creation.
 		_ = conn.DisposeContext(ctx, contextID)
@@ -182,9 +183,16 @@ func (r *Runner) cdpPort() int {
 	return 9224
 }
 
-// targetURL is the page a session opens. A shared browser starts every session on
-// a blank page unless the operator named one.
-func (r *Runner) targetURL() string {
+// targetURL is the page a session opens. With a list, session i takes entry i and
+// cycles; the runner has no opinion about what those pages are.
+func (r *Runner) targetURL(sessionID int64) string {
+	if len(r.cfg.TargetURLs) > 0 {
+		index := int(sessionID-1) % len(r.cfg.TargetURLs)
+		if index < 0 {
+			index += len(r.cfg.TargetURLs)
+		}
+		return r.cfg.TargetURLs[index]
+	}
 	if strings.TrimSpace(r.cfg.TargetURL) == "" {
 		return "about:blank"
 	}

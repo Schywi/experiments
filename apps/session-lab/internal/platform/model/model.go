@@ -236,6 +236,9 @@ type RunConfig struct {
 	ContextsPerBrowser int `json:"contexts_per_browser,omitempty"`
 	// TargetURL is the page a session starts on, inside its own context.
 	TargetURL string `json:"target_url,omitempty"`
+	// TargetURLs is the same page per session as a list: session i takes entry i,
+	// cycling. The runner does not care why a caller wants different pages.
+	TargetURLs []string `json:"target_urls,omitempty"`
 	// CDPTransport is "http" for the in-pod bridge or "ws" for a direct
 	// DevTools connection; CDPPort is the port the sidecar publishes.
 	CDPTransport    string        `json:"cdp_transport,omitempty"`
