@@ -27,11 +27,8 @@
 # direct DevTools connection per browser); pass --contexts-per-browser N to change
 # the packing. Without --layer, the runner's defaults apply: one context, http.
 #
-# --riot loads real pages instead of about:blank: one heavy champion page plus a
-# distinct splash per session. Testing only, and it needs --layer session (targets
-# only exist where there are browser contexts).
-#
-#   scripts/session-lab-experiment.sh --layer session --duration 60s --rate 0.5 --hold 30s --riot
+# Real pages instead of about:blank are a Go integration test, not a script flag:
+#   SESSION_LAB_INTEGRATION=1 go test -tags integration ./test/ -run TestRiotLive -v
 #
 # Refuses to start if the control plane is unhealthy, because a run that begins
 # during an outage records a control-plane failure as if it were a capacity
@@ -45,70 +42,8 @@ kubeconfig="${KUBECONFIG:-${HOME}/.kube/config}"
 namespace="${SESSION_LAB_NAMESPACE:-sandbox-demo}"
 pool="${SESSION_LAB_POOL:-browser-pool}"
 
-# --riot: testing only. The first session loads a real champion page (it renders a
-# full SPA, so it is the loud neighbour), and every other session loads its own
-# splash image so a screenshot shows a different champion per session. The runner
-# knows none of this; it only takes a list of URLs and cycles them.
-riot_champions=(Yasuo LeBlanc Ahri Darius Jinx Lux Ezreal Katarina Garen Thresh
-                LeeSin Vayne Zed Akali Riven Sona Teemo Ashe)
-riot_heavy="https://www.leagueoflegends.com/pt-br/champions/leblanc/"
-riot_splash_prefix="https://ddragon.leagueoflegends.com/cdn/img/champion/splash"
-
-# riot_urls <count> prints a comma-separated list: one heavy page, then a splash
-# per session with the champion rotating and the skin number stepping after each
-# full pass, so two sessions never show the same image.
-riot_urls() {
-  local count="$1" urls=() index champion skin
-  urls+=("${riot_heavy}")
-  for ((index = 1; index < count; index++)); do
-    champion="${riot_champions[$(((index - 1) % ${#riot_champions[@]}))]}"
-    skin=$(((index - 1) / ${#riot_champions[@]}))
-    urls+=("${riot_splash_prefix}/${champion}_${skin}.jpg")
-  done
-  (IFS=,; printf '%s' "${urls[*]}")
-}
-
-# session_count works out how many sessions a run will offer, from the same two
-# spellings the runner accepts.
-session_count() {
-  local sessions="" duration="" rate=""
-  while [[ $# -gt 0 ]]; do
-    case "$1" in
-      --sessions|--sessions=*)
-        [[ "$1" == --sessions=* ]] && sessions="${1#*=}" || { sessions="$2"; shift; } ;;
-      --duration|--duration=*)
-        [[ "$1" == --duration=* ]] && duration="${1#*=}" || { duration="$2"; shift; } ;;
-      --rate|--rate=*)
-        [[ "$1" == --rate=* ]] && rate="${1#*=}" || { rate="$2"; shift; } ;;
-    esac
-    shift
-  done
-  if [[ -n "${sessions}" ]]; then printf '%s' "${sessions}"; return; fi
-  local seconds="${duration%s}"
-  case "${duration}" in
-    *m) seconds=$(( ${duration%m} * 60 )) ;;
-    *h) seconds=$(( ${duration%h} * 3600 )) ;;
-  esac
-  awk -v seconds="${seconds}" -v rate="${rate}" 'BEGIN { printf "%d", seconds * rate }' 
-}
-
-# strip_flag <flag> <args...> prints the arguments without <flag>.
-# Bash's ${arr[@]/x/} replaces the element with an empty string instead of removing
-# it, and one empty argument stops Go's flag parser: everything after it is ignored,
-# including --out. That is why the runner once refused to start with "give --out".
-strip_flag() {
-  local flag="$1"
-  shift
-  local kept=() arg
-  for arg in "$@"; do
-    [[ "${arg}" == "${flag}" ]] && continue
-    kept+=("${arg}")
-  done
-  (( ${#kept[@]} )) && printf '%s\n' "${kept[@]}"
-}
-
-# redact_args prints an argument list with any long value collapsed. A riot run
-# passes hundreds of URLs in one --target-url; printing them buried everything else.
+# redact_args prints an argument list with any long value collapsed, so one big
+# --target-url cannot bury the rest of the line.
 redact_args() {
   local out=() arg
   for arg in "$@"; do
@@ -224,26 +159,6 @@ main() {
     if [[ "${arg}" == "--layer" ]]; then skip=1; continue; fi
     filtered+=("${arg}")
   done
-
-  riot=0
-  for arg in "${filtered[@]}"; do
-    [[ "${arg}" == "--riot" ]] && riot=1
-  done
-  if (( riot )) && [[ " $(redact_args "${layer_args[@]}")" != *"--cdp-transport ws"* ]]; then
-    echo "--riot needs --layer session: without browser contexts nothing opens a page" >&2
-    exit 2
-  fi
-  if (( riot )); then
-    filtered=("${filtered[@]/--riot/}")
-    count="$(session_count "${filtered[@]}")"
-    if [[ -z "${count}" || "${count}" -lt 1 ]]; then
-      echo "--riot needs a session count: pass --sessions, or --duration with --rate" >&2
-      exit 2
-    fi
-    urls="$(riot_urls "${count}")"
-    say "riot: 1 heavy page (${riot_heavy}) and $((count - 1)) splashes, one champion each"
-    layer_args+=(--target-url "${urls}")
-  fi
 
   if [[ -n "${SESSION_LAB_LOG_LEVEL:-}" ]]; then
     layer_args+=(--log-level "${SESSION_LAB_LOG_LEVEL}")
