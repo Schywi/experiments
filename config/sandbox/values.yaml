@@ -71,7 +71,17 @@ sandboxes:
     image: 127.0.0.1:5000/browser-sandbox:local
     pullPolicy: Always
     targetUrl: https://example.com/
+    # The port Chromium's DevTools answers on inside the pod, and the port the
+    # bridge publishes for HTTP callers.
+    cdpUpstreamPort: 9223
     cdpPort: 9222
+    # Sidecar that republishes loopback:9223 on the pod IP over raw TCP, so a
+    # CDP client outside the pod can hold a WebSocket to Chromium directly.
+    # Built from apps/cdp-forward and pushed by config/registry/kaniko-build.sh.
+    forwarder:
+      image: 127.0.0.1:5000/session-lab-cdp-forward:local
+      pullPolicy: Always
+      port: 9224
     resources:
       requests:
         cpu: 100m

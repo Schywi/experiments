@@ -50,6 +50,34 @@ spec:
           volumeMounts:
             - name: shm
               mountPath: /dev/shm
+        # Chromium binds DevTools to 127.0.0.1 whatever --remote-debugging-address
+        # says, so a client outside the pod cannot reach it. This sidecar shares
+        # the pod's network namespace and splices bytes from the pod IP to that
+        # loopback port: an HTTP request, a WebSocket upgrade and a raw CDP frame
+        # all arrive unchanged.
+        - name: cdp-forward
+          image: {{ .Values.sandboxes.template.forwarder.image }}
+          imagePullPolicy: {{ .Values.sandboxes.template.forwarder.pullPolicy }}
+          ports:
+            - name: cdp-ws
+              containerPort: {{ .Values.sandboxes.template.forwarder.port }}
+          env:
+            - name: CDP_FORWARD_LISTEN
+              value: ":{{ .Values.sandboxes.template.forwarder.port }}"
+            - name: CDP_FORWARD_UPSTREAM
+              value: "127.0.0.1:{{ .Values.sandboxes.template.cdpUpstreamPort }}"
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              # No CPU limit, same policy as the browser container (note 12).
+              memory: 64Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
       volumes:
         - name: shm
           emptyDir:
