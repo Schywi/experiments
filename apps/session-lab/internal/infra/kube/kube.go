@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -158,6 +159,31 @@ func (k *Kube) Acquire(ctx context.Context, namespace, pool, name string, class 
 	}, nil
 }
 
+// ResolvePod fills PodUID and Node as soon as the sandbox is bound, without waiting
+// for the browser to be Ready. The gap between those two events is where the CPU
+// spike lives, and nothing could measure it before.
+func (k *Kube) ResolvePod(ctx context.Context, instance *sandbox.Instance) bool {
+	if instance.PodUID != "" {
+		return true
+	}
+	if instance.Sandbox == "" {
+		claim, err := k.dyn.Resource(gvrClaims).Namespace(instance.Namespace).
+			Get(ctx, instance.Claim, metav1.GetOptions{})
+		if err != nil {
+			return false
+		}
+		instance.Sandbox = claimedSandbox(claim)
+	}
+	if instance.Sandbox == "" {
+		return false
+	}
+	filled, err := k.fillFromSandbox(ctx, instance)
+	if err != nil {
+		return false
+	}
+	return filled && instance.PodUID != ""
+}
+
 // WaitReady blocks until the claim reports Ready, then fills in the pod
 // identity. It watches that one claim: a Get every second per waiting session is
 // what made a 150-session run hammer the API server. Adoption is visible in the
@@ -237,6 +263,16 @@ func claimFailed(claim *unstructured.Unstructured) bool {
 }
 
 // claimState reports whether the claim is Ready and which sandbox it holds.
+// claimedSandbox is the sandbox a claim adopted, whether or not it is Ready yet.
+// claimState only reports it once Ready, which is too late to sample a boot.
+func claimedSandbox(claim *unstructured.Unstructured) string {
+	sandbox, _, _ := unstructured.NestedString(claim.Object, "status", "sandbox", "name")
+	if sandbox == "" {
+		sandbox, _, _ = unstructured.NestedString(claim.Object, "status", "sandbox", "metadata", "name")
+	}
+	return sandbox
+}
+
 func claimState(claim *unstructured.Unstructured) (bool, string) {
 	conditions, _, _ := unstructured.NestedSlice(claim.Object, "status", "conditions")
 	for _, raw := range conditions {
@@ -462,6 +498,11 @@ func (k *Kube) Pool(ctx context.Context, namespace, name string) (sandbox.PoolSt
 	if value, ok, _ := unstructured.NestedString(pool.Object, "metadata", "annotations", sandbox.AnnotationAutoscalerPaused); ok && value == "disabled" {
 		state.Paused = true
 	}
+	if value, ok, _ := unstructured.NestedString(pool.Object, "metadata", "annotations", sandbox.AnnotationBootConcurrency); ok {
+		if parsed, err := strconv.Atoi(value); err == nil && parsed > 0 {
+			state.BootConcurrency = int32(parsed)
+		}
+	}
 	return state, nil
 }
 
@@ -571,6 +612,22 @@ func (k *Kube) SetPoolPaused(ctx context.Context, namespace, name string, paused
 		return fmt.Errorf("set pool %s/%s paused=%v: %w", namespace, name, paused, err)
 	}
 	return nil
+}
+
+// SetBootConcurrency publishes the runner's boot limit on the pool.
+func (k *Kube) SetBootConcurrency(ctx context.Context, namespace, name string, limit int) error {
+	value := ""
+	if limit > 0 {
+		value = strconv.Itoa(limit)
+	}
+	patch, err := json.Marshal(map[string]any{
+		"metadata": map[string]any{"annotations": map[string]any{sandbox.AnnotationBootConcurrency: value}},
+	})
+	if err != nil {
+		return err
+	}
+	_, err = k.dyn.Resource(gvrPools).Namespace(namespace).Patch(ctx, name, types.MergePatchType, patch, metav1.PatchOptions{})
+	return err
 }
 
 // Node reads the allocatable budget of the node that holds the sandboxes.

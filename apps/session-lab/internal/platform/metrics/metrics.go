@@ -43,6 +43,7 @@ type Recorder struct {
 	nodeCPU  prometheus.Gauge
 	booting  prometheus.Gauge
 	bootSecs prometheus.Histogram
+	bootCPU  prometheus.Histogram
 
 	// The gauges are also tracked here so decrementing them cannot go negative
 	// when a session settles without ever having arrived through this recorder.
@@ -80,6 +81,11 @@ func New() *Recorder {
 		booting: prometheus.NewGauge(prometheus.GaugeOpts{
 			Name: "session_lab_instances_booting",
 			Help: "Instances currently starting: overlapping startup spikes are what saturates a node whose average CPU looks idle.",
+		}),
+		bootCPU: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Name:    "session_lab_instance_booting_cores",
+			Help:    "Peak CPU cores one instance used while starting. Overlapping spikes of this size are what saturate a node whose average CPU reads idle.",
+			Buckets: []float64{0.05, 0.1, 0.2, 0.3, 0.5, 1, 1.5, 2, 3, 4},
 		}),
 		bootSecs: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Name:    "session_lab_boot_seconds",
@@ -247,6 +253,13 @@ func (r *Recorder) NodeCPU(usedCores float64, totalCores int) { r.nodeCPU.Set(us
 
 // BootStarted records an instance that is starting now.
 func (r *Recorder) BootStarted() { r.booting.Inc() }
+
+// BootCPU records the peak cores one instance used while starting.
+func (r *Recorder) BootCPU(cores float64) {
+	if cores > 0 {
+		r.bootCPU.Observe(cores)
+	}
+}
 
 // BootFinished records a completed startup.
 func (r *Recorder) BootFinished(seconds float64) {

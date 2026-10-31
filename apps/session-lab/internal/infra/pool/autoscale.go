@@ -104,6 +104,12 @@ func (s *Scaler) Step(ctx context.Context) (Settings, error) {
 		perBrowser = 1
 	}
 	target := int32((int(slots) + perBrowser - 1) / perBrowser)
+	// A pool that grows faster than the runner can boot just piles up pending pods,
+	// and pending pods hold requests that starve the scheduler. When the runner
+	// publishes a boot limit, growth per reconcile is bounded by it.
+	if limit := pool.BootConcurrency; limit > 0 && target > pool.Desired+int32(limit) {
+		target = pool.Desired + int32(limit)
+	}
 	if target < s.cfg.Min {
 		target = s.cfg.Min
 	}

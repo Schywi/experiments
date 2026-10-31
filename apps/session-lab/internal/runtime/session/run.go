@@ -58,6 +58,8 @@ type Recorder interface {
 	// BootStarted and BootFinished bracket one instance startup, so overlapping
 	// spikes are visible as a gauge rather than inferred from latency.
 	BootStarted()
+	// BootCPU records the peak CPU cores one instance used while starting.
+	BootCPU(cores float64)
 	BootFinished(seconds float64)
 	Pool(desired, ready int32)
 	Template(cpuLimitCores, memLimitBytes float64)
@@ -329,6 +331,9 @@ func (r *Runner) preflight(ctx context.Context) error {
 	// last would win.
 	if err := r.ad.SetPoolPaused(ctx, r.cfg.Namespace, r.cfg.Pool, true); err != nil {
 		r.log.Printf("preflight: cannot claim the pool: %v", err)
+	}
+	if err := r.ad.SetBootConcurrency(ctx, r.cfg.Namespace, r.cfg.Pool, r.cfg.BootConcurrency); err != nil {
+		r.log.Printf("preflight: cannot publish boot concurrency: %v", err)
 	}
 	original := pool.Desired
 	r.originalReplicas = &original

@@ -22,6 +22,7 @@ import (
 
 	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/infra/kube"
 	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/infra/measure"
+	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/platform/logging"
 	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/platform/model"
 	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/platform/store"
 	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/runtime/report"
@@ -90,6 +91,9 @@ func TestRiotLive(t *testing.T) {
 	runner := session.New(cfg, session.Options{
 		Adapter: adapter, Store: st, Plan: plan, Sampler: sampler,
 		Log: log.New(os.Stderr, "riot: ", log.LstdFlags),
+		// Info level so the boot lines (peak cores per instance) are visible: that
+		// number is what the CPU study is about.
+		Logger: logging.New(os.Stderr, logging.LevelInfo),
 	})
 	// Bound the run by what it is meant to take, not by a constant: a ten-minute
 	// window plus one hold plus teardown.

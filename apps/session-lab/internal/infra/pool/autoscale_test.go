@@ -160,3 +160,29 @@ func TestBulkDemandDoesNotGrowThePool(t *testing.T) {
 		t.Fatalf("target = %d, want ready+pending = 3 with the 25 bulk claims ignored", settings.Target)
 	}
 }
+
+func TestPoolDoesNotGrowFasterThanBrowsersCanBoot(t *testing.T) {
+	// Pending pods hold requests that starve the scheduler. When the runner says it
+	// can boot two at a time, the pool grows by two per reconcile at most.
+	fake := sandbox.NewFake()
+	if err := fake.SetPoolReplicas(context.Background(), "sandbox-demo", "browser-pool", 2); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	if err := fake.SetBootConcurrency(context.Background(), "sandbox-demo", "browser-pool", 2); err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+	fake.Stats = sandbox.ClaimStats{Ready: 2, Pending: 40}
+
+	scaler := New(Config{
+		Namespace: "sandbox-demo", Pool: "browser-pool", Min: 2, Max: 40,
+		Interval: time.Second, Log: log.New(io.Discard, "", 0),
+	}, fake, nil, nil)
+	settings, err := scaler.Step(context.Background())
+	if err != nil {
+		t.Fatalf("step: %v", err)
+	}
+	if settings.Target != 4 {
+		t.Fatalf("target = %d, want 4 (current 2 + boot limit 2) even with 42 sessions queued",
+			settings.Target)
+	}
+}

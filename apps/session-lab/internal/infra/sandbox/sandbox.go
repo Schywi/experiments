@@ -40,6 +40,9 @@ type Instance struct {
 	Resets    int64
 	Sessions  int64
 	Suspended bool
+	// BootCPUPeakCores is the highest CPU this instance used while starting, read
+	// from its cgroup between sandbox binding and browser Ready.
+	BootCPUPeakCores float64
 }
 
 // BrowserSession is one session's own browsing context inside a Chromium. It
@@ -60,10 +63,16 @@ type PoolState struct {
 	// Paused is true when the pool carries the annotation that tells an
 	// autoscaler to leave its replica count alone.
 	Paused bool
+	// BootConcurrency is the runner's published boot limit, so the pool cannot
+	// grow faster than browsers can start.
+	BootConcurrency int32
 }
 
 // AnnotationAutoscalerPaused marks a pool whose replica count an experiment owns.
 const AnnotationAutoscalerPaused = "session-lab.io/autoscaler"
+
+// AnnotationBootConcurrency publishes the runner's boot limit on the pool.
+const AnnotationBootConcurrency = "session-lab.io/boot-concurrency"
 
 // NodeCapacity is the node's allocatable budget, read from the API.
 type NodeCapacity struct {
@@ -110,6 +119,9 @@ type Adapter interface {
 	// Acquire creates a claim against the pool and returns as soon as the
 	// object exists; WaitReady does the waiting.
 	Acquire(ctx context.Context, namespace, pool, name string, class model.Class) (*Instance, error)
+	// ResolvePod fills PodUID and Node as soon as the sandbox is bound, which is
+	// before the browser is Ready. That is the window where the CPU spike lives.
+	ResolvePod(ctx context.Context, instance *Instance) bool
 	// WaitReady blocks until the instance reports Ready and fills Node, PodUID
 	// and PodIP from what the platform reports.
 	WaitReady(ctx context.Context, instance *Instance) error
@@ -135,6 +147,9 @@ type Adapter interface {
 	// SetPoolReplicas writes the pool's replica count.
 	// SetPoolPaused puts the pool under experiment ownership or releases it.
 	SetPoolPaused(ctx context.Context, namespace, name string, paused bool) error
+	// SetBootConcurrency publishes the boot limit so the autoscaler cannot grow
+	// the pool faster than browsers can start. Zero clears it.
+	SetBootConcurrency(ctx context.Context, namespace, name string, limit int) error
 	SetPoolReplicas(ctx context.Context, namespace, name string, replicas int32) error
 	// Template reads the requests and limits the sandbox template applies.
 	Template(ctx context.Context, namespace, name string) (TemplateLimits, error)
@@ -232,6 +247,16 @@ func (f *Fake) Acquire(ctx context.Context, namespace, pool, name string, class 
 	}, nil
 }
 
+// ResolvePod implements Adapter: the fake hands out a UID immediately.
+func (f *Fake) ResolvePod(ctx context.Context, instance *Instance) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if instance.PodUID == "" {
+		instance.PodUID = "pod-" + instance.ID
+	}
+	return true
+}
+
 // WaitReady implements Adapter.
 func (f *Fake) WaitReady(ctx context.Context, instance *Instance) error {
 	latency := f.ReadyLatency
@@ -271,6 +296,14 @@ func (f *Fake) CloseSession(ctx context.Context, instance *Instance, session Bro
 	if f.CloseSessionErr != nil {
 		return f.CloseSessionErr
 	}
+	return nil
+}
+
+// SetBootConcurrency implements Adapter.
+func (f *Fake) SetBootConcurrency(ctx context.Context, namespace, name string, limit int) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.pool.BootConcurrency = int32(limit)
 	return nil
 }
 

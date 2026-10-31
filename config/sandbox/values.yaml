@@ -84,7 +84,11 @@ sandboxes:
       port: 9224
     resources:
       requests:
-        cpu: 100m
+        # 50m, halved from 100m: the oversubscription lever under test. A request
+        # is admission, not enforcement — with no CPU limit the browser still
+        # bursts to whatever the node has, so this only changes how many pods the
+        # scheduler will place.
+        cpu: 50m
         # Measured on this cluster (cgroup memory.peak, no sessions running):
         # an idle browser pod needs ~190 MiB, and ~360 MiB while carrying eight
         # real-page contexts. The request is an overcommit lever, not a cap: at

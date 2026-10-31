@@ -1,3 +1,20 @@
+
+
+  Riot (real pages):
+
+    cd /home/dev/Documentos/git_repos/experiments/apps/session-lab
+    SESSION_LAB_INTEGRATION=1 RIOT_SESSIONS=300 RIOT_HOLD=75s RIOT_RATE=0.5 \
+      go test -tags integration -count=1 -timeout 1800s ./test/ -run TestRiotLive -v
+
+  Script (empty pages):
+
+    cd /home/dev/Documentos/git_repos/experiments
+    scripts/session-lab-experiment.sh --layer session --duration 300s --rate 0.5 --hold 30s
+
+
+
+
+
 # session-lab — command matrix
 #
 # Every way to run an experiment or a test, with what each one answers.
@@ -83,6 +100,17 @@ CDP_ADDR=$(kubectl -n sandbox-demo get pods -l agents.x-k8s.io/warm-pool-sandbox
   -o jsonpath='{.items[0].status.podIP}'):9224 \
   go test -tags integration -count=1 ./internal/runtime/browser/ -run TestLiveBrowser -v
     Answers: the Go CDP client against real Chromium through the sidecar.
+
+# Boot metrics only exist on cold starts: a warm adoption has no boot to measure.
+# Force one by emptying the pool, which also needs the autoscaler paused:
+#   kubectl -n sandbox-demo annotate sandboxwarmpool browser-pool \
+#     session-lab.io/autoscaler=disabled
+#   kubectl -n sandbox-demo patch sandboxwarmpool browser-pool \
+#     --type merge -p '{"spec":{"replicas":0}}'
+#   SESSION_LAB_INTEGRATION=1 RIOT_SESSIONS=2 RIOT_HOLD=5s RIOT_RATE=1 \
+#     go test -tags integration -run TestRiotLive -v ./test/
+#   kubectl -n sandbox-demo annotate sandboxwarmpool browser-pool \
+#     session-lab.io/autoscaler-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 4. READING A RUN

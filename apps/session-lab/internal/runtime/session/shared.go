@@ -40,12 +40,17 @@ func (r *Runner) acquireInstance(ctx context.Context) (*sandbox.Instance, error)
 		waitCtx, cancel = context.WithTimeout(ctx, r.cfg.SessionDeadline)
 		defer cancel()
 	}
+	bootDone := make(chan struct{})
+	go r.sampleBoot(waitCtx, instance, bootDone)
+
 	if err := r.ad.WaitReady(waitCtx, instance); err != nil {
+		close(bootDone)
 		// Never leave a claim behind for a slot that cannot be used.
 		_ = r.deleteWithRetry(ctx, instance)
 		return nil, fmt.Errorf("ready: %w", err)
 	}
 
+	close(bootDone)
 	r.mu.Lock()
 	r.all[instance.ID] = instance
 	r.mu.Unlock()
