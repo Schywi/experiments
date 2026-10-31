@@ -291,6 +291,21 @@ main { max-width: 1440px; margin: 0 auto; padding: var(--space-6); }
 }
 .dialog.is-broken img.big { display: none; }
 .dialog.is-broken .big-placeholder { display: flex; }
+/* Synthetic sessions: the block in the dialog that creates browser contexts. */
+.traffic { border-top: 1px solid hsl(var(--border)); margin-top: var(--space-3);
+  padding-top: var(--space-3); }
+.traffic h3 { font-size: var(--text-sm); margin-bottom: var(--space-1); }
+.traffic-form { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap;
+  margin: var(--space-2) 0; }
+.traffic-form input { height: var(--control-h); border-radius: var(--radius);
+  border: 1px solid hsl(var(--input)); background: hsl(var(--card));
+  color: hsl(var(--foreground)); padding: 0 var(--space-2); font: inherit; }
+.traffic-form .traffic-count { width: 64px; }
+.traffic-form .traffic-urls { flex: 1 1 260px; min-width: 200px; }
+.ctx-list { list-style: none; margin: 0; padding: 0; display: flex;
+  flex-direction: column; gap: 2px; font-size: var(--text-xs); }
+.ctx-list li { display: flex; gap: var(--space-2); align-items: baseline; min-width: 0; }
+.ctx-list .ctx-url { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 #toasts {
   position: fixed; right: var(--space-4); bottom: var(--space-4); z-index: 60;
@@ -588,6 +603,25 @@ def expanded(tile_obj: inventory.Tile) -> str:
       <div class="big-placeholder">no frame yet</div>
       {reason}{extra}
       {isolation_badges(tile_obj)}
+      <section class="traffic" data-traffic="{esc(tile_obj.id)}">
+        <h3>sessions</h3>
+        <p class="hint">Each session is its own browser context inside this Chromium, on its own
+          page. Starting traffic is a real cost: N contexts cost N renderers, and the rack draws
+          one slot per context.</p>
+        <form class="traffic-form" data-act="traffic-start" data-id="{esc(tile_obj.id)}">
+          <label class="muted">count
+            <input class="traffic-count" type="number" name="count" value="4" min="1"
+                   max="{config.MAX_SESSIONS_PER_BROWSER}"/>
+          </label>
+          <input class="traffic-urls" type="text" name="urls" spellcheck="false"
+                 placeholder="sites, comma or space separated — blank uses the built-in list"/>
+          <button class="btn btn-primary btn-sm" type="submit">start traffic</button>
+          <button class="btn btn-ghost btn-sm" type="button" data-act="traffic-stop"
+                  data-id="{esc(tile_obj.id)}" title="dispose the contexts this console created">stop mine</button>
+          <span class="muted" data-traffic-state="{esc(tile_obj.id)}"></span>
+        </form>
+        <ul class="ctx-list" data-contexts="{esc(tile_obj.id)}"><li class="muted">reading contexts…</li></ul>
+      </section>
       <p class="hint">The frame refreshes every {config.FRAME_REFRESH_MS // 1000}s while this is open. A click is dispatched as a real mouse press/release, divided by the display scale. Viewport stays {config.VIEWPORT_WIDTH}×{config.VIEWPORT_HEIGHT}.</p>
     </div>
   </div>
@@ -1215,6 +1249,101 @@ PAGE_JS = """
 """
 
 
+TRAFFIC_JS = """
+(function () {
+  // Synthetic sessions: browser contexts created from the dialog, each opened at
+  // its own page. Kept separate from PAGE_JS so this block can be read alone.
+  function row(id, name) { return document.querySelector('[data-' + name + '="' + id + '"]'); }
+  function say(id, text) {
+    var slot = row(id, "traffic-state");
+    if (slot) slot.textContent = text || "";
+  }
+  function render(id, contexts) {
+    var list = row(id, "contexts");
+    if (!list) return;
+    if (!contexts.length) {
+      list.innerHTML = '<li class="muted">no contexts: this browser is serving one page</li>';
+      return;
+    }
+    list.innerHTML = contexts.map(function (context) {
+      var url = (context.urls && context.urls[0]) || "no page";
+      var owner = context.created_by_console ? "console" : "runner";
+      var age = context.age_s == null ? "" : context.age_s + "s";
+      return '<li><span class="badge badge-outline">' + owner + '</span>' +
+             '<span class="mono">' + String(context.browser_context_id).slice(0, 8) + '</span>' +
+             '<span class="ctx-url mono muted" title="' + url + '">' + url + '</span>' +
+             '<span class="muted">' + age + '</span></li>';
+    }).join("");
+  }
+  async function refresh(id) {
+    if (!id) return;
+    try {
+      var response = await fetch("/sandboxes/" + encodeURIComponent(id) + "/contexts");
+      var payload = await response.json();
+      if (!response.ok) { say(id, payload.detail || ("status " + response.status)); return; }
+      render(id, payload.contexts || []);
+    } catch (error) {
+      say(id, "cannot read contexts: " + error.message);
+    }
+  }
+  document.addEventListener("submit", async function (event) {
+    var form = event.target.closest("[data-act='traffic-start']");
+    if (!form) return;
+    event.preventDefault();
+    var id = form.dataset.id;
+    var count = Number((form.querySelector(".traffic-count") || {}).value || 4);
+    var raw = ((form.querySelector(".traffic-urls") || {}).value || "").trim();
+    var urls = raw ? raw.split(/[,\\s]+/).filter(Boolean) : null;
+    var button = form.querySelector("button[type='submit']");
+    if (button) { button.disabled = true; button.textContent = "starting…"; }
+    say(id, "creating " + count + " context(s)…");
+    try {
+      var response = await fetch("/sandboxes/" + encodeURIComponent(id) + "/contexts", {
+        method: "POST",
+        headers: {"content-type": "application/json"},
+        body: JSON.stringify({count: count, urls: urls})
+      });
+      var payload = await response.json();
+      if (!response.ok) throw new Error(payload.detail || ("status " + response.status));
+      say(id, "started " + (payload.created || []).length + " session(s)");
+    } catch (error) {
+      say(id, "failed: " + error.message);
+    } finally {
+      if (button) { button.disabled = false; button.textContent = "start traffic"; }
+      refresh(id);
+    }
+  });
+  document.addEventListener("click", async function (event) {
+    var stop = event.target.closest("[data-act='traffic-stop']");
+    if (!stop) { return; }
+    event.stopPropagation();
+    var id = stop.dataset.id;
+    stop.disabled = true;
+    say(id, "disposing…");
+    try {
+      var response = await fetch("/sandboxes/" + encodeURIComponent(id) + "/contexts", {method: "DELETE"});
+      var payload = await response.json();
+      say(id, response.ok ? "disposed " + (payload.disposed || []).length : "failed: " + (payload.detail || response.status));
+    } catch (error) {
+      say(id, "failed: " + error.message);
+    } finally {
+      stop.disabled = false;
+      refresh(id);
+    }
+  }, true);
+  // The dialog opens on a frame and is rebuilt on every expand, so the list is
+  // read once when it appears rather than polled.
+  var observer = new MutationObserver(function () {
+    var dialog = document.getElementById("dialog");
+    if (dialog && dialog.dataset.id && !dialog.dataset.trafficRead) {
+      dialog.dataset.trafficRead = "1";
+      refresh(dialog.dataset.id);
+    }
+  });
+  observer.observe(document.body, {childList: true, subtree: true});
+})();
+"""
+
 PAGE = """<!doctype html>
 <html lang="en">
 <head>
@@ -1248,6 +1377,7 @@ PAGE = """<!doctype html>
   </section>
 </main>
 <div id="toasts" aria-live="polite"></div>
+<script>__TRAFFIC_JS__</script>
 <script>__PAGE_JS__</script>
 </body>
 </html>
@@ -1267,6 +1397,7 @@ def page(report: inventory.Report, open_id: str | None = None) -> str:
         "__ROUTER__": esc(config.ROUTER_URL),
         "__GRID__": grid(report),
         "__PAGE_JS__": PAGE_JS,
+        "__TRAFFIC_JS__": TRAFFIC_JS,
         "__UNO_CONFIG__": UNO_CONFIG,
         "__OPEN__": esc(open_id or ""),
     }

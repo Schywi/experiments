@@ -44,6 +44,7 @@ import recipes
 import render
 import render_runs
 import runs
+import traffic
 from concurrency import BoundedFIFO, QueueFull
 
 LIMITER = BoundedFIFO(config.CDP_CONCURRENCY, config.CDP_QUEUE_SIZE)
@@ -683,6 +684,108 @@ async def expanded(sandbox_id: str) -> HTMLResponse:
 # --------------------------------------------------------------------------- #
 # M4: create and delete from the pane
 # --------------------------------------------------------------------------- #
+class TrafficRequest(BaseModel):
+    """How much synthetic traffic to start: N sessions, each on its own page.
+
+    A session is a browser context inside the instance's Chromium, so `count` is
+    the number of contexts created and the number of slots the wall will light.
+    `urls` cycles over the sites a session should open; blank uses the built-in
+    list, which is deliberately eight different origins.
+    """
+
+    count: int = 4
+    urls: list[str] | None = None
+
+
+def _no_capacity() -> HTTPException:
+    return HTTPException(
+        status_code=429,
+        detail="at capacity",
+        headers={"Retry-After": str(config.RETRY_AFTER_SECONDS)},
+    )
+
+
+@app.get("/sandboxes/{sandbox_id}/contexts")
+async def list_contexts(sandbox_id: str) -> JSONResponse:
+    """Every browser context in one instance, with the pages inside it.
+
+    Reads only: `Target.getBrowserContexts` and `Target.getTargets`, which the
+    in-pod bridge sends on the browser socket because Chromium refuses them on a
+    page socket with "Not allowed".
+    """
+    tile = await _known_tile(sandbox_id)
+    try:
+        async with LIMITER.slot():
+            rows = await traffic.listing(SCREEN.cdp, tile.id)
+    except QueueFull:
+        raise _no_capacity()
+    except traffic.TrafficError as error:
+        raise HTTPException(status_code=502, detail=str(error))
+    return JSONResponse({"sandbox": tile.id, "contexts": rows, "sites": list(traffic.DEFAULT_SITES)})
+
+
+@app.post("/sandboxes/{sandbox_id}/contexts")
+async def start_contexts(sandbox_id: str, payload: TrafficRequest) -> JSONResponse:
+    """Start traffic: create `count` contexts, each opened at its own site."""
+    if not config.WRITE_ENABLED:
+        raise HTTPException(status_code=403, detail="write access is disabled on this pane")
+    tile = await _known_tile(sandbox_id)
+    try:
+        async with LIMITER.slot():
+            created = await traffic.start(SCREEN.cdp, tile.id, payload.count, payload.urls)
+    except QueueFull:
+        raise _no_capacity()
+    except traffic.TrafficError as error:
+        audit.record(config.AUDIT_LOG, "traffic_failed", sandbox=tile.id, error=str(error))
+        raise HTTPException(status_code=502, detail=str(error))
+    audit.record(
+        config.AUDIT_LOG,
+        "traffic_start",
+        sandbox=tile.id,
+        count=len(created),
+        urls=[session.url for session in created],
+    )
+    return JSONResponse(
+        status_code=202,
+        content={
+            "sandbox": tile.id,
+            "created": [
+                {
+                    "browser_context_id": session.context_id,
+                    "url": session.url,
+                    "target_id": session.target_id,
+                }
+                for session in created
+            ],
+            "limit": config.MAX_SESSIONS_PER_BROWSER,
+        },
+    )
+
+
+@app.delete("/sandboxes/{sandbox_id}/contexts")
+async def stop_contexts(sandbox_id: str, all: int = 0) -> JSONResponse:
+    """Dispose the contexts this console created, or every non-default context."""
+    if not config.WRITE_ENABLED:
+        raise HTTPException(status_code=403, detail="write access is disabled on this pane")
+    tile = await _known_tile(sandbox_id)
+    try:
+        async with LIMITER.slot():
+            result = await traffic.stop(SCREEN.cdp, tile.id, all_contexts=bool(all))
+    except QueueFull:
+        raise _no_capacity()
+    except Exception as error:  # noqa: BLE001 - a browser that refuses is the result
+        audit.record(config.AUDIT_LOG, "traffic_stop_failed", sandbox=tile.id, error=str(error))
+        raise HTTPException(status_code=502, detail=str(error))
+    audit.record(
+        config.AUDIT_LOG,
+        "traffic_stop",
+        sandbox=tile.id,
+        disposed=len(result["disposed"]),
+        all=bool(all),
+    )
+    return JSONResponse({"sandbox": tile.id, **result})
+
+
 @app.post("/sandboxes")
 async def create_sandbox(payload: CreateRequest) -> JSONResponse:
     """Create a Claim (default) or a bare Sandbox, optionally on a page.

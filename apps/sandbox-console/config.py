@@ -153,3 +153,7 @@ RUN_REFRESH_SECONDS = _int("RUN_REFRESH_SECONDS", 5)
 # window keeps a 40-instance run at ~13 requests/second at the default 3s, which
 # the bounded CDP limiter can serve without starving screenshots.
 SLOT_TARGETS_TTL = _float("SLOT_TARGETS_TTL", 3.0)
+# Ceiling on browser contexts one instance may be given from the console. A
+# Chromium's own practical density is what note 15 measures; this only stops a
+# typo from asking for ten thousand renderers.
+MAX_SESSIONS_PER_BROWSER = _int("MAX_SESSIONS_PER_BROWSER", 8)
