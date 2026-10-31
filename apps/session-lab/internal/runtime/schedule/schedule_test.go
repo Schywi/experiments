@@ -92,3 +92,33 @@ func TestNoBucketIsRefused(t *testing.T) {
 		t.Fatalf("want 5000 sessions, got %d", len(plan.Sessions))
 	}
 }
+
+func TestPeakOfferedNeverExceedsTheSessionsThatExist(t *testing.T) {
+	// 18 sessions at 2/s with 20s holds is Little's law 40 — for an endless stream.
+	// A batch of 18 cannot exceed 18, and reporting 40 makes a small run look like
+	// a much larger one.
+	cfg := model.RunConfig{
+		Sessions: 18, Rate: 2, FixedArrival: true,
+		Mix: []model.Bucket{{Label: "20s", Hold: 20 * time.Second, Count: 18}},
+	}
+	plan, err := Generate(cfg, 1)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	if got := plan.PeakOffered(); got > 18 {
+		t.Fatalf("peak offered = %.1f, want at most the 18 sessions generated", got)
+	}
+
+	// A stream long enough to reach the arithmetic value still reports it.
+	big := model.RunConfig{
+		Sessions: 400, Rate: 2, FixedArrival: true,
+		Mix: []model.Bucket{{Label: "20s", Hold: 20 * time.Second, Count: 400}},
+	}
+	bigPlan, err := Generate(big, 1)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	if got := bigPlan.PeakOffered(); got != 40 {
+		t.Fatalf("peak offered = %.1f, want 40 for a stream that can reach it", got)
+	}
+}

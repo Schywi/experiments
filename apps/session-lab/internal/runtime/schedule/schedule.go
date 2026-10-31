@@ -120,7 +120,13 @@ func Generate(cfg model.RunConfig, seed int64) (Plan, error) {
 // Little's law on the generated schedule. It is reported next to the measured
 // peak so a run says whether the workload ever reached what was asked for.
 func (p Plan) PeakOffered() float64 {
-	return p.Rate * p.MeanHold().Seconds()
+	offered := p.Rate * p.MeanHold().Seconds()
+	// Little's law describes a stream, not a batch: eighteen sessions at 2/s with
+	// 20s holds cannot offer 40 at once, because only eighteen exist.
+	if sessions := float64(len(p.Sessions)); offered > sessions {
+		return sessions
+	}
+	return offered
 }
 
 // MeanHold is the count-weighted mean hold duration.
