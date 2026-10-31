@@ -400,3 +400,36 @@ func TestSlotWaitIsMeasuredOnTheSharedPath(t *testing.T) {
 		t.Fatalf("%d of %d sessions have no slot wait measured", measured, len(rows))
 	}
 }
+
+func TestFixedPoolRunTakesAndReleasesPoolOwnership(t *testing.T) {
+	// A run that sets a replica count must tell any autoscaler to stand down, and
+	// must release it afterwards even if the run ends badly — otherwise the pool
+	// stays paused and silent forever, which is what happened twice already.
+	fixed := int32(3)
+	cfg := config(model.PolicyReuse, 4, 10*time.Millisecond)
+	cfg.PoolReplicas = &fixed
+	fake := sandbox.NewFake()
+	execute(t, cfg, fake)
+
+	history := fake.OwnershipHistory()
+	if len(history) < 2 {
+		t.Fatalf("pool ownership toggled %d times (%v), want at least take+release", len(history), history)
+	}
+	if history[0] != true {
+		t.Fatalf("first ownership call was paused=%v, want true before the run", history[0])
+	}
+	if history[len(history)-1] != false {
+		t.Fatalf("last ownership call was paused=%v, want false after the run", history[len(history)-1])
+	}
+}
+
+func TestElasticRunLeavesPoolOwnershipAlone(t *testing.T) {
+	cfg := config(model.PolicyReuse, 3, 10*time.Millisecond)
+	fake := sandbox.NewFake()
+	execute(t, cfg, fake)
+
+	history := fake.OwnershipHistory()
+	if len(history) != 0 {
+		t.Fatalf("a run without --pool-replicas touched pool ownership: %v", history)
+	}
+}

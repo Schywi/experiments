@@ -170,6 +170,9 @@ type Fake struct {
 	CloseSessionErr error
 	sessionSeq      int
 
+	// PausedHistory records every SetPoolPaused call, in order.
+	PausedHistory []bool
+
 	// ReadyAfter is how many acquisitions adopt a warm instance; later ones
 	// cold-start. Zero means every acquisition is warm.
 	WarmInstances int
@@ -335,11 +338,21 @@ func (f *Fake) SetPoolReplicas(ctx context.Context, namespace, name string, repl
 	return nil
 }
 
+// OwnershipHistory returns every paused=true/false call, in order.
+func (f *Fake) OwnershipHistory() []bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make([]bool, len(f.PausedHistory))
+	copy(out, f.PausedHistory)
+	return out
+}
+
 // SetPoolPaused implements Adapter.
 func (f *Fake) SetPoolPaused(ctx context.Context, namespace, name string, paused bool) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.pool.Paused = paused
+	f.PausedHistory = append(f.PausedHistory, paused)
 	return nil
 }
 

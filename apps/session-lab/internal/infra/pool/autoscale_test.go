@@ -145,3 +145,18 @@ func TestDemandIsSlotsNotClaimsWhenBrowsersAreShared(t *testing.T) {
 		t.Fatalf("pool desired = %d, want 3", state.Desired)
 	}
 }
+
+func TestBulkDemandDoesNotGrowThePool(t *testing.T) {
+	// Bulk work uses capacity that already exists. Counting it would let a bulk
+	// crawl inflate the pool and hold replicas nothing else asked for.
+	scaler, fake := newScaler(t, 2, 40)
+	fake.Stats = sandbox.ClaimStats{Pending: 3, Failed: 1, Bulk: 25}
+
+	settings, err := scaler.Step(context.Background())
+	if err != nil {
+		t.Fatalf("step: %v", err)
+	}
+	if settings.Target != 3 {
+		t.Fatalf("target = %d, want ready+pending = 3 with the 25 bulk claims ignored", settings.Target)
+	}
+}
