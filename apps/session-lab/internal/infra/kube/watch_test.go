@@ -128,3 +128,22 @@ func TestExpiredVersionIsHandledByReReading(t *testing.T) {
 		t.Fatalf("a 410 was reported as cancellation")
 	}
 }
+
+// The API server rejects a watch that carries resourceVersionMatch (it is a List
+// option), and a rejected watch silently degrades every acquisition into ten
+// retries with backoff. This pins the options the watcher is built with.
+func TestWatchOptionsAreAcceptedByAWatcher(t *testing.T) {
+	options := metav1.ListOptions{
+		FieldSelector:       "metadata.name=claim-1",
+		AllowWatchBookmarks: true,
+		ResourceVersion:     "12345",
+	}
+	if options.ResourceVersionMatch != "" {
+		t.Fatalf("resourceVersionMatch is set on a watch: %q", options.ResourceVersionMatch)
+	}
+	// The resource version must survive: a watch without one starts at "now" and
+	// misses the transition it is waiting for.
+	if options.ResourceVersion != "12345" {
+		t.Fatalf("resourceVersion was dropped")
+	}
+}

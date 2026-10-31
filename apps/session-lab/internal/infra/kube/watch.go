@@ -110,10 +110,13 @@ func (k *Kube) waitClaimReady(ctx context.Context, instance *sandbox.Instance) e
 			return k.markReady(ctx, instance, sandbox)
 		}
 
+		// No ResourceVersionMatch here: the API server rejects it on a watch
+		// ("forbidden unless sendInitialEvents is provided"), and a rejected watch
+		// turns every wait into ten retries with backoff. That is how a 300s run
+		// took eleven minutes with acquisition p95 at 266s.
 		options := metav1.ListOptions{
-			FieldSelector:        "metadata.name=" + instance.Claim,
-			AllowWatchBookmarks:  true,
-			ResourceVersionMatch: metav1.ResourceVersionMatchNotOlderThan,
+			FieldSelector:       "metadata.name=" + instance.Claim,
+			AllowWatchBookmarks: true,
 		}
 		if claim != nil {
 			options.ResourceVersion = claim.GetResourceVersion()
