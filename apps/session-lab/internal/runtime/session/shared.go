@@ -274,14 +274,16 @@ func divideReading(reading Reading, shares int) Reading {
 		CPUPressureFullUsec: div(reading.CPUPressureFullUsec),
 		ThrottledUsec:       div(reading.ThrottledUsec),
 		NRThrottled:         div(reading.NRThrottled),
-		MemCurrent:          reading.MemCurrent,
-		MemWorkingSet:       reading.MemWorkingSet,
-		MemInactiveFile:     reading.MemInactiveFile,
-		Shmem:               reading.Shmem,
-		Anon:                reading.Anon,
+		// Memory is the pod's, exactly like CPU: a session row must not claim the
+		// whole browser's footprint, or 30 sessions look like 10 GiB.
+		MemCurrent:          div(reading.MemCurrent),
+		MemWorkingSet:       div(reading.MemWorkingSet),
+		MemInactiveFile:     div(reading.MemInactiveFile),
+		Shmem:               div(reading.Shmem),
+		Anon:                div(reading.Anon),
 		RefaultAnon:         div(reading.RefaultAnon),
 		RefaultFile:         div(reading.RefaultFile),
-		SwapCurrent:         reading.SwapCurrent,
+		SwapCurrent:         div(reading.SwapCurrent),
 		OOMKill:             reading.OOMKill,
 		MemPressureSomeUsec: div(reading.MemPressureSomeUsec),
 	}
