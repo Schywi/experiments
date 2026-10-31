@@ -725,14 +725,8 @@ class _FailingHTTP:
 # --------------------------------------------------------------------------- #
 # Frame geometry: one size, always
 # --------------------------------------------------------------------------- #
-def test_the_capture_is_clipped_to_the_viewport():
-    """Every frame must be the configured size.
-
-    Measured on a live Chromium: a context page whose device-metrics override did
-    not apply reported 1280x513 while the pinned default page reported 1280x600.
-    Rendered at `width:100%; height:auto` that resizes the picture, which reads as
-    the dialog zooming. The clip is what makes all frames one size.
-    """
+def test_the_capture_sends_no_clip():
+    """A CDP clip is in the page's space, so it crops instead of resizing."""
     http = _NullHTTP()
     client = cdp.RouterCDP(
         "http://router", transport="http", http_client=http, viewport=(1280, 600)
@@ -746,9 +740,8 @@ def test_the_capture_is_clipped_to_the_viewport():
         asyncio.run(body())  # the fake returns no data; the params are what matter
     shot = [item for item in http.bodies if item.get("method") == "Page.captureScreenshot"]
     assert shot, http.bodies
-    assert shot[-1]["params"]["clip"] == {
-        "x": 0, "y": 0, "width": 1280, "height": 600, "scale": 1
-    }
+    assert "clip" not in shot[-1]["params"]
+    assert shot[-1]["params"]["format"] == "png"
 
 
 def test_the_dialog_frame_has_a_fixed_box():
@@ -762,3 +755,69 @@ def test_the_dialog_frame_has_a_fixed_box():
     )
     assert "aspect-ratio: 1280 / 600" in page
     assert "object-fit: contain" in page
+
+
+# --------------------------------------------------------------------------- #
+# The grid's session total, and the frame's fixed box
+# --------------------------------------------------------------------------- #
+def test_the_stats_bar_carries_the_session_total():
+    report = inventory.build_report(
+        fixtures.copy_of(fixtures.READY_SANDBOX),
+        claims=fixtures.copy_of(fixtures.CLAIM),
+        pods=fixtures.copy_of(*fixtures.PODS),
+        usage=dict(fixtures.USAGE),
+    )
+    report.sessions = 5
+    report.sessions_unknown = 0
+    markup = render.stats(report)
+    assert 'data-stat="sessions"' in markup
+    assert ">5</span>" in markup
+
+
+def test_a_browser_that_would_not_answer_is_named_beside_the_total():
+    report = inventory.build_report(
+        fixtures.copy_of(fixtures.READY_SANDBOX),
+        claims=fixtures.copy_of(fixtures.CLAIM),
+        pods=fixtures.copy_of(*fixtures.PODS),
+        usage=dict(fixtures.USAGE),
+    )
+    report.sessions = 5
+    report.sessions_unknown = 2
+    assert ">5+2?</span>" in render.stats(report)
+
+
+def test_the_report_totals_the_sessions_it_could_read(client, fake):
+    async def counting(sandbox_id, method, params=None):
+        if method == "Target.getBrowserContexts":
+            return {"browserContextIds": ["a", "b", "c", "d"]}
+        return {}
+
+    fake.call = counting
+    server._CONTEXT_COUNT_CACHE.clear()
+    payload = client.get("/api/sandboxes").json()
+    assert payload["tiles"][0]["contexts"] == 4
+    # The grid's own stats bar carries the total, from the same read.
+    grid = client.get("/sandboxes").text
+    assert 'data-stat="sessions"' in grid
+    assert ">4</span>" in grid
+
+
+def _empty_report(sessions, unknown):
+    report = inventory.build_report(
+        fixtures.copy_of(fixtures.READY_SANDBOX),
+        claims=fixtures.copy_of(fixtures.CLAIM),
+        pods=fixtures.copy_of(*fixtures.PODS),
+        usage=dict(fixtures.USAGE),
+    )
+    report.sessions = sessions
+    report.sessions_unknown = unknown
+    return report
+
+
+def test_the_frame_is_contained_by_a_fixed_box():
+    """No clip, no crop: the box decides the drawn size."""
+    markup = render.expanded(_tile(0))
+    assert 'class="frame-box"' in markup
+    assert markup.index('class="frame-box"') < markup.index('class="big"')
+    assert "object-fit: contain" in render.BASE_CSS
+    assert "aspect-ratio: 1280 / 600" in render.BASE_CSS

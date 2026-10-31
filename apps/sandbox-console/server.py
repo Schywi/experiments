@@ -281,6 +281,8 @@ class Screen:
         # that will not answer reports `None` rather than zero.
         counts = await _context_counts([tile.id for tile in decorated if tile.ready])
         report.tiles = [tile.replace(contexts=counts.get(tile.id)) for tile in decorated]
+        report.sessions = sum(count for count in counts.values() if count)
+        report.sessions_unknown = sum(1 for count in counts.values() if count is None)
         return report
 
     async def tile_by_claim(self, claim_name: str) -> inventory.Tile | None:

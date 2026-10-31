@@ -207,6 +207,11 @@ class Report:
     other: int = 0
     mem_working_set_bytes: int = 0
     cpu_millicores: int = 0
+    # Browser contexts across every sandbox that answered, and how many did not.
+    # Summing only what answered keeps "5" from being read as a total when three
+    # other browsers said nothing.
+    sessions: int = 0
+    sessions_unknown: int = 0
     truncated: int = 0
     errors: list[str] = field(default_factory=list)
     collected_at: float = 0.0

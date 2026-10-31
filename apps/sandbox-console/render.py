@@ -284,17 +284,21 @@ main { max-width: 1440px; margin: 0 auto; padding: var(--space-6); }
 }
 .dialog-head h2 { font-size: var(--text-base); }
 .dialog-body { padding: var(--space-4); display: grid; gap: var(--space-3); }
+/* The picture's box is fixed here, by markup, not by whatever the browser
+   returns. `object-fit: contain` letterboxes a larger frame instead of scaling
+   the dialog, and never crops the page the way a CDP clip does. */
+.frame-box {
+  position: relative; width: 100%; aspect-ratio: 1280 / 600; max-height: 72vh;
+  background: hsl(240 10% 2%); border-radius: var(--radius); overflow: hidden;
+}
 .dialog img.big {
-  /* The frame keeps one box no matter what the browser returns. The capture is
-     pinned to the viewport by a clip on the server; this is the second lock, so a
-     stray size can never resize the dialog under the operator. */
-  width: 100%; aspect-ratio: 1280 / 600; height: auto;
-  object-fit: contain; object-position: top left;
-  border-radius: var(--radius); background: hsl(240 10% 2%);
-  cursor: crosshair; display: block;
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  object-fit: contain; object-position: center;
+  background: hsl(240 10% 2%); cursor: crosshair; display: block;
 }
 .big-placeholder {
-  display: none; align-items: center; justify-content: center; height: 320px;
+  display: none; align-items: center; justify-content: center;
+  position: absolute; inset: 0; height: auto;
   border: 1px dashed hsl(var(--border)); border-radius: var(--radius);
   color: hsl(var(--muted-foreground)); font-size: var(--text-sm);
 }
@@ -543,8 +547,13 @@ def action_bar(write_enabled: bool, allow_raw: bool) -> str:
 
 
 def stats(report: inventory.Report) -> str:
+    sessions = str(report.sessions)
+    if report.sessions_unknown:
+        # A browser that would not answer is named, not silently dropped.
+        sessions = f"{report.sessions}+{report.sessions_unknown}?"
     items = [
         ("running", str(report.running)),
+        ("sessions", sessions),
         ("pending", str(report.pending)),
         ("pool", f"{report.pool_ready}/{report.pool_idle}"),
         ("resident", fmt_bytes(report.mem_working_set_bytes)),
@@ -639,9 +648,11 @@ def expanded(tile_obj: inventory.Tile) -> str:
     <div class="dialog-body" id="dialog-body">
       <div class="ctx-tabs" data-tabs="{esc(tile_obj.id)}" role="tablist"
            aria-label="browser contexts of {esc(tile_obj.id)}"></div>
-      <img class="big" src="/sandboxes/{esc(tile_obj.id)}/shot?v={tile_obj.screenshot_ts}"
-           alt="expanded live screenshot of {esc(tile_obj.id)}"/>
-      <div class="big-placeholder">no frame yet</div>
+      <div class="frame-box">
+        <img class="big" src="/sandboxes/{esc(tile_obj.id)}/shot?v={tile_obj.screenshot_ts}"
+             alt="expanded live screenshot of {esc(tile_obj.id)}"/>
+        <div class="big-placeholder">no frame yet</div>
+      </div>
       {reason}{extra}
       {isolation_badges(tile_obj)}
       <section class="traffic" data-traffic="{esc(tile_obj.id)}">
