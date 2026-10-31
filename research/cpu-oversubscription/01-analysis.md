@@ -132,3 +132,32 @@ pressure behaves as expected.
 
 **Chosen values:** request `cpu: 100m`, `memory: 128Mi`; limit `memory: 768Mi`, no CPU limit. The
 request is the lever under study; the limit stays the hard ceiling.
+
+## Memory per page class — measured from an OOM (2026-10-31, `riot-20261031t191844`)
+
+A run with `RIOT_HEAVY=10` (ten full League SPAs) lost one browser and eight sessions. The run's
+own database explains it without guesswork:
+
+| Instance | sessions | peak memory | OOM kills (`memory.events`) |
+|---|---|---|---|
+| `…-1` (carried 8 heavy SPAs) | 8 | **770 MiB** | **224** |
+| `…-2` | 8 | 735 MiB | 0 |
+| `…-3` | 8 | 591 MiB | 0 |
+| `…-4` (6 sessions) | 6 | 463 MiB | 0 |
+
+The template's memory **limit is 768Mi**. Instance 1 reached 770 MiB, the kernel OOM-killed
+processes inside the pod, Chromium's DevTools socket died, and every session on that browser failed
+at context close with `cdp: read: … EOF`.
+
+Three facts worth carrying forward:
+
+1. **Memory per context depends on the page, and heavily.** Splash pages: ~360 MiB for 8 contexts
+   (~45 MiB each). Full SPAs: ~770 MiB for 8 (~96 MiB each, and these were competing).
+2. **The limit, not the request, is what kills.** Requests are 128Mi and had nothing to do with it;
+   768Mi was the ceiling the kernel enforced.
+3. **Placement concentrated the heavy sessions.** Slots fill the first browser first, so
+   `RIOT_HEAVY=10` put sessions 1–8 — the heavy ones — into one browser. Spreading heavy sessions
+   across browsers is a test-side change (interleave instead of prefix), not a runtime one.
+
+Reporting gap fixed with this: a dead browser now settles its sessions as `lost_unknown`, not
+`reset_failed`, so the outcome names the cause.

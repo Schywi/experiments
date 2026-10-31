@@ -268,14 +268,40 @@ func (r *Runner) sessionShared(ctx context.Context, planned schedule.Planned) {
 	}
 
 	if closeErr != nil {
-		r.lg.Error("context close failed", logging.F("session", session.ID),
-			logging.F("instance", lease.Instance.ID), logging.F("error", closeErr))
-		r.settle(session.ID, model.OutcomeResetFailed, "close context: "+closeErr.Error(), &session)
+		// A browser that died takes its sessions with it. Reporting that as a
+		// reset failure hides the cause: the pod was killed (OOM is the usual
+		// reason) and every context in it went with it.
+		outcome := model.OutcomeResetFailed
+		if browserLost(closeErr) {
+			outcome = model.OutcomeLostUnknown
+			r.lg.Error("browser lost", logging.F("session", session.ID),
+				logging.F("instance", lease.Instance.ID), logging.F("error", closeErr))
+		} else {
+			r.lg.Error("context close failed", logging.F("session", session.ID),
+				logging.F("instance", lease.Instance.ID), logging.F("error", closeErr))
+		}
+		r.settle(session.ID, outcome, "close context: "+closeErr.Error(), &session)
 		return
 	}
 	session.Outcome = model.OutcomeSuccess
 	session.Error = ""
 	r.settle(session.ID, model.OutcomeSuccess, "", &session)
+}
+
+// browserLost reports whether an error means the Chromium connection ended: the
+// pod was killed, the process crashed, or the sidecar went away. Those are not
+// per-session failures and must not be counted as reset problems.
+func browserLost(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	for _, marker := range []string{"eof", "connection reset", "broken pipe", "connection closed", "use of closed network connection"} {
+		if strings.Contains(message, marker) {
+			return true
+		}
+	}
+	return false
 }
 
 // applyUsage records what the browser reported about this session's own context.

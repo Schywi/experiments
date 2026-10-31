@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -83,5 +84,27 @@ func TestBootConcurrencySerialisesStartups(t *testing.T) {
 	case <-blocked:
 	case <-time.After(time.Second):
 		t.Fatalf("releasing the permit did not admit the waiting boot")
+	}
+}
+
+// A dead browser is not a reset problem. Eight sessions died with "reset_failed"
+// when an OOM-killed pod took its DevTools socket with it, which hid the cause.
+func TestBrowserLossIsClassifiedAsLost(t *testing.T) {
+	lost := []string{
+		"cdp: read: failed to get reader: failed to read frame header: EOF",
+		"write: connection reset by peer",
+		"use of closed network connection",
+	}
+	for _, message := range lost {
+		if !browserLost(errors.New(message)) {
+			t.Fatalf("%q was not classified as a lost browser", message)
+		}
+	}
+	// A real context problem is still a context problem.
+	if browserLost(errors.New("Failed to find context with id ctx-1")) {
+		t.Fatalf("a missing context was classified as a lost browser")
+	}
+	if browserLost(nil) {
+		t.Fatalf("nil error classified as a lost browser")
 	}
 }
