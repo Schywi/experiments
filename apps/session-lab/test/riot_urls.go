@@ -22,14 +22,31 @@ const (
 // splash per session with the champion rotating and the skin number stepping once
 // the champion list wraps. Two sessions never get the same URL while
 // n <= len(champions) * maxSkins.
-func riotURLs(n int) []string {
+func riotURLs(n int) []string { return riotURLsWithHeavy(n, 1) }
+
+// riotURLsWithHeavy builds a list where the first `heavy` sessions load the full
+// champion page and the rest load splashes. One heavy session is the loud
+// neighbour; many of them is the spike-convergence case.
+func riotURLsWithHeavy(n, heavy int) []string {
+	if heavy < 0 {
+		heavy = 0
+	}
+	if heavy > n {
+		heavy = n
+	}
+	return buildRiotURLs(n, heavy)
+}
+
+func buildRiotURLs(n, heavy int) []string {
 	if n <= 0 {
 		return nil
 	}
 	urls := make([]string, 0, n)
-	urls = append(urls, riotHeavy)
-	for index := 1; index < n; index++ {
-		position := index - 1
+	for index := 0; index < heavy; index++ {
+		urls = append(urls, riotHeavy)
+	}
+	for index := heavy; index < n; index++ {
+		position := index - heavy
 		champion := riotChampions[position%len(riotChampions)]
 		skin := position / len(riotChampions)
 		urls = append(urls, riotSplashPrefix+"/"+champion+"_"+itoa(skin)+".jpg")

@@ -1,9 +1,12 @@
 package session
 
 import (
+	"context"
 	"testing"
+	"time"
 
 	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/platform/model"
+	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/runtime/admission"
 )
 
 // The cgroup counter belongs to the pod, so a per-session row carries its share of
@@ -46,5 +49,39 @@ func TestTargetURLsCyclePerSession(t *testing.T) {
 	empty := &Runner{}
 	if got := empty.targetURL(1); got != "about:blank" {
 		t.Fatalf("default = %q, want about:blank", got)
+	}
+}
+
+// A cold Chromium spikes to hundreds of millicores. Boot permits exist so those
+// spikes do not land together; two sessions booting with a limit of one must
+// serialise.
+func TestBootConcurrencySerialisesStartups(t *testing.T) {
+	gate := admission.NewGate(1)
+	ctx := context.Background()
+
+	if err := gate.Acquire(ctx, model.ClassNormal); err != nil {
+		t.Fatalf("first permit: %v", err)
+	}
+	if got := gate.InUse(); got != 1 {
+		t.Fatalf("in use = %d after one permit", got)
+	}
+
+	blocked := make(chan struct{})
+	go func() {
+		gate.Acquire(ctx, model.ClassNormal)
+		close(blocked)
+	}()
+	time.Sleep(20 * time.Millisecond)
+	select {
+	case <-blocked:
+		t.Fatalf("a second boot was admitted while the permit was held")
+	default:
+	}
+
+	gate.Release()
+	select {
+	case <-blocked:
+	case <-time.After(time.Second):
+		t.Fatalf("releasing the permit did not admit the waiting boot")
 	}
 }

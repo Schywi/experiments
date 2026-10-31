@@ -186,12 +186,16 @@ func boolInt(value bool) int64 {
 // RunRuntime is what only the runner knows while it runs: how long arrivals
 // actually kept coming, how deep the queue got, and what it failed to clean up.
 type RunRuntime struct {
-	ArrivalWindowNS   int64 `json:"arrival_window_ns"`
-	PeakWaiting       int   `json:"peak_waiting"`
-	PeakInFlight      int   `json:"peak_in_flight"`
-	CleanupFailures   int   `json:"cleanup_failures"`
-	DispatchCompleted int64 `json:"dispatch_completed,omitempty"`
-	DispatchPlanned   int64 `json:"dispatch_planned,omitempty"`
+	ArrivalWindowNS   int64   `json:"arrival_window_ns"`
+	PeakWaiting       int     `json:"peak_waiting"`
+	PeakInFlight      int     `json:"peak_in_flight"`
+	CleanupFailures   int     `json:"cleanup_failures"`
+	DispatchCompleted int64   `json:"dispatch_completed,omitempty"`
+	DispatchPlanned   int64   `json:"dispatch_planned,omitempty"`
+	NodeCPUPeak       float64 `json:"node_cpu_peak_cores,omitempty"`
+	NodeCPUSum        float64 `json:"node_cpu_sum_cores,omitempty"`
+	NodeCPUSamples    int     `json:"node_cpu_samples,omitempty"`
+	NodeCPUTotalCores int     `json:"node_cpu_total_cores,omitempty"`
 }
 
 // EndRun closes a run and stores the replica trajectory and runtime facts.

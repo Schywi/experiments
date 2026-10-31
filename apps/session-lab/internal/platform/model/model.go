@@ -241,8 +241,12 @@ type RunConfig struct {
 	TargetURLs []string `json:"target_urls,omitempty"`
 	// CDPTransport is "http" for the in-pod bridge or "ws" for a direct
 	// DevTools connection; CDPPort is the port the sidecar publishes.
-	CDPTransport    string        `json:"cdp_transport,omitempty"`
-	CDPPort         int           `json:"cdp_port,omitempty"`
+	CDPTransport string `json:"cdp_transport,omitempty"`
+	CDPPort      int    `json:"cdp_port,omitempty"`
+	// BootConcurrency bounds how many instances may boot at once. A cold
+	// Chromium spikes to hundreds of millicores; overlapping spikes saturate the
+	// node while average CPU still reads idle.
+	BootConcurrency int           `json:"boot_concurrency,omitempty"`
 	OverloadFactor  float64       `json:"overload_factor,omitempty"`
 	SessionDeadline time.Duration `json:"session_deadline_ns,omitempty"`
 	// Window is the intended arrival window when the operator asked for one.

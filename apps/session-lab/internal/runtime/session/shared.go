@@ -135,9 +135,27 @@ func (r *Runner) sessionShared(ctx context.Context, planned schedule.Planned) {
 	session.AdmissionWaitNS = r.now().Sub(admitStart).Nanoseconds()
 	defer r.gate.Release()
 
+	// One boot at a time per permit: a cold Chromium spikes, and overlapping
+	// spikes saturate the node while average CPU still looks idle.
+	if err := r.boot.Acquire(ctx, r.cfg.Class); err != nil {
+		r.settle(session.ID, model.OutcomeWaiting, "boot permit: "+err.Error(), nil)
+		return
+	}
+	bootStart := r.now()
+	if r.rec != nil {
+		r.rec.BootStarted()
+	}
+	releaseBoot := func() {
+		if r.rec != nil {
+			r.rec.BootFinished(r.now().Sub(bootStart).Seconds())
+		}
+		r.boot.Release()
+	}
+
 	session.ClaimCreatedNS = r.now().UnixNano()
 	lease, err := r.spool.Take(ctx)
 	if err != nil {
+		releaseBoot()
 		outcome := model.OutcomeAcquisitionFailed
 		if ctx.Err() != nil {
 			outcome = model.OutcomeWaiting
@@ -158,6 +176,7 @@ func (r *Runner) sessionShared(ctx context.Context, planned schedule.Planned) {
 		logging.F("warm", session.LaunchType))
 
 	isolatedState, err := r.openIsolated(ctx, lease.Instance, session.ID)
+	releaseBoot()
 	if err != nil {
 		r.lg.Error("isolate failed", logging.F("session", session.ID),
 			logging.F("instance", lease.Instance.ID), logging.F("transport", r.cfg.CDPTransport),

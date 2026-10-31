@@ -1,0 +1,104 @@
+# 01 — Our implementation, traced
+
+Everything here was read from the code on `research/session-lifecycle-elasticity`; file paths are
+current as of `30df98e` plus the boot-permit change.
+
+## The path a request actually takes
+
+```
+dispatch (runtime/session/run.go:319)          one goroutine per planned session, offset-scheduled
+   │
+   ▼
+admission.Gate.Acquire (runtime/admission/admission.go:96)
+   │  bound = --admit, default 0 = unbounded; orders by class only
+   ▼
+boot permit (runtime/session/shared.go, new)   --boot-concurrency, default 0 = unbounded
+   │  held until the browser has a usable context, not just until the claim exists
+   ▼
+slots.Pool.Take (runtime/slots/slots.go:74)    one provisioning at a time, enforced
+   │  returns (instance, slot) or calls the provider
+   ▼
+acquireInstance (runtime/session/shared.go)    Acquire + retry(5, backoff) + WaitReady(watch)
+   │
+   ▼
+SandboxClaim POST  ───────────────────────────► kine write #1
+   ▼
+controller: warm adoption (~250 ms) or cold start (12–80 s)
+   ▼
+Chromium boots ─────────────────────────────── CPU spike, unmeasured until now
+   ▼
+OpenSession: Target.createBrowserContext + createTarget(url)   (runtime/browser)
+   ▼
+hold (run.go:625)  cgroup sample every --sample-seconds: cpu.stat, memory.*, PSI
+   │
+   ▼
+CloseSession → slots.Give → reuse keeps the browser, destroy deletes the claim   kine write #2
+```
+
+## Ownership and signals, stage by stage
+
+| Stage | Owner | Reads | Decides | On exhaustion |
+|---|---|---|---|---|
+| admission | `runtime/admission` | class, `--admit` | queue order, how many are in flight | waits (never rejects) |
+| boot permit | `runtime/session` | `--boot-concurrency` | how many startups run at once | waits |
+| slot allocation | `runtime/slots` | free slots per instance, `--contexts-per-browser` | reuse a slot or ask for capacity | asks for capacity |
+| claim creation | `infra/kube` + API | pool, name | creates a claim; retries transport errors | recorded as `acquisition_failed` |
+| pool sizing | `cmd/pool-autoscaler` | `ready+pending` claims ÷ contexts | replicas, clamped min/max every 5 s | stops at `--max` |
+| node scheduling | kube-scheduler | pod **requests** (100m, 256Mi) | places the pod | `FailedScheduling` (recorded as a boundary) |
+| browser boot | Chromium | — | — | slow, CPU-hungry |
+| measurement | `infra/measure` | `/sys/fs/cgroup`, `/proc/meminfo`, `/proc/stat`, metrics-server | — | miss, not error |
+
+## Where concurrent decisions can disagree
+
+1. **Admissions vs CPU.** With `--admit 0` every arrival is admitted immediately. Twenty concurrent
+   admissions all observe the same (cool) node and all start browsers. This is the TOCTOU the
+   Gemini paper describes, and it exists here in exactly one form: *simultaneous boots*.
+2. **Autoscaler vs scheduler.** The autoscaler sizes from claim demand and cannot see
+   `Insufficient cpu`. In `20261031T024806Z` it scaled toward 40 replicas for ~21 browsers worth of
+   work, and the extra pods' 100m requests starved the scheduler (`FailedScheduling` at 23:59).
+3. **Slot pool vs everything.** `slots.Pool` serialises creation, so it does not duplicate claims —
+   this is the one place where a race was already designed out.
+
+## What is measured, and what is not
+
+| Signal | Where | Granularity | Covers startup? |
+|---|---|---|---|
+| `cpu_usec`, `throttled_usec` | per session, cgroup | per hold | **no** — needs `PodUID`, filled at Ready |
+| `memory.current`, `memory.stat`, `memory.events` | per session | per hold | no |
+| `cpu.pressure`, `memory.pressure` | per session | per hold | no |
+| `task_duration`, `script_duration`, `js_heap` | per session, CDP | per session | no (measured after open) |
+| `session_lab_node_cpu_cores` | whole node, `/proc/stat` | 1 s | **yes** (added with this study) |
+| `session_lab_instances_booting` | runner | per boot | **yes** (added) |
+| `session_lab_boot_seconds` | runner | per boot | **yes** (added) |
+| kine SQL latency | apiserver `/metrics` | scrape | n/a — not yet scraped |
+
+The three added series are the smallest measurement that answers "do startup spikes overlap on this
+node?" — before them the answer could only be inferred from acquisition latency.
+
+## Arithmetic that constrains any oversubscription
+
+Node allocatable: 6000m CPU, 15 550 MiB memory, 110 pods. Non-browser baseline: ~721m, ~1.5 GiB,
+~44 pods.
+
+| Limit | Browsers that fit |
+|---|---|
+| CPU requests at 100m | (6000 − 721) / 100 ≈ **52** |
+| CPU requests at 50m | (6000 − 721) / 50 ≈ 105 → but pods cap at 110 − 44 = **66** |
+| Memory requests at 256Mi | (15550 − 1600) / 256 ≈ **54** |
+| Pod count cap | **66** |
+| Actual memory per 8-context pod | ~360 MiB, i.e. the 256Mi request is under-declared by 40 % |
+
+**So halving the CPU request moves the ceiling from 52 to 54 — memory binds.** The experiment is
+still worth running, because the measurement that proves it is also the one that shows whether CPU
+pressure behaves as expected.
+
+## Startup burst: what we can and cannot say today
+
+- Cold boot measured end to end: **12–80 s** (`ready (cold)` in run logs), warm adoption **~250 ms**.
+- CPU during boot: **unmeasured per pod**. The cgroup needs the pod UID, which only exists once the
+  sandbox is bound and Ready.
+- Node CPU during boot: measurable from this change on, at 1 s resolution, together with the boot
+  concurrency gauge. Two series are enough: if `node_cpu_cores` rises while `instances_booting`
+  rises, spikes converge.
+- Whether a spike is 200m or 500m per boot: **UNKNOWN**, and it is the first thing the ladder should
+  establish — with `RIOT_HEAVY` and `RIOT_BOOT` that is now possible without new code.

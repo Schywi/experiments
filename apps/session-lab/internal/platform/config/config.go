@@ -49,6 +49,7 @@ func Parse(args []string) (*Config, error) {
 	fs.StringVar(&cfg.RunConfig.CDPTransport, "cdp-transport", "http", "http (in-pod bridge) or ws (direct DevTools connection)")
 	fs.IntVar(&cfg.RunConfig.CDPPort, "cdp-ws-port", 9224, "port the forwarding sidecar publishes on the pod IP")
 	fs.StringVar(&targetURL, "target-url", "", "page each session opens inside its context; a comma-separated list cycles one URL per session (default about:blank)")
+	fs.IntVar(&cfg.RunConfig.BootConcurrency, "boot-concurrency", 0, "instances allowed to boot at once; 0 is unbounded")
 	fs.IntVar(&cfg.RunConfig.Admit, "admit", 0, "concurrent admissions; 0 is unbounded")
 	fs.DurationVar(&duration, "duration", 0, "arrival window; session counts are derived from --rate and the mix proportions")
 	fs.StringVar((*string)(&cfg.Policy), "policy", string(model.PolicyReuse), "instance policy: reuse|destroy|suspend")

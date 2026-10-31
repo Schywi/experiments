@@ -47,13 +47,16 @@ func TestRiotLive(t *testing.T) {
 	sessions := envInt("RIOT_SESSIONS", len(riotChampions))
 	hold := envDuration("RIOT_HOLD", 20*time.Second)
 	rate := envFloat("RIOT_RATE", 2)
-	urls := riotURLs(sessions)
+	heavy := envInt("RIOT_HEAVY", 1)
+	// RIOT_BOOT caps simultaneous startups: the CPU spike convergence knob.
+	boot := envInt("RIOT_BOOT", 0)
+	urls := riotURLsWithHeavy(sessions, heavy)
 
 	cfg := model.RunConfig{
 		RunID:     "riot-" + time.Now().UTC().Format("20060102t150405"),
 		Namespace: "sandbox-demo", Pool: "browser-pool", Template: "browser-tpl",
 		Policy: model.PolicyReuse, Class: model.ClassNormal, FixedArrival: true, Rate: rate,
-		ContextsPerBrowser: 8, CDPTransport: "ws", CDPPort: 9224,
+		ContextsPerBrowser: 8, CDPTransport: "ws", CDPPort: 9224, BootConcurrency: boot,
 		TargetURLs: urls, SampleSeconds: 1, Sessions: sessions,
 		Mix: []model.Bucket{{Label: hold.String(), Hold: hold, Count: sessions}},
 	}
@@ -101,8 +104,8 @@ func TestRiotLive(t *testing.T) {
 	if err != nil {
 		t.Fatalf("sessions: %v", err)
 	}
-	t.Logf("workload: %d sessions at %.2f/s, hold %s, window ~%s, offered %.1f",
-		sessions, rate, hold, window.Round(time.Second), float64(sessions)/window.Seconds()*hold.Seconds())
+	t.Logf("workload: %d sessions at %.2f/s, hold %s, window ~%s, offered %.1f, heavy %d, boot concurrency %d",
+		sessions, rate, hold, window.Round(time.Second), float64(sessions)/window.Seconds()*hold.Seconds(), heavy, boot)
 	if len(rows) != sessions {
 		t.Fatalf("%d rows for %d sessions", len(rows), sessions)
 	}

@@ -53,6 +53,12 @@ type Recorder interface {
 	Resources(policy string, reading Reading)
 	// SessionUsage records what one browser session cost inside its own context.
 	SessionUsage(taskSeconds, jsHeapBytes float64)
+	// NodeCPU reports the node's CPU use, from the host sampler.
+	NodeCPU(usedCores float64, totalCores int)
+	// BootStarted and BootFinished bracket one instance startup, so overlapping
+	// spikes are visible as a gauge rather than inferred from latency.
+	BootStarted()
+	BootFinished(seconds float64)
 	Pool(desired, ready int32)
 	Template(cpuLimitCores, memLimitBytes float64)
 	Boundary(kind string)
@@ -113,6 +119,9 @@ type Runner struct {
 	// record of who is waiting. Both are built from the run configuration.
 	gate  *admission.Gate
 	queue *admission.Queue
+	// boot bounds simultaneous instance startups. Separate from gate: gate
+	// bounds admissions, boot bounds the CPU spikes those admissions cause.
+	boot *admission.Gate
 
 	// spool hands out browsing slots when one Chromium serves several
 	// sessions. Nil means the historical one-session-per-instance path.
@@ -122,6 +131,11 @@ type Runner struct {
 	// browsers holds one direct CDP connection per instance, used when the run
 	// asks for the ws transport.
 	browsers map[string]*browser.Conn
+	// Node CPU seen by the host sampler: peak and mean, for the report.
+	hostCPUPeak    float64
+	hostCPUSum     float64
+	hostCPUSamples int
+	hostCPUTotal   int
 	// lg is the structured logger; log is kept for the plain lines that predate it.
 	lg *logging.Logger
 	// inRun is true between Run's start and its cleanup, so a socket closing
@@ -156,7 +170,7 @@ func New(cfg model.RunConfig, opts Options) *Runner {
 	gate := admission.NewGate(cfg.Admit)
 	runner := &Runner{
 		cfg: cfg, ad: opts.Adapter, st: opts.Store, smp: opts.Sampler, plan: opts.Plan,
-		gate: gate, queue: admission.NewQueue(), browsers: map[string]*browser.Conn{},
+		gate: gate, queue: admission.NewQueue(), boot: admission.NewGate(cfg.BootConcurrency), browsers: map[string]*browser.Conn{},
 		log: logger, lg: lg, now: now, all: map[string]*sandbox.Instance{}, counts: map[model.Outcome]int{},
 		hostMemory: opts.HostMemory,
 		rec:        opts.Recorder,
@@ -242,6 +256,8 @@ func (r *Runner) Run(ctx context.Context) error {
 		PeakInFlight:    int(r.peakInFlight),
 		CleanupFailures: int(r.cleanupFailed),
 		DispatchPlanned: int64(len(r.plan.Sessions)),
+		NodeCPUPeak:     r.hostCPUPeak, NodeCPUSum: r.hostCPUSum,
+		NodeCPUSamples: r.hostCPUSamples, NodeCPUTotalCores: r.hostCPUTotal,
 	}
 	for _, outcome := range r.counts {
 		facts.DispatchCompleted += int64(outcome)
@@ -894,6 +910,7 @@ func (r *Runner) recordReplicas(state sandbox.PoolState, note string) {
 // recordHost appends one node-memory reading, which is what shows the run
 // approaching the node's limit rather than the platform's.
 func (r *Runner) recordHost() {
+	r.recordNodeCPU()
 	if r.hostMemory == nil {
 		return
 	}
@@ -914,6 +931,25 @@ func (r *Runner) recordHost() {
 	}
 	if r.memTotal == 0 {
 		r.memTotal = total
+	}
+
+}
+
+// recordNodeCPU samples the whole node. A pod's cgroup is only readable once it is
+// Ready, so this is the series that shows startup spikes colliding.
+func (r *Runner) recordNodeCPU() {
+	if cpu, err := measure.ReadHostCPU(); err == nil {
+		if r.hostCPUTotal == 0 {
+			r.hostCPUTotal = cpu.TotalCores
+		}
+		if cpu.UsedCores > r.hostCPUPeak {
+			r.hostCPUPeak = cpu.UsedCores
+		}
+		r.hostCPUSum += cpu.UsedCores
+		r.hostCPUSamples++
+		if r.rec != nil {
+			r.rec.NodeCPU(cpu.UsedCores, cpu.TotalCores)
+		}
 	}
 }
 

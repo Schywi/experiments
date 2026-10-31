@@ -9,8 +9,10 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"runtime"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // HostMemory is the node's memory picture from /proc/meminfo.
@@ -19,6 +21,53 @@ type HostMemory struct {
 	AvailableBytes int64
 	SwapTotalBytes int64
 	SwapFreeBytes  int64
+}
+
+// HostCPU is the node's CPU as a whole: cores in use, and how many exist. A pod's
+// cgroup can only be read once it is Ready, so this is what makes overlapping
+// startup spikes visible after the fact.
+type HostCPU struct {
+	UsedCores  float64
+	TotalCores int
+	AtNS       int64
+}
+
+// ReadHostCPU returns the node's average CPU use since boot, from /proc/stat.
+// Two readings a second apart give the interval.
+func ReadHostCPU() (HostCPU, error) {
+	body, err := os.ReadFile("/proc/stat")
+	if err != nil {
+		return HostCPU{}, err
+	}
+	for _, line := range strings.Split(string(body), "\n") {
+		if !strings.HasPrefix(line, "cpu ") {
+			continue
+		}
+		fields := strings.Fields(line)[1:]
+		if len(fields) < 5 {
+			break
+		}
+		values := make([]int64, 0, len(fields))
+		for _, field := range fields {
+			value, err := strconv.ParseInt(field, 10, 64)
+			if err != nil {
+				return HostCPU{}, err
+			}
+			values = append(values, value)
+		}
+		var total int64
+		for _, value := range values {
+			total += value
+		}
+		idle := values[3] + values[4] // idle + iowait
+		cores := float64(runtime.NumCPU())
+		return HostCPU{
+			UsedCores:  float64(total-idle) / float64(total) * cores,
+			TotalCores: runtime.NumCPU(),
+			AtNS:       time.Now().UnixNano(),
+		}, nil
+	}
+	return HostCPU{}, fmt.Errorf("no cpu line in /proc/stat")
 }
 
 // ReadHostMemory reads /proc/meminfo. It returns a zero value when the file is

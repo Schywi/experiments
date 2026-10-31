@@ -19,6 +19,14 @@ import (
 	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/runtime/schedule"
 )
 
+// NodeCPU summarises whole-node CPU during the run.
+type NodeCPU struct {
+	TotalCores int     `json:"total_cores"`
+	PeakCores  float64 `json:"peak_cores"`
+	MeanCores  float64 `json:"mean_cores"`
+	Samples    int     `json:"samples"`
+}
+
 // PerSession aggregates the per-session cost columns.
 type PerSession struct {
 	TaskMS   Latency `json:"task_ms"`
@@ -65,6 +73,8 @@ type Report struct {
 	// PerSession is what one browser session costs: its own main-thread task
 	// time and JS heap, plus its share of the pod's CPU and memory.
 	PerSession PerSession `json:"per_session"`
+	// NodeCPU is what the host sampler saw, from the runner's side.
+	NodeCPU NodeCPU `json:"node_cpu"`
 	// SharedSessions counts sessions that ran in a browser shared with others,
 	// so their CPU figure is a division of the pod's usage.
 	SharedSessions  int                `json:"shared_sessions"`
@@ -337,6 +347,14 @@ func Build(cfg model.RunConfig, plan schedule.Plan, st *store.Store) (*Report, e
 		rep.PeakWaiting = facts.PeakWaiting
 		rep.PeakInFlight = facts.PeakInFlight
 		rep.CleanupFailures = facts.CleanupFailures
+		if facts.NodeCPUSamples > 0 {
+			rep.NodeCPU = NodeCPU{
+				TotalCores: facts.NodeCPUTotalCores,
+				PeakCores:  facts.NodeCPUPeak,
+				MeanCores:  facts.NodeCPUSum / float64(facts.NodeCPUSamples),
+				Samples:    facts.NodeCPUSamples,
+			}
+		}
 	}
 	rep.ActiveAtCutoff = rep.Outcomes[string(model.OutcomeWaiting)] + rep.Outcomes[string(model.OutcomePending)]
 
@@ -514,6 +532,10 @@ func (r *Report) Print(w io.Writer) {
 	if r.Config.ContextsPerBrowser > 1 {
 		fmt.Fprintf(w, "\nbrowsers: %d sessions per Chromium; %d of %d sessions shared a browser, so their CPU is the pod's usage divided by the contexts in flight\n",
 			r.Config.ContextsPerBrowser, r.SharedSessions, r.Stored)
+	}
+	if r.NodeCPU.Samples > 0 {
+		fmt.Fprintf(w, "node cpu          peak %.2f / %.0f cores, mean %.2f (n=%d)\n",
+			r.NodeCPU.PeakCores, float64(r.NodeCPU.TotalCores), r.NodeCPU.MeanCores, r.NodeCPU.Samples)
 	}
 	if r.CleanupFailures > 0 {
 		fmt.Fprintf(w, "cleanup: %d instance(s) could not be deleted\n", r.CleanupFailures)

@@ -156,3 +156,19 @@ func TestReadHostMemory(t *testing.T) {
 		t.Fatalf("MemAvailable read as %d", memory.AvailableBytes)
 	}
 }
+
+func TestReadHostCPUReportsCoresInUse(t *testing.T) {
+	cpu, err := ReadHostCPU()
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if cpu.TotalCores < 1 {
+		t.Fatalf("total cores = %d, want at least 1", cpu.TotalCores)
+	}
+	if cpu.UsedCores < 0 || cpu.UsedCores > float64(cpu.TotalCores) {
+		t.Fatalf("used cores = %.2f of %d, outside 0..total", cpu.UsedCores, cpu.TotalCores)
+	}
+	if cpu.AtNS == 0 {
+		t.Fatalf("no timestamp")
+	}
+}

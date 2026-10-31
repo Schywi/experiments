@@ -40,6 +40,9 @@ type Recorder struct {
 	resume   *prometheus.HistogramVec
 	taskTime *prometheus.HistogramVec
 	jsHeap   *prometheus.HistogramVec
+	nodeCPU  prometheus.Gauge
+	booting  prometheus.Gauge
+	bootSecs prometheus.Histogram
 
 	// The gauges are also tracked here so decrementing them cannot go negative
 	// when a session settles without ever having arrived through this recorder.
@@ -70,6 +73,19 @@ func New() *Recorder {
 			Help:    "Main-thread task time one browser session spent inside its own context.",
 			Buckets: []float64{0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1, 5, 10, 30, 60},
 		}, []string{"policy"}),
+		nodeCPU: prometheus.NewGauge(prometheus.GaugeOpts{
+			Name: "session_lab_node_cpu_cores",
+			Help: "Cores in use on the node, sampled by the runner. Startup spikes show here before any pod cgroup exists.",
+		}),
+		booting: prometheus.NewGauge(prometheus.GaugeOpts{
+			Name: "session_lab_instances_booting",
+			Help: "Instances currently starting: overlapping startup spikes are what saturates a node whose average CPU looks idle.",
+		}),
+		bootSecs: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Name:    "session_lab_boot_seconds",
+			Help:    "Time from boot permit to a usable browser context.",
+			Buckets: []float64{0.2, 0.5, 1, 2, 5, 10, 20, 40, 60, 90, 120},
+		}),
 		jsHeap: prometheus.NewHistogramVec(prometheus.HistogramOpts{
 			Name:    "session_lab_session_js_heap_bytes",
 			Help:    "JavaScript heap of one browser session's context.",
@@ -223,6 +239,20 @@ func (r *Recorder) SessionUsage(taskSeconds, jsHeapBytes float64) {
 	}
 	if jsHeapBytes > 0 {
 		r.jsHeap.WithLabelValues("all").Observe(jsHeapBytes)
+	}
+}
+
+// NodeCPU records whole-node CPU use.
+func (r *Recorder) NodeCPU(usedCores float64, totalCores int) { r.nodeCPU.Set(usedCores) }
+
+// BootStarted records an instance that is starting now.
+func (r *Recorder) BootStarted() { r.booting.Inc() }
+
+// BootFinished records a completed startup.
+func (r *Recorder) BootFinished(seconds float64) {
+	r.booting.Dec()
+	if seconds > 0 {
+		r.bootSecs.Observe(seconds)
 	}
 }
 

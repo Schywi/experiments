@@ -34,6 +34,33 @@ func TestRiotURLsAreDistinctAndRotate(t *testing.T) {
 	}
 }
 
+func TestRiotHeavySessionsAreConfigurable(t *testing.T) {
+	// Three heavy sessions out of ten: the first three load the champion page, the
+	// rest splashes. This is the spike-convergence knob.
+	urls := riotURLsWithHeavy(10, 3)
+	if len(urls) != 10 {
+		t.Fatalf("built %d urls", len(urls))
+	}
+	for i := 0; i < 3; i++ {
+		if urls[i] != riotHeavy {
+			t.Fatalf("session %d is %q, want the heavy page", i+1, urls[i])
+		}
+	}
+	if urls[3] == riotHeavy {
+		t.Fatalf("session 4 is still heavy")
+	}
+	if urls[3] == urls[4] {
+		t.Fatalf("splash URLs repeat")
+	}
+	// Zero heavy sessions means every session gets a splash.
+	all := riotURLsWithHeavy(4, 0)
+	for i, url := range all {
+		if url == riotHeavy {
+			t.Fatalf("session %d is heavy with heavy=0", i+1)
+		}
+	}
+}
+
 func TestRiotURLsOfNothing(t *testing.T) {
 	if got := riotURLs(0); got != nil {
 		t.Fatalf("riotURLs(0) = %v, want nil", got)
