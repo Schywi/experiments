@@ -819,5 +819,5 @@ def test_the_frame_is_contained_by_a_fixed_box():
     markup = render.expanded(_tile(0))
     assert 'class="frame-box"' in markup
     assert markup.index('class="frame-box"') < markup.index('class="big"')
-    assert "object-fit: contain" in render.BASE_CSS
+    assert "object-fit: fill" in render.BASE_CSS
     assert "aspect-ratio: 1280 / 600" in render.BASE_CSS

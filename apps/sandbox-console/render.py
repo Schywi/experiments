@@ -292,8 +292,10 @@ main { max-width: 1440px; margin: 0 auto; padding: var(--space-6); }
   background: hsl(240 10% 2%); border-radius: var(--radius); overflow: hidden;
 }
 .dialog img.big {
+  /* fill: the frame occupies the whole box. `contain` letterboxed it, which is
+     why the picture looked like it sat inside the box instead of filling it. */
   position: absolute; inset: 0; width: 100%; height: 100%;
-  object-fit: contain; object-position: center;
+  object-fit: fill;
   background: hsl(240 10% 2%); cursor: crosshair; display: block;
 }
 .big-placeholder {
