@@ -40,8 +40,8 @@ class FakeDevTools:
         self._result = result if result is not None else {"ok": True}
         self._error = error
 
-    async def call(self, method, params=None):
-        self.calls.append((method, params or {}))
+    async def call(self, method, params=None, session_id=None):
+        self.calls.append((method, params or {}, session_id))
         if self._error:
             raise bridge.WebSocketError(self._error)
         return self._result
@@ -159,7 +159,33 @@ def test_post_cdp_forwards_the_command_and_wraps_the_result():
     response, devtools = run(body())
     assert response.status_code == 200
     assert response.json() == {"result": {"data": "UE5H"}}
-    assert devtools.calls == [("Page.captureScreenshot", {"format": "png"})]
+    assert devtools.calls == [("Page.captureScreenshot", {"format": "png"}, None)]
+
+
+def test_post_cdp_forwards_a_session_id_for_a_flattened_context():
+    """A flattened session is how one browser context is driven on its own."""
+    devtools = FakeDevTools(result={"data": "UE5H"})
+
+    async def body():
+        server, port = await _serve_http(devtools)()
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    f"http://127.0.0.1:{port}/cdp",
+                    json={
+                        "method": "Page.captureScreenshot",
+                        "params": {"format": "png"},
+                        "sessionId": "SESS-1",
+                    },
+                )
+            return response, devtools
+        finally:
+            server.close()
+            await server.wait_closed()
+
+    response, devtools = run(body())
+    assert response.status_code == 200
+    assert devtools.calls == [("Page.captureScreenshot", {"format": "png"}, "SESS-1")]
 
 
 def test_post_cdp_rejects_a_missing_method():

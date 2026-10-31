@@ -250,29 +250,35 @@ class DevTools:
         self._browser = await DevToolsSocket.connect(self._host, self._port, path)
         return self._browser
 
-    async def _socket_for(self, method: str) -> DevToolsSocket:
-        if method.startswith(BROWSER_DOMAINS):
+    async def _socket_for(self, method: str, session_id: str | None = None) -> DevToolsSocket:
+        # A flattened session lives on the socket that attached it. Attach goes
+        # out on the browser socket (Target.), so a command carrying the session
+        # has to travel the same socket even when its domain is Page. or Input.
+        if session_id or method.startswith(BROWSER_DOMAINS):
             return await self._connect_browser()
         return await self._connect()
 
-    async def call(self, method: str, params: dict | None = None) -> dict:
+    async def call(self, method: str, params: dict | None = None, session_id: str | None = None) -> dict:
         async with self._lock:
-            socket = await self._socket_for(method)
+            socket = await self._socket_for(method, session_id)
             self._ids += 1
             message_id = self._ids
-            await socket.send_text(json.dumps({"id": message_id, "method": method, "params": params or {}}))
+            message: dict = {"id": message_id, "method": method, "params": params or {}}
+            if session_id:
+                message["sessionId"] = session_id
+            await socket.send_text(json.dumps(message))
             while True:
                 raw = await asyncio.wait_for(socket.recv_text(), timeout=self._timeout)
                 try:
-                    message = json.loads(raw)
+                    parsed = json.loads(raw)
                 except ValueError:
                     continue
-                if message.get("id") != message_id:
+                if parsed.get("id") != message_id:
                     continue  # an event; the console does not subscribe to any
-                if "error" in message:
-                    error = message["error"] or {}
+                if "error" in parsed:
+                    error = parsed["error"] or {}
                     raise WebSocketError(str(error.get("message") or error))
-                return message.get("result") or {}
+                return parsed.get("result") or {}
 
     def drop(self) -> None:
         if self._socket is not None:
@@ -327,7 +333,11 @@ async def handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter, dev
                 await _respond(writer, 400, "application/json", json.dumps({"error": "method is required"}).encode())
                 return
             try:
-                result = await devtools.call(command, payload.get("params") or {})
+                result = await devtools.call(
+                    command,
+                    payload.get("params") or {},
+                    payload.get("sessionId") or None,
+                )
             except (WebSocketError, asyncio.TimeoutError, OSError) as error:
                 # Drop the socket so the next request reconnects: Chromium
                 # restarts, and a half-open socket would poison every later call.
