@@ -76,6 +76,12 @@ SESSION_LAB_INTEGRATION=1 RIOT_SESSIONS=300 RIOT_HOLD=30s RIOT_RATE=1 \
   go test -tags integration -count=1 -timeout 1800s ./test/ -run TestRiotLive -v
     300 s window, 30 offered. Answers: the same workload at double the rate.
 
+# MAXIMUM SESSIONS with splash pages only (RIOT_HEAVY=0). Concurrency = rate x hold.
+#   rate 1  -> 75 concurrent       rate 2  -> 150       rate 3  -> 225
+#   rate 4  -> 300  (~38 browsers at 8 contexts, the physical memory ceiling)
+SESSION_LAB_INTEGRATION=1 RIOT_SESSIONS=600 RIOT_HOLD=75s RIOT_RATE=2 RIOT_HEAVY=0 \
+  go test -tags integration -count=1 -timeout 2400s ./test/ -run TestRiotLive -v
+
 SESSION_LAB_INTEGRATION=1 RIOT_SESSIONS=30 RIOT_HOLD=30s RIOT_RATE=2 RIOT_HEAVY=10 \
   go test -tags integration -count=1 -timeout 900s ./test/ -run TestRiotLive -v
     Answers: spike convergence — ten full SPAs starting close together.

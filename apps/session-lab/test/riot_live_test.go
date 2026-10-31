@@ -143,20 +143,26 @@ func TestRiotLive(t *testing.T) {
 		t.Fatalf("%d sessions used %d contexts; each session needs its own", sessions, len(contexts))
 	}
 
-	// The heavy page is the point: a real SPA must cost more main-thread time than
-	// a splash image, otherwise the session is not rendering anything.
-	if heavyCount == 0 || lightCount == 0 {
-		t.Fatalf("no task time recorded (heavy %d, light %d)", heavyCount, lightCount)
+	// With at least one heavy page, it must cost more main-thread time than a
+	// splash — otherwise nothing rendered. RIOT_HEAVY=0 is the all-splash density
+	// run, where there is nothing to compare against.
+	if heavyCount == 0 && lightCount == 0 {
+		t.Fatalf("no task time recorded at all")
 	}
-	heavyAvg := heavyTaskTotals / float64(heavyCount)
-	lightAvg := lightTaskTotals / float64(lightCount)
-	t.Logf("task time: heavy %.1fms, light average %.1fms over %d sessions",
-		heavyAvg/1000, lightAvg/1000, lightCount)
+	if heavyCount > 0 && lightCount > 0 {
+		heavyAvg := heavyTaskTotals / float64(heavyCount)
+		lightAvg := lightTaskTotals / float64(lightCount)
+		t.Logf("task time: heavy %.1fms, light average %.1fms over %d sessions",
+			heavyAvg/1000, lightAvg/1000, lightCount)
+		if heavyAvg <= lightAvg {
+			t.Fatalf("the heavy page cost %.1fms, no more than a splash at %.1fms: nothing rendered",
+				heavyAvg/1000, lightAvg/1000)
+		}
+	} else {
+		avg := lightTaskTotals / float64(lightCount+heavyCount)
+		t.Logf("task time: %.1fms average over %d splash sessions", avg/1000, lightCount+heavyCount)
+	}
 	t.Logf("pages: %d distinct, first %s, last %s", len(urls), urls[0], urls[len(urls)-1])
-	if heavyAvg <= lightAvg {
-		t.Fatalf("the heavy page cost %.1fms, no more than a splash at %.1fms: nothing rendered",
-			heavyAvg/1000, lightAvg/1000)
-	}
 
 	// The same report the CLI writes: JSON next to the database, and the summary
 	// in the terminal, so a test run is as inspectable as a script run.
