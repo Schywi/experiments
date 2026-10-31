@@ -116,6 +116,9 @@ type Runner struct {
 	// browsers holds one direct CDP connection per instance, used when the run
 	// asks for the ws transport.
 	browsers map[string]*browser.Conn
+	// inRun is true between Run's start and its cleanup, so a socket closing
+	// during teardown is not reported as a browser failure.
+	inRun bool
 
 	// Runtime facts: the arrival window actually achieved, and the deepest
 	// queue and cleanup failures seen.
@@ -154,6 +157,13 @@ func New(cfg model.RunConfig, opts Options) *Runner {
 }
 
 // Run performs the whole experiment and returns when every session is settled.
+// running reports whether the experiment is still executing.
+func (r *Runner) running() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.inRun
+}
+
 func (r *Runner) Run(ctx context.Context) error {
 	r.start = r.now()
 	if err := r.st.StartRun(r.cfg, r.start); err != nil {
@@ -168,6 +178,9 @@ func (r *Runner) Run(ctx context.Context) error {
 	r.log.Printf("run %s: %d sessions, %.3f/s, policy %s, mean hold %s, offered concurrency %.1f",
 		r.cfg.RunID, len(r.plan.Sessions), r.plan.Rate, r.cfg.Policy, r.plan.MeanHold(), r.plan.PeakOffered())
 
+	r.mu.Lock()
+	r.inRun = true
+	r.mu.Unlock()
 	stopSampling := r.sampleReplicas(ctx)
 	dispatchErr := r.dispatch(ctx)
 	stopSampling()
@@ -179,6 +192,9 @@ func (r *Runner) Run(ctx context.Context) error {
 	// no orphaned claims behind for the next experiment to trip over.
 	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Minute)
 	defer cancel()
+	r.mu.Lock()
+	r.inRun = false
+	r.mu.Unlock()
 	r.releaseAll(cleanupCtx)
 	if r.cfg.PoolReplicas != nil {
 		if poolErr := r.restorePool(cleanupCtx); poolErr != nil {

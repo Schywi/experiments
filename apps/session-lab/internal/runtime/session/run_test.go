@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/infra/measure"
 	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/infra/sandbox"
 	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/platform/model"
 	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/platform/store"
@@ -261,5 +262,64 @@ func TestSharedInstanceCpuIsDividedByContexts(t *testing.T) {
 	}
 	if shared == 0 {
 		t.Fatalf("no session reported a shared browser, so the CPU figure is presented as exclusive")
+	}
+}
+
+// samplingAdapter reports readings for every sample, which is what a real pod
+// does. It exists because a session that finishes its hold while being sampled
+// was once recorded as interrupted: the two booleans returned by hold() were
+// swapped in the shared-browser path.
+type samplingAdapter struct {
+	*sandbox.Fake
+}
+
+func (s *samplingAdapter) WaitReady(ctx context.Context, instance *sandbox.Instance) error {
+	if err := s.Fake.WaitReady(ctx, instance); err != nil {
+		return err
+	}
+	instance.PodUID = "pod-" + instance.ID
+	return nil
+}
+
+type fixedSampler struct{}
+
+func (fixedSampler) Sample(ctx context.Context, podUID, node string) (measure.Reading, bool, error) {
+	return measure.Reading{CPUUsec: 1000, MemCurrent: 1024}, true, nil
+}
+
+func TestCompletedHoldWithSamplesIsSuccess(t *testing.T) {
+	cfg := config(model.PolicyReuse, 4, 20*time.Millisecond)
+	cfg.ContextsPerBrowser = 4
+	cfg.Rate = 2000
+	plan, err := schedule.Generate(cfg, 1)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	st, err := store.Open(filepath.Join(t.TempDir(), "run.db"))
+	if err != nil {
+		t.Fatalf("store: %v", err)
+	}
+	t.Cleanup(func() { st.Close() })
+
+	runner := session.New(cfg, session.Options{
+		Adapter: &samplingAdapter{Fake: sandbox.NewFake()},
+		Store:   st, Plan: plan, Sampler: fixedSampler{},
+		Log: log.New(io.Discard, "", 0),
+	})
+	if err := runner.Run(context.Background()); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	rows, err := st.Sessions()
+	if err != nil {
+		t.Fatalf("sessions: %v", err)
+	}
+	for _, row := range rows {
+		if row.Outcome != model.OutcomeSuccess {
+			t.Fatalf("session %d ended %q (%s) after completing a %s hold with samples",
+				row.ID, row.Outcome, row.Error, row.Bucket)
+		}
+		if row.CPUUsec == 0 {
+			t.Fatalf("session %d recorded no CPU from its samples", row.ID)
+		}
 	}
 }

@@ -152,9 +152,13 @@ func (r *Runner) watchBrowser(conn *browser.Conn, instance *sandbox.Instance) {
 		}
 	}
 	if err := conn.Err(); err != nil {
-		r.log.Printf("browser %s closed: %v", instance.ID, err)
-		if r.spool != nil {
-			r.spool.Retire(instance)
+		// The run's own cleanup deletes claims, which kills the browsers; a socket
+		// that closes after the run ended is expected, not a failure.
+		if r.running() {
+			r.log.Printf("browser %s lost mid-run: %v", instance.ID, err)
+			if r.spool != nil {
+				r.spool.Retire(instance)
+			}
 		}
 	}
 }

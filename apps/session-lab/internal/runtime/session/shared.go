@@ -108,7 +108,7 @@ func (r *Runner) sessionShared(ctx context.Context, planned schedule.Planned) {
 	session.BrowserContext = string(isolatedState.context)
 
 	session.HoldStartNS = r.now().UnixNano()
-	reading, sampled, interrupted := r.hold(ctx, lease.Instance, planned.Hold)
+	reading, completed, sampled := r.hold(ctx, lease.Instance, planned.Hold)
 	session.HoldEndNS = r.now().UnixNano()
 	// The cgroup counter is the pod's, and this pod carries `sharing` sessions.
 	applyReading(&session, divideReading(reading, sharing), sampled)
@@ -118,9 +118,11 @@ func (r *Runner) sessionShared(ctx context.Context, planned schedule.Planned) {
 			r.rec.Resources(string(r.cfg.Policy), divideReading(reading, sharing))
 		}
 	}
-	if interrupted {
-		// The session was cut short, but the context still has to be released.
+	if !completed {
+		// The hold was cut short, but the context still has to be released.
 		_ = r.closeIsolated(ctx, lease.Instance, isolatedState)
+		lease.Instance.Sessions++
+		r.persistInstance(lease.Instance)
 		r.spool.Give(lease)
 		outcome := model.OutcomeWaiting
 		if ctx.Err() == nil {

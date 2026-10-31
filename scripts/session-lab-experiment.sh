@@ -77,13 +77,14 @@ cleanup() {
       local exit_code=$?
       echo "==> running automated teardown and cleanup..."
 
-      # Delete all claims created by session-lab
-      kubectl -n "${namespace}" delete sandboxclaims -l
-      app.kubernetes.io/managed-by=session-lab --wait=false 2>/dev/null || true
+      # Delete all claims created by session-lab. The label selector must stay on
+      # one line: split, kubectl sees a bare -l and refuses the whole command.
+      kubectl -n "${namespace}" delete sandboxclaims \
+        -l app.kubernetes.io/managed-by=session-lab --wait=false 2>/dev/null || true
 
-      # Delete any cold-started sandboxes
-      kubectl -n "${namespace}" delete sandboxes -l app.kubernetes.io/managed-by=session-lab
-      --wait=false 2>/dev/null || true
+      # Delete any cold-started sandboxes.
+      kubectl -n "${namespace}" delete sandboxes \
+        -l app.kubernetes.io/managed-by=session-lab --wait=false 2>/dev/null || true
 
       # Optional: restore warm pool to a safe idle baseline (e.g. 2 replicas)
       # kubectl -n "${namespace}" scale sandboxwarmpool "${pool}" --replicas=2 2>/dev/null ||
