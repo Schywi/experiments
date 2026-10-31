@@ -100,9 +100,12 @@ async def start(
     ledger = ledger if ledger is not None else LEDGER
     choices = [url for url in (urls or DEFAULT_SITES) if url.strip()] or list(DEFAULT_SITES)
     wanted = max(1, min(int(count), _limit()))
+    # Continue through the site list rather than restarting it: starting traffic
+    # twice should give two sets of distinct origins, not two copies of the same.
+    offset = len(ledger.ours(sandbox))
     created: list[Session] = []
     for index in range(wanted):
-        url = choices[index % len(choices)]
+        url = choices[(offset + index) % len(choices)]
         try:
             answer = await client.call(sandbox, "Target.createBrowserContext")
         except Exception as error:  # noqa: BLE001 - the browser's refusal is the result
