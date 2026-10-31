@@ -6,7 +6,7 @@
 | Status | Measurement added, experiments not yet run |
 | Code | `apps/session-lab`, branch `research/session-lifecycle-elasticity` |
 | Issues | `experiments-wnj` elasticity, `experiments-c4h` ladder, `experiments-0fo` kine metrics |
-| Notes here | [01 — analysis of our implementation](01-analysis.md), [02 — kine and the MySQL question](02-kine-and-datastores.md), [03 — the Gemini design, reviewed](03-gemini-design-review.md) |
+| Notes here | [01 — analysis of our implementation](01-analysis.md), [02 — kine and the MySQL question](02-kine-and-datastores.md), [03 — the Gemini design, reviewed](03-gemini-design-review.md), [04 — datastore capacity brief](04-datastore-capacity-brief.md) |
 
 This folder exists to answer one question: **how many browser sessions can this node hold, and
 what breaks first when we push it?** The swap study answered the memory side; this is the CPU side.
