@@ -228,7 +228,11 @@ type RunConfig struct {
 	// an isolated browser context inside a shared browser.
 	ContextsPerBrowser int `json:"contexts_per_browser,omitempty"`
 	// TargetURL is the page a session starts on, inside its own context.
-	TargetURL       string        `json:"target_url,omitempty"`
+	TargetURL string `json:"target_url,omitempty"`
+	// CDPTransport is "http" for the in-pod bridge or "ws" for a direct
+	// DevTools connection; CDPPort is the port the sidecar publishes.
+	CDPTransport    string        `json:"cdp_transport,omitempty"`
+	CDPPort         int           `json:"cdp_port,omitempty"`
 	OverloadFactor  float64       `json:"overload_factor,omitempty"`
 	SessionDeadline time.Duration `json:"session_deadline_ns,omitempty"`
 	// Window is the intended arrival window when the operator asked for one.

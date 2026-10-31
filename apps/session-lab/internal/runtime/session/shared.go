@@ -99,13 +99,13 @@ func (r *Runner) sessionShared(ctx context.Context, planned schedule.Planned) {
 	session.CPUShared = lease.Shared
 	sharing := r.spool.InUseOn(lease.Instance)
 
-	browser, err := r.ad.OpenSession(ctx, lease.Instance, r.cfg.TargetURL)
+	isolatedState, err := r.openIsolated(ctx, lease.Instance)
 	if err != nil {
 		r.spool.Give(lease)
 		r.settle(session.ID, model.OutcomeResetFailed, "browser context: "+err.Error(), &session)
 		return
 	}
-	session.BrowserContext = browser.ContextID
+	session.BrowserContext = string(isolatedState.context)
 
 	session.HoldStartNS = r.now().UnixNano()
 	reading, sampled, interrupted := r.hold(ctx, lease.Instance, planned.Hold)
@@ -120,7 +120,7 @@ func (r *Runner) sessionShared(ctx context.Context, planned schedule.Planned) {
 	}
 	if interrupted {
 		// The session was cut short, but the context still has to be released.
-		_ = r.ad.CloseSession(ctx, lease.Instance, browser)
+		_ = r.closeIsolated(ctx, lease.Instance, isolatedState)
 		r.spool.Give(lease)
 		outcome := model.OutcomeWaiting
 		if ctx.Err() == nil {
@@ -133,7 +133,7 @@ func (r *Runner) sessionShared(ctx context.Context, planned schedule.Planned) {
 	// Closing the context replaces the old blank-page reset: the next session on
 	// this browser starts with no cookies, storage or cache from this one.
 	session.ResetStartNS = r.now().UnixNano()
-	closeErr := r.ad.CloseSession(ctx, lease.Instance, browser)
+	closeErr := r.closeIsolated(ctx, lease.Instance, isolatedState)
 	session.ResetEndNS = r.now().UnixNano()
 	if r.rec != nil {
 		r.rec.Reset(string(r.cfg.Policy), float64(session.ResetEndNS-session.ResetStartNS)/1e9)
@@ -153,6 +153,7 @@ func (r *Runner) sessionShared(ctx context.Context, planned schedule.Planned) {
 			r.rec.Release(string(r.cfg.Policy), float64(session.GoneNS-session.DeleteCalledNS)/1e9)
 		}
 		r.spool.Retire(lease.Instance)
+		r.forgetBrowser(lease.Instance)
 		r.mu.Lock()
 		delete(r.all, lease.Instance.ID)
 		r.mu.Unlock()

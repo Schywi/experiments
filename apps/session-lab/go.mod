@@ -3,6 +3,7 @@ module github.com/lucasmirandoliveira/experiments/apps/session-lab
 go 1.26.0
 
 require (
+	github.com/coder/websocket v1.8.15
 	github.com/prometheus/client_golang v1.25.0
 	k8s.io/api v0.35.0
 	k8s.io/apimachinery v0.35.0

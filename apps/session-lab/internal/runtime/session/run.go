@@ -23,6 +23,7 @@ import (
 	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/platform/model"
 	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/platform/store"
 	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/runtime/admission"
+	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/runtime/browser"
 	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/runtime/schedule"
 	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/runtime/slots"
 )
@@ -112,6 +113,10 @@ type Runner struct {
 	spool       *slots.Pool
 	instanceSeq int
 
+	// browsers holds one direct CDP connection per instance, used when the run
+	// asks for the ws transport.
+	browsers map[string]*browser.Conn
+
 	// Runtime facts: the arrival window actually achieved, and the deepest
 	// queue and cleanup failures seen.
 	firstArrivalNS int64
@@ -136,7 +141,7 @@ func New(cfg model.RunConfig, opts Options) *Runner {
 	gate := admission.NewGate(cfg.Admit)
 	runner := &Runner{
 		cfg: cfg, ad: opts.Adapter, st: opts.Store, smp: opts.Sampler, plan: opts.Plan,
-		gate: gate, queue: admission.NewQueue(),
+		gate: gate, queue: admission.NewQueue(), browsers: map[string]*browser.Conn{},
 		log: logger, now: now, all: map[string]*sandbox.Instance{}, counts: map[model.Outcome]int{},
 		hostMemory: opts.HostMemory,
 		rec:        opts.Recorder,
