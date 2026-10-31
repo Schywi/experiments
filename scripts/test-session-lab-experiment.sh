@@ -99,6 +99,34 @@ else
   printf 'ok   session_count handles a fractional rate\n'
 fi
 
+echo "== arguments handed to the runner"
+# The regression this guards: removing a flag with ${arr[@]/flag/} leaves an empty
+# element, and Go's flag parser stops at it — the run then fails with "give --out"
+# after the whole argument list was silently ignored.
+mapfile -t kept < <(strip_flag --riot --duration 60s --riot --rate 0.5 --hold 30s)
+if [[ " ${kept[*]} " == *" --riot "* ]]; then
+  printf 'FAIL --riot survived the strip\n' >&2
+  failures=$((failures + 1))
+else
+  printf 'ok   --riot is removed\n'
+fi
+empty=0
+for arg in "${kept[@]}"; do
+  [[ -z "${arg}" ]] && empty=$((empty + 1))
+done
+if (( empty > 0 )); then
+  printf 'FAIL %d empty argument(s) left behind; the runner would stop parsing there\n' "${empty}" >&2
+  failures=$((failures + 1))
+else
+  printf 'ok   no empty argument is passed through\n'
+fi
+if [[ "${kept[*]}" != "--duration 60s --rate 0.5 --hold 30s" ]]; then
+  printf 'FAIL arguments changed: %s\n' "${kept[*]}" >&2
+  failures=$((failures + 1))
+else
+  printf 'ok   the remaining arguments keep their order\n'
+fi
+
 echo "== summary"
 if (( failures > 0 )); then
   printf '%d check(s) failed\n' "${failures}" >&2

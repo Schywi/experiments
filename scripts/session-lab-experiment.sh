@@ -92,6 +92,21 @@ session_count() {
   awk -v seconds="${seconds}" -v rate="${rate}" 'BEGIN { printf "%d", seconds * rate }' 
 }
 
+# strip_flag <flag> <args...> prints the arguments without <flag>.
+# Bash's ${arr[@]/x/} replaces the element with an empty string instead of removing
+# it, and one empty argument stops Go's flag parser: everything after it is ignored,
+# including --out. That is why the runner once refused to start with "give --out".
+strip_flag() {
+  local flag="$1"
+  shift
+  local kept=() arg
+  for arg in "$@"; do
+    [[ "${arg}" == "${flag}" ]] && continue
+    kept+=("${arg}")
+  done
+  (( ${#kept[@]} )) && printf '%s\n' "${kept[@]}"
+}
+
 usage() {
   sed -n '2,20p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
   exit "${1:-0}"
