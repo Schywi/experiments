@@ -85,7 +85,13 @@ sandboxes:
     resources:
       requests:
         cpu: 100m
-        memory: 256Mi
+        # Measured on this cluster (cgroup memory.peak, no sessions running):
+        # an idle browser pod needs ~190 MiB, and ~360 MiB while carrying eight
+        # real-page contexts. The request is an overcommit lever, not a cap: at
+        # 128Mi the scheduler admits more pods than the node has physical memory
+        # for, which is exactly what the oversubscription study measures. The
+        # 768Mi limit stays as the hard ceiling.
+        memory: 128Mi
       limits:
         # POLICY: no CPU limit. A CPU limit is a CFS quota, and a browser that
         # touches it is throttled even while the node is idle — 248 of 360

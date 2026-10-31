@@ -102,3 +102,33 @@ pressure behaves as expected.
   rises, spikes converge.
 - Whether a spike is 200m or 500m per boot: **UNKNOWN**, and it is the first thing the ladder should
   establish — with `RIOT_HEAVY` and `RIOT_BOOT` that is now possible without new code.
+
+## Request floors, measured (added after the first boot measurement)
+
+`memory.peak` of the browser pod's cgroup, read from the host, no sessions running:
+
+| Pod state | memory.current | memory.peak | Source |
+|---|---|---|---|
+| Fresh boot, one default page, request 256Mi | 183 MiB | 190 MiB | cgroup read, `browser-pool-bjcb2` / `w754t` |
+| Same, request lowered to 128Mi | 145–152 MiB | 145–151 MiB | cgroup read after recreation |
+| Carrying 8 real-page contexts | — | ~360 MiB | `20261031T024806Z` per-pod peak |
+| CPU | no limit (`cpu.max = max 100000`) | — | `cpu.stat` |
+
+**What this says about requests:**
+
+1. A `SandboxClaim` has no resource attributes of its own — it adopts a Sandbox, and the Sandbox's
+   pod carries the Template's requests. So "the request for a claim" *is* the browser pod's request.
+   There is no separate, smaller number to find.
+2. Chromium needs **~150–190 MiB resident** just to exist with one page. A 128Mi request is
+   therefore ~40–60 MiB below the pod's footprint from the moment it starts: deliberate overcommit,
+   safe only while the node has physical memory to absorb it.
+3. With 128Mi requested, the scheduler's memory ceiling moves to ~109 pods and stops binding. What
+   binds becomes **CPU requests (~52 browsers)** and the **110-pod cap (~66 browsers)** — which is
+   the intended shape of the oversubscription experiment.
+4. The physical constraint does not move: 8-context browsers use ~360 MiB each, so ~13.9 GiB of
+   usable node memory serves **~38 browsers** at full load regardless of what the requests say.
+   Requests below reality mean the scheduler admits what the node cannot serve; the OOM killer is
+   then the enforcement mechanism, which is worse than a refusal.
+
+**Chosen values:** request `cpu: 100m`, `memory: 128Mi`; limit `memory: 768Mi`, no CPU limit. The
+request is the lever under study; the limit stays the hard ceiling.

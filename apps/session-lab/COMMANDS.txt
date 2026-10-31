@@ -1,0 +1,125 @@
+# session-lab — command matrix
+#
+# Every way to run an experiment or a test, with what each one answers.
+# Path is relative to the repository root.
+#
+#   workspace: /home/dev/Documentos/git_repos/experiments
+#   code:      apps/session-lab
+#   artefacts: docs/session-lab-runs/  (gitignored)
+#
+# ─────────────────────────────────────────────────────────────────────────────
+# 0. UNIT TESTS — no cluster, seconds
+# ─────────────────────────────────────────────────────────────────────────────
+cd apps/session-lab && go test ./...
+    Answers: does the code still hold together (14 packages).
+    Includes: watch options, boot-permit serialisation, hold result, retries,
+              store migration, report invariants, riot URL list.
+
+cd apps/session-lab && go vet ./... && go vet -tags integration ./...
+    Answers: anything the compiler's static checks can see, integration included.
+
+bash scripts/test-session-lab-experiment.sh
+    Answers: does the operator script still honour its contract (help, usage
+             errors, --layer mapping, no empty arguments).
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 1. THE SCRIPT — the ordinary workload, no real pages
+# ─────────────────────────────────────────────────────────────────────────────
+scripts/session-lab-experiment.sh --layer session --duration 60s --rate 0.5 --hold 30s
+    Answers: does the session layer work at all; per-session cost of Chromium
+             on an empty page (about:blank).
+
+scripts/session-lab-experiment.sh --layer infra --duration 60s --rate 0.5 --hold 30s
+    Answers: claims and pod scheduling, one session per pod, no browser contexts.
+
+scripts/session-lab-experiment.sh --layer session --duration 300s --rate 0.5 --hold 30s
+    Answers: a five-minute stream; steady-state latency and throughput.
+
+SESSION_LAB_LOG_LEVEL=debug scripts/session-lab-experiment.sh --layer session \
+  --duration 60s --rate 0.5 --hold 30s
+    Answers: the same, with per-session lines (slot, context open/close, cost).
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 2. RIOT — real pages (test-only, apps/session-lab/test/)
+#    One full League champion page plus a distinct splash per session.
+#    This is the only workload whose CPU numbers describe real browsing.
+# ─────────────────────────────────────────────────────────────────────────────
+cd apps/session-lab
+
+SESSION_LAB_INTEGRATION=1 go test -tags integration -count=1 -timeout 900s \
+  ./test/ -run TestRiotLive -v
+    Defaults: 18 sessions, 20s holds, 2/s, 1 heavy page. ~30 s.
+    Answers: do real pages render, each in its own context.
+
+SESSION_LAB_INTEGRATION=1 RIOT_SESSIONS=300 RIOT_HOLD=75s RIOT_RATE=0.5 \
+  go test -tags integration -count=1 -timeout 1800s ./test/ -run TestRiotLive -v
+    Ten-minute window, 37.5 offered. Answers: sustained real-page cost.
+
+SESSION_LAB_INTEGRATION=1 RIOT_SESSIONS=300 RIOT_HOLD=30s RIOT_RATE=1 \
+  go test -tags integration -count=1 -timeout 1800s ./test/ -run TestRiotLive -v
+    300 s window, 30 offered. Answers: the same workload at double the rate.
+
+SESSION_LAB_INTEGRATION=1 RIOT_SESSIONS=30 RIOT_HOLD=30s RIOT_RATE=2 RIOT_HEAVY=10 \
+  go test -tags integration -count=1 -timeout 900s ./test/ -run TestRiotLive -v
+    Answers: spike convergence — ten full SPAs starting close together.
+
+SESSION_LAB_INTEGRATION=1 RIOT_SESSIONS=60 RIOT_HOLD=30s RIOT_RATE=2 RIOT_BOOT=2 \
+  go test -tags integration -count=1 -timeout 900s ./test/ -run TestRiotLive -v
+    Answers: does capping simultaneous boots (--boot-concurrency) keep the node
+             out of saturation while the same load runs.
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 3. LIVE INTEGRATION — the two layers, asserted
+# ─────────────────────────────────────────────────────────────────────────────
+SESSION_LAB_INTEGRATION=1 go test -tags integration -count=1 -timeout 300s \
+  ./internal/runtime/session/ -run TestLiveSharedBrowserRun -v
+    Answers: 4 sessions, 4 distinct contexts, cost recorded, nothing leaked.
+
+SESSION_LAB_INTEGRATION=1 go test -tags integration -count=1 -timeout 300s \
+  ./internal/runtime/session/ -run TestLiveInfraLayerIsOneSessionPerPod -v
+    Answers: with contexts off, one instance per session.
+
+CDP_ADDR=$(kubectl -n sandbox-demo get pods -l agents.x-k8s.io/warm-pool-sandbox \
+  -o jsonpath='{.items[0].status.podIP}'):9224 \
+  go test -tags integration -count=1 ./internal/runtime/browser/ -run TestLiveBrowser -v
+    Answers: the Go CDP client against real Chromium through the sidecar.
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 4. READING A RUN
+# ─────────────────────────────────────────────────────────────────────────────
+ls -t docs/session-lab-runs/*.json | head -1        # newest report
+ls -t docs/session-lab-runs/*.db   | head -1        # its database
+
+sqlite3 docs/session-lab-runs/<run>.db \
+  "select outcome, count(*) from sessions group by 1;"
+sqlite3 docs/session-lab-runs/<run>.db \
+  "select p50, p95 from (select avg(cpu_usec) p50, max(cpu_usec) p95 from sessions);"
+sqlite3 docs/session-lab-runs/<run>.db \
+  "select id, task_duration_us/1000, js_heap_bytes/1048576 from sessions order by task_duration_us desc limit 5;"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 5. INFRASTRUCTURE (apply before running, read the notes first)
+# ─────────────────────────────────────────────────────────────────────────────
+# browser template resources (cpu request 100m, memory request 128Mi, limit 768Mi)
+helm upgrade sandbox config/sandbox --namespace agent-sandbox-system \
+  --set router.image.tag=v1.0.8 --force-conflicts
+kubectl -n sandbox-demo delete sandboxes -l agents.x-k8s.io/warm-pool-sandbox
+    Recreates browsers so new pods carry the new requests.
+
+kubectl -n sandbox-demo get pods -l agents.x-k8s.io/warm-pool-sandbox \
+  -o jsonpath='{range .items[*]}{.metadata.name}: {.spec.containers[0].resources.requests}{"\n"}{end}'
+    Answers: what the pods actually request, not what the chart says.
+
+kubectl describe node fedora | sed -n '/Allocated resources/,+5p'
+    Answers: what is still schedulable at the current requests.
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 6. HEALTH, BEFORE AND AFTER
+# ─────────────────────────────────────────────────────────────────────────────
+kubectl get --raw=/readyz && kubectl get nodes
+kubectl -n sandbox-demo get sandboxclaims -o name | grep lab- || echo "no leaked claims"
+kubectl -n sandbox-demo get sandboxwarmpool browser-pool \
+  -o jsonpath='{.spec.replicas}/{.status.readyReplicas} paused={.metadata.annotations.session-lab\.io/autoscaler}{"\n"}'
+kubectl -n sandbox-demo logs deploy/session-lab-autoscaler --tail=20
+journalctl -u k3s --since "-10 min" | grep -c "Slow SQL"
+    Answers: how many kine commits took over a second during the run.
