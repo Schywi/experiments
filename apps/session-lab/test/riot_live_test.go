@@ -109,19 +109,36 @@ func TestRiotLive(t *testing.T) {
 		t.Fatalf("sessions: %v", err)
 	}
 
-	// Write the artefacts before asserting anything: a run that fails its checks is
-	// exactly the run whose numbers matter, and it used to leave nothing behind.
-	built, err := report.Build(cfg, plan, st)
-	if err != nil {
-		t.Fatalf("report: %v", err)
+	// The database is written as the run goes (every transition, WAL), so it always
+	// exists. The JSON is a snapshot built from it, and this is the one place that
+	// writes it: called here, and again from a cleanup so a failing or panicking
+	// test still leaves the file.
+	writeReport := func() string {
+		built, err := report.Build(cfg, plan, st)
+		if err != nil {
+			t.Logf("report build failed: %v", err)
+			return ""
+		}
+		jsonPath := filepath.Join(outDir, cfg.RunID+".json")
+		if err := built.Write(jsonPath); err != nil {
+			t.Logf("report write failed: %v", err)
+			return ""
+		}
+		built.Print(os.Stdout)
+		return jsonPath
 	}
-	jsonPath := filepath.Join(outDir, cfg.RunID+".json")
-	if err := built.Write(jsonPath); err != nil {
-		t.Fatalf("write report: %v", err)
-	}
-	built.Print(os.Stdout)
+	jsonPath := writeReport()
 	t.Logf("database: %s", dbPath)
 	t.Logf("report:   %s", jsonPath)
+	t.Cleanup(func() {
+		// Runs before the store closes (cleanups are LIFO): if the test aborted
+		// before the line above, the report is still produced here.
+		if jsonPath == "" {
+			if path := writeReport(); path != "" {
+				t.Logf("report (written on exit): %s", path)
+			}
+		}
+	})
 
 	t.Logf("workload: %d sessions at %.2f/s, hold %s, window ~%s, offered %.1f, heavy %d, boot concurrency %d",
 		sessions, rate, hold, window.Round(time.Second), float64(sessions)/window.Seconds()*hold.Seconds(), heavy, boot)
