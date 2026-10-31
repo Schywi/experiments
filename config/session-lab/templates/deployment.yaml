@@ -38,6 +38,7 @@ spec:
             - --min={{ .Values.autoscaler.minReplicas }}
             - --max={{ .Values.autoscaler.maxReplicas }}
             - --interval={{ .Values.autoscaler.interval }}
+            - --contexts-per-browser={{ .Values.autoscaler.contextsPerBrowser }}
             - --configmap={{ .Values.autoscaler.configMap }}
             - --metrics-addr=:{{ .Values.metrics.port }}
           ports:

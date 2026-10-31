@@ -2,6 +2,7 @@ package session_test
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log"
 	"path/filepath"
@@ -321,5 +322,81 @@ func TestCompletedHoldWithSamplesIsSuccess(t *testing.T) {
 		if row.CPUUsec == 0 {
 			t.Fatalf("session %d recorded no CPU from its samples", row.ID)
 		}
+	}
+}
+
+func TestTransientClaimFailureIsRetried(t *testing.T) {
+	// A control plane that answers one POST with EOF and then works: the session
+	// must succeed, because a transport error is not a session outcome.
+	cfg := config(model.PolicyReuse, 2, 20*time.Millisecond)
+	cfg.ContextsPerBrowser = 4
+	cfg.Rate = 2000
+	plan, err := schedule.Generate(cfg, 1)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	st, err := store.Open(filepath.Join(t.TempDir(), "run.db"))
+	if err != nil {
+		t.Fatalf("store: %v", err)
+	}
+	t.Cleanup(func() { st.Close() })
+
+	fake := sandbox.NewFake()
+	fake.AcquireErrors = []error{
+		errors.New(`Post "https://127.0.0.1:6443/apis/extensions.agents.x-k8s.io/v1beta1/namespaces/sandbox-demo/sandboxclaims": unexpected EOF`),
+	}
+	runner := session.New(cfg, session.Options{
+		Adapter: fake, Store: st, Plan: plan,
+		Log: log.New(io.Discard, "", 0),
+	})
+	if err := runner.Run(context.Background()); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	rows, _ := st.Sessions()
+	for _, row := range rows {
+		if row.Outcome != model.OutcomeSuccess {
+			t.Fatalf("session %d ended %q (%s); a transient EOF should have been retried",
+				row.ID, row.Outcome, row.Error)
+		}
+	}
+
+	// And the same failure on every attempt still fails, without hanging.
+	cfg2 := config(model.PolicyReuse, 1, 10*time.Millisecond)
+	cfg2.ContextsPerBrowser = 2
+	plan2, _ := schedule.Generate(cfg2, 1)
+	st2, _ := store.Open(filepath.Join(t.TempDir(), "run2.db"))
+	t.Cleanup(func() { st2.Close() })
+	failing := sandbox.NewFake()
+	failing.AcquireErrors = []error{
+		errors.New("unexpected EOF"), errors.New("unexpected EOF"), errors.New("unexpected EOF"),
+		errors.New("unexpected EOF"), errors.New("unexpected EOF"),
+	}
+	runner2 := session.New(cfg2, session.Options{Adapter: failing, Store: st2, Plan: plan2, Log: log.New(io.Discard, "", 0)})
+	runner2.Run(context.Background())
+	rows2, _ := st2.Sessions()
+	if len(rows2) != 1 || rows2[0].Outcome != model.OutcomeAcquisitionFailed {
+		t.Fatalf("a persistent failure should end acquisition_failed, got %+v", rows2)
+	}
+}
+
+func TestSlotWaitIsMeasuredOnTheSharedPath(t *testing.T) {
+	// Arrival -> usable slot is the number the experiment exists to measure; the
+	// shared path used to stamp the browser's own readiness, making it zero.
+	cfg := config(model.PolicyReuse, 4, 30*time.Millisecond)
+	cfg.ContextsPerBrowser = 2
+	cfg.Rate = 2000
+	st, _ := execute(t, cfg, sandbox.NewFake())
+	rows, err := st.Sessions()
+	if err != nil {
+		t.Fatalf("sessions: %v", err)
+	}
+	measured := 0
+	for _, row := range rows {
+		if row.ReadyNS > 0 && row.ClaimCreatedNS > 0 && row.ReadyNS >= row.ClaimCreatedNS {
+			measured++
+		}
+	}
+	if measured != len(rows) {
+		t.Fatalf("%d of %d sessions have no slot wait measured", measured, len(rows))
 	}
 }

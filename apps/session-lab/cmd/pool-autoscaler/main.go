@@ -38,6 +38,7 @@ func run() error {
 	var (
 		namespace   = flag.String("namespace", "sandbox-demo", "namespace holding the pool and the claims")
 		pool        = flag.String("pool", "browser-pool", "SandboxWarmPool to size")
+		contexts    = flag.Int("contexts-per-browser", 1, "sessions one replica carries; demand is divided by this")
 		minR        = flag.Int("min", 1, "lower bound on replicas")
 		maxR        = flag.Int("max", 40, "upper bound on replicas")
 		interval    = flag.Duration("interval", 5*time.Second, "reconcile interval")
@@ -84,7 +85,7 @@ func run() error {
 	}
 
 	scaler := poolscaler.New(poolscaler.Config{
-		Namespace: *namespace, Pool: *pool,
+		Namespace: *namespace, Pool: *pool, ContextsPerBrowser: *contexts,
 		Min: int32(*minR), Max: int32(*maxR),
 		Interval: *interval, ConfigMap: *configMap, Log: logger,
 	}, kube, &publisher{core: core, namespace: *namespace}, metrics)

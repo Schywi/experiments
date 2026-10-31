@@ -156,6 +156,10 @@ type Fake struct {
 	ResetLatency   time.Duration
 	ReleaseLatency time.Duration
 
+	// AcquireErrors are returned by the next acquisitions, one per call, so a
+	// test can model a control plane that fails once and then recovers.
+	AcquireErrors []error
+
 	// FailAcquire, FailReset, FailRelease make the corresponding call fail.
 	FailAcquire bool
 	FailReset   bool
@@ -192,6 +196,14 @@ func NewFake() *Fake {
 
 // Acquire implements Adapter.
 func (f *Fake) Acquire(ctx context.Context, namespace, pool, name string, class model.Class) (*Instance, error) {
+	f.mu.Lock()
+	if len(f.AcquireErrors) > 0 {
+		err := f.AcquireErrors[0]
+		f.AcquireErrors = f.AcquireErrors[1:]
+		f.mu.Unlock()
+		return nil, err
+	}
+	f.mu.Unlock()
 	if err := sleep(ctx, f.AcquireLatency); err != nil {
 		return nil, err
 	}

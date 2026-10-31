@@ -28,6 +28,10 @@ type Config struct {
 	Min       int32
 	Max       int32
 	Interval  time.Duration
+	// ContextsPerBrowser is how many sessions one replica carries. Demand is
+	// converted from sessions to replicas, so a pool is not inflated eightfold
+	// when one Chromium serves eight contexts.
+	ContextsPerBrowser int
 	// ConfigMap is where the settings are published so a run can record what
 	// the autoscaler was configured to do.
 	ConfigMap string
@@ -94,7 +98,12 @@ func (s *Scaler) Step(ctx context.Context) (Settings, error) {
 	// Demand is every claim that holds an instance plus every claim still
 	// waiting for one: that is the pool size that would serve this instant with
 	// no queue at all.
-	target := stats.Ready + stats.Pending
+	slots := stats.Ready + stats.Pending
+	perBrowser := s.cfg.ContextsPerBrowser
+	if perBrowser < 1 {
+		perBrowser = 1
+	}
+	target := int32((int(slots) + perBrowser - 1) / perBrowser)
 	if target < s.cfg.Min {
 		target = s.cfg.Min
 	}

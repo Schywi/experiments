@@ -36,6 +36,10 @@ autoscaler:
   minReplicas: 2
   maxReplicas: 40
   interval: 5s
+  # Sessions one browser replica carries. With 8, a run of 80 sessions at 8
+  # contexts asks for 10 replicas, not 80 — without this the pool inflates by the
+  # packing factor and sits there after the run.
+  contextsPerBrowser: 1
   # Where the settings are published, so a run can record what was configured
   # rather than being told.
   configMap: session-lab-autoscaler

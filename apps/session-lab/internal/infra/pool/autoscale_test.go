@@ -120,3 +120,28 @@ func TestPausedPoolIsLeftAlone(t *testing.T) {
 		t.Fatalf("paused pool was resized to %d, want the experiment's 7", state.Desired)
 	}
 }
+
+func TestDemandIsSlotsNotClaimsWhenBrowsersAreShared(t *testing.T) {
+	// Twenty sessions at eight contexts per browser need three replicas, not
+	// twenty. Scaling on claims inflates the pool by the packing factor and
+	// leaves it there after the run.
+	fake := sandbox.NewFake()
+	scaler := New(Config{
+		Namespace: "sandbox-demo", Pool: "browser-pool",
+		Min: 1, Max: 40, Interval: time.Second, ContextsPerBrowser: 8,
+		Log: log.New(io.Discard, "", 0),
+	}, fake, nil, nil)
+	fake.Stats = sandbox.ClaimStats{Ready: 20}
+
+	settings, err := scaler.Step(context.Background())
+	if err != nil {
+		t.Fatalf("step: %v", err)
+	}
+	if settings.Target != 3 {
+		t.Fatalf("target = %d, want ceil(20/8) = 3", settings.Target)
+	}
+	state, _ := fake.Pool(context.Background(), "sandbox-demo", "browser-pool")
+	if state.Desired != 3 {
+		t.Fatalf("pool desired = %d, want 3", state.Desired)
+	}
+}

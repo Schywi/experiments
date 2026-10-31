@@ -7,6 +7,8 @@ package session
 import (
 	"context"
 	"fmt"
+	"strings"
+	"time"
 
 	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/infra/sandbox"
 	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/platform/logging"
@@ -27,7 +29,7 @@ func (r *Runner) acquireInstance(ctx context.Context) (*sandbox.Instance, error)
 	name := claimName(r.cfg.RunID, seq)
 	r.log.Printf("capacity: no free slot, acquiring %s", name)
 
-	instance, err := r.ad.Acquire(ctx, r.cfg.Namespace, r.cfg.Pool, name, r.cfg.Class)
+	instance, err := r.acquireWithRetry(ctx, name)
 	if err != nil {
 		return nil, fmt.Errorf("acquire: %w", err)
 	}
@@ -50,6 +52,59 @@ func (r *Runner) acquireInstance(ctx context.Context) (*sandbox.Instance, error)
 	r.persistInstance(instance)
 	r.log.Printf("capacity: %s ready (%s)", instance.ID, launchType(instance))
 	return instance, nil
+}
+
+// acquireWithRetry creates a claim, retrying a transport failure a few times. A
+// single-node control plane under load answers POSTs with EOF or a deadline; that
+// is a property of the cluster, not an outcome of the session, and failing the
+// session on it turns control-plane noise into a fake capacity boundary.
+func (r *Runner) acquireWithRetry(ctx context.Context, name string) (*sandbox.Instance, error) {
+	delay := 200 * time.Millisecond
+	var lastErr error
+	for attempt := 1; attempt <= 5; attempt++ {
+		instance, err := r.ad.Acquire(ctx, r.cfg.Namespace, r.cfg.Pool, name, r.cfg.Class)
+		if err == nil {
+			if attempt > 1 {
+				r.lg.Info("claim created after retry", logging.F("claim", name),
+					logging.F("attempt", attempt))
+			}
+			return instance, nil
+		}
+		lastErr = err
+		if !transient(err) || attempt == 5 || ctx.Err() != nil {
+			break
+		}
+		r.lg.Warn("claim creation failed, retrying", logging.F("claim", name),
+			logging.F("attempt", attempt), logging.F("retry_in", delay), logging.F("error", err))
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(delay):
+		}
+		if delay < 2*time.Second {
+			delay *= 2
+		}
+	}
+	return nil, lastErr
+}
+
+// transient reports whether an API failure is worth retrying: transport errors and
+// server-side timeouts, not a refusal the scheduler will repeat verbatim.
+func transient(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	for _, marker := range []string{
+		"unexpected eof", "eof", "connection refused", "connection reset",
+		"timeout", "deadline exceeded", "temporarily unavailable",
+		"500 internal server error", "502", "503", "504", "apiserver not ready",
+	} {
+		if strings.Contains(message, marker) {
+			return true
+		}
+	}
+	return false
 }
 
 // sessionShared runs one session inside a browser context on a shared Chromium.
@@ -80,6 +135,7 @@ func (r *Runner) sessionShared(ctx context.Context, planned schedule.Planned) {
 	session.AdmissionWaitNS = r.now().Sub(admitStart).Nanoseconds()
 	defer r.gate.Release()
 
+	session.ClaimCreatedNS = r.now().UnixNano()
 	lease, err := r.spool.Take(ctx)
 	if err != nil {
 		outcome := model.OutcomeAcquisitionFailed
@@ -91,13 +147,10 @@ func (r *Runner) sessionShared(ctx context.Context, planned schedule.Planned) {
 	}
 	session.Instance = lease.Instance.ID
 	session.LaunchType = launchType(lease.Instance)
-	// A reused browser was ready long before this session arrived. The session's
-	// own readiness is the later of the two, otherwise the acquisition latency
-	// comes out negative.
-	session.ReadyNS = lease.Instance.ReadyNS
-	if session.ReadyNS < session.ArrivalNS {
-		session.ReadyNS = session.ArrivalNS
-	}
+	// ReadyNS is when this session got a usable slot, which is what a caller
+	// waits for. A reused browser was ready earlier; stamping the instance's own
+	// readiness made the acquisition latency structurally zero.
+	session.ReadyNS = r.now().UnixNano()
 	session.CPUShared = lease.Shared
 	sharing := r.spool.InUseOn(lease.Instance)
 	r.lg.Debug("slot", logging.F("session", session.ID), logging.F("instance", lease.Instance.ID),
