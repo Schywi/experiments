@@ -116,8 +116,9 @@ def test_grid_counts_the_pool_and_states_the_ceiling():
     assert 'data-stat="pending"' in markup
     assert 'data-stat="pool"' in markup and ">0/3</span>" in markup
     assert "2 more not shown" in markup
-    # Two cards drawn: the ready one and the pending one.
-    assert markup.count('class="card"') == 2
+    # Two cards drawn: the ready one and the pending one. The class now carries a
+    # session-state suffix, so match the element, not the bare attribute.
+    assert markup.count('<article class="card') == 2
 
 
 def test_empty_namespace_explains_why_pool_members_are_not_drawn():

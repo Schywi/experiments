@@ -397,3 +397,80 @@ def test_use_context_addresses_commands_at_the_session():
     assert "sessionId" not in first
     assert second["sessionId"] == "sess-9"
     assert "sessionId" not in third
+
+
+# --------------------------------------------------------------------------- #
+# The session badge: which sandboxes are carrying sessions
+# --------------------------------------------------------------------------- #
+def _tile(contexts):
+    report = inventory.build_report(
+        fixtures.copy_of(fixtures.READY_SANDBOX),
+        claims=fixtures.copy_of(fixtures.CLAIM),
+        pods=fixtures.copy_of(*fixtures.PODS),
+        usage=dict(fixtures.USAGE),
+    )
+    return report.tiles[0].replace(contexts=contexts)
+
+
+def test_a_tile_with_sessions_is_badged_and_left_bordered():
+    markup = render.tile(_tile(3))
+    assert "3 ses" in markup
+    assert 'class="card has-sessions"' in markup
+    assert "no ses" not in markup
+
+
+def test_a_tile_without_sessions_says_so_and_keeps_the_plain_border():
+    markup = render.tile(_tile(0))
+    assert "no ses" in markup
+    assert "has-sessions" not in markup
+    assert "unknown-sessions" not in markup
+
+
+def test_a_tile_whose_browser_will_not_answer_is_marked_unknown():
+    markup = render.tile(_tile(None))
+    assert "sessions ?" in markup
+    assert 'class="card unknown-sessions"' in markup
+    assert "does not report browser contexts" in markup
+
+
+def test_context_counts_reads_the_browser_and_caches_the_answer(monkeypatch, clean_ledger):
+    calls = []
+
+    class CountingCDP(FakeCDP):
+        async def call(self, sandbox_id, method, params=None):
+            calls.append(method)
+            if method == "Target.getBrowserContexts":
+                return {"browserContextIds": ["a", "b"]}
+            return await super().call(sandbox_id, method, params)
+
+    monkeypatch.setattr(server.SCREEN, "cdp", CountingCDP())
+    monkeypatch.setattr(server, "_CONTEXT_COUNT_CACHE", {})
+    first = asyncio.run(server._context_counts(["browser-7k2"]))
+    second = asyncio.run(server._context_counts(["browser-7k2"]))
+    assert first == {"browser-7k2": 2}
+    assert second == {"browser-7k2": 2}
+    assert calls == ["Target.getBrowserContexts"]  # second read came from the cache
+
+
+def test_a_browser_that_refuses_reports_unknown_not_zero(monkeypatch):
+    monkeypatch.setattr(
+        server.SCREEN, "cdp", FakeCDP(refuse={"Target.getBrowserContexts": "Not allowed"})
+    )
+    monkeypatch.setattr(server, "_CONTEXT_COUNT_CACHE", {})
+    assert asyncio.run(server._context_counts(["browser-7k2"])) == {"browser-7k2": None}
+
+
+def test_the_report_carries_the_session_count_onto_the_tile(client):
+    fake = server.SCREEN.cdp
+    fake._counts = {"browserContextIds": ["a", "b", "c"]}
+
+    async def counting(sandbox_id, method, params=None):
+        fake.calls.append((sandbox_id, method, params or {}))
+        if method == "Target.getBrowserContexts":
+            return fake._counts
+        return {}
+
+    fake.call = counting
+    server._CONTEXT_COUNT_CACHE.clear()
+    payload = client.get("/api/sandboxes").json()
+    assert payload["tiles"][0]["contexts"] == 3

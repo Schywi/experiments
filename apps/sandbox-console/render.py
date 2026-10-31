@@ -194,6 +194,10 @@ main { max-width: 1440px; margin: 0 auto; padding: var(--space-6); }
 }
 .card[role="button"] { cursor: pointer; }
 .card[role="button"]:hover { border-color: hsl(var(--input)); box-shadow: 0 8px 24px hsl(0 0% 0% / .35); transform: translateY(-1px); }
+/* Which sandboxes are carrying sessions. A left border on the card, so the grid
+   answers that question without opening anything. */
+.card.has-sessions { border-left: 3px solid hsl(var(--success)); }
+.card.unknown-sessions { border-left: 3px solid hsl(var(--warning)); }
 .shot { position: relative; aspect-ratio: 16 / 9; background: hsl(240 10% 2%); }
 .shot img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .shot .placeholder {
@@ -416,6 +420,26 @@ def tile(tile: inventory.Tile) -> str:
     enough to aim at and the display scale is known.
     """
     shot_url = f"/sandboxes/{esc(tile.id)}/shot?v={tile.screenshot_ts}"
+    # Which sandboxes are carrying sessions, at a glance. Colour is a left border
+    # on the card (green = sessions, amber = the browser will not say), so the
+    # grid reads without opening anything. A sandbox that is not Ready says
+    # nothing here: it has no browser to ask yet.
+    session_class = ""
+    sessions = ""
+    if tile.ready:
+        sessions = '<span class="badge badge-outline" title="no browser contexts">no ses</span>'
+        if tile.contexts is None:
+            session_class = " unknown-sessions"
+            sessions = (
+                '<span class="badge badge-warning" title="this bridge does not report browser '
+                'contexts: the image predates the browser-socket change">sessions ?</span>'
+            )
+        elif tile.contexts:
+            session_class = " has-sessions"
+            sessions = (
+                f'<span class="badge badge-success" title="{tile.contexts} browser context(s) in '
+                f'this Chromium">{tile.contexts} ses</span>'
+            )
     facts = [
         ("claim", tile.claim),
         ("template", tile.template),
@@ -455,7 +479,7 @@ def tile(tile: inventory.Tile) -> str:
         '<button class="btn btn-ghost btn-sm" type="button" data-act="url-cancel"'
         f' data-id="{esc(tile.id)}">cancel</button></form>'
     )
-    return f"""<article class="card" id="tile-{esc(tile.id)}" data-act="expand" data-id="{esc(tile.id)}"
+    return f"""<article class="card{session_class}" id="tile-{esc(tile.id)}" data-act="expand" data-id="{esc(tile.id)}"
          role="button" tabindex="0" aria-label="open {esc(tile.id)}">
   <div class="shot">
     <img src="{shot_url}" alt="live screenshot of {esc(tile.id)}" loading="lazy"/>
@@ -464,7 +488,7 @@ def tile(tile: inventory.Tile) -> str:
   </div>
   <div class="card-head">
     <span class="card-title mono" title="{esc(tile.id)}">{esc(tile.id)}</span>
-    {phase_badge(tile)}
+    {sessions}{phase_badge(tile)}
   </div>
   {url_row}
   {url_form}
@@ -1292,7 +1316,14 @@ TRAFFIC_JS = """
     try {
       var response = await fetch("/sandboxes/" + encodeURIComponent(id) + "/contexts");
       var payload = await response.json();
-      if (!response.ok) { say(id, payload.detail || ("status " + response.status)); return; }
+      if (!response.ok) {
+        var detail = payload.detail || ("status " + response.status);
+        if (/Not allowed/i.test(detail)) {
+          detail = "this sandbox's bridge predates browser contexts: its pod must be recreated";
+        }
+        say(id, detail);
+        return;
+      }
       render(id, payload.contexts || []);
       renderTabs(id, payload.contexts || [], payload.active_context_id || "");
     } catch (error) {

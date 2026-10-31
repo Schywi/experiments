@@ -275,7 +275,12 @@ class Screen:
                 url=self._urls.get(tile.id),
             )
             decorated.append(tile)
-        report.tiles = decorated
+        # How many sessions each browser is carrying. The grid is where an
+        # operator decides which sandbox to open, so the count belongs on the
+        # tile; it is read from the pod's own browser and cached, and a browser
+        # that will not answer reports `None` rather than zero.
+        counts = await _context_counts([tile.id for tile in decorated if tile.ready])
+        report.tiles = [tile.replace(contexts=counts.get(tile.id)) for tile in decorated]
         return report
 
     async def tile_by_claim(self, claim_name: str) -> inventory.Tile | None:
@@ -1126,6 +1131,56 @@ async def _live_tiles() -> dict:
         if tile.claim:
             tiles.setdefault(tile.claim, tile)
     return tiles
+
+
+# `Target.getBrowserContexts` answers are reused per sandbox: the grid polls every
+# POLL_SECONDS, and one call per tile per poll would spend the CDP limiter's
+# budget on a badge. A refusal is remembered longer (REFUSED_TTL) so a pod whose
+# bridge cannot answer is not re-probed on every poll.
+_CONTEXT_COUNT_CACHE: dict[str, tuple[float, int | None, float]] = {}
+_CONTEXT_COUNT_REFUSED_SECONDS = 20.0
+
+
+async def _context_counts(names: list[str]) -> dict[str, int | None]:
+    """Sessions per sandbox, read from each pod's own browser.
+
+    The count is `Target.getBrowserContexts`, which lists non-default contexts —
+    exactly the sessions. A browser whose bridge predates browser contexts
+    answers `Not allowed`, and that is recorded as `None`: the tile then says
+    "unknown" instead of claiming the sandbox is idle.
+
+    Every call is bounded by a short timeout and they run concurrently, because
+    this is on the grid's render path: one unreachable browser must cost a
+    bounded delay, not the sum of the other tiles' timeouts.
+    """
+    now = time.time()
+    found: dict[str, int | None] = {}
+    pending: list[str] = []
+    for name in names:
+        cached = _CONTEXT_COUNT_CACHE.get(name)
+        if cached is not None and now - cached[0] < cached[2]:
+            found[name] = cached[1]
+        else:
+            pending.append(name)
+    if not pending:
+        return found
+
+    async def one(name: str) -> tuple[str, int | None]:
+        try:
+            async with LIMITER.slot():
+                answer = await asyncio.wait_for(
+                    SCREEN.cdp.call(name, "Target.getBrowserContexts"),
+                    timeout=config.CDP_CONNECT_TIMEOUT + 1.0,
+                )
+            return name, len([item for item in (answer or {}).get("browserContextIds") or []])
+        except Exception:  # noqa: BLE001 - a refusal or a timeout is drawn as unknown
+            return name, None
+
+    for name, count in await asyncio.gather(*(one(name) for name in pending)):
+        ttl = config.SLOT_TARGETS_TTL if count is not None else _CONTEXT_COUNT_REFUSED_SECONDS
+        _CONTEXT_COUNT_CACHE[name] = (time.time(), count, ttl)
+        found[name] = count
+    return found
 
 
 # `Target.getTargets` answers are reused for a few seconds per instance: the wall

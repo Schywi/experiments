@@ -158,6 +158,11 @@ class Tile:
     # (`location.href`), not from the template, so it reflects a navigation the
     # pane performed and disappears with the pod.
     url: str | None = None
+    # Browser contexts inside this Chromium, read from the pod's own browser.
+    # `None` means the browser could not answer (a bridge from before browser
+    # contexts exists answers "Not allowed"), which is a different fact from a
+    # browser that is serving no sessions.
+    contexts: int | None = None
 
     @property
     def ready(self) -> bool:
@@ -185,6 +190,7 @@ class Tile:
             "screenshot_ts": self.screenshot_ts,
             "note": self.note,
             "url": self.url,
+            "contexts": self.contexts,
         }
 
 

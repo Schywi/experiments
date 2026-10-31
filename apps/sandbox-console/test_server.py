@@ -47,7 +47,7 @@ def test_grid_fragment_is_html(client):
     response = client.get("/sandboxes")
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/html")
-    assert 'class="card"' in response.text
+    assert '<article class="card' in response.text
 
 
 def test_shot_returns_a_png_and_a_cache_header(client, monkeypatch):
