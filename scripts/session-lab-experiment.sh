@@ -23,8 +23,9 @@
 #   scripts/session-lab-experiment.sh --layer infra   --duration 600s --rate 0.1 --mix ...
 #   scripts/session-lab-experiment.sh --layer session --duration 600s --rate 0.8 --mix ...
 #
-# --layer session defaults to 8 contexts per browser; pass --contexts-per-browser N
-# to change it. Without --layer, the runner's own default of one applies.
+# --layer session defaults to 8 contexts per browser and the ws CDP transport (a
+# direct DevTools connection per browser); pass --contexts-per-browser N to change
+# the packing. Without --layer, the runner's defaults apply: one context, http.
 #
 # Refuses to start if the control plane is unhealthy, because a run that begins
 # during an outage records a control-plane failure as if it were a capacity
@@ -111,7 +112,7 @@ for ((i = 1; i <= $#; i++)); do
     j=$((i + 1))
     case "${!j}" in
       infra)   layer_args+=(--contexts-per-browser 1) ;;
-      session) layer_args+=(--contexts-per-browser "${SESSION_LAB_CONTEXTS:-8}") ;;
+      session) layer_args+=(--contexts-per-browser "${SESSION_LAB_CONTEXTS:-8}" --cdp-transport ws) ;;
       *) echo "--layer must be infra or session, got '${!j}'" >&2; exit 2 ;;
     esac
   fi
