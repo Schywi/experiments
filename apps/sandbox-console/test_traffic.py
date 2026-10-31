@@ -821,3 +821,16 @@ def test_the_frame_is_contained_by_a_fixed_box():
     assert markup.index('class="frame-box"') < markup.index('class="big"')
     assert "object-fit: fill" in render.BASE_CSS
     assert "aspect-ratio: 1280 / 600" in render.BASE_CSS
+
+
+def test_the_modal_is_not_a_grid():
+    """The modal stacks its children in one axis; grid bought a max-content trap.
+
+    A one-column grid sizes its implicit column to the widest child's max-content,
+    so a nowrap URL in the sessions list made the container 5910px inside a 315px
+    dialog, and every width:100% child inherited it.
+    """
+    assert ".dialog-body { padding: var(--space-4); display: flex; flex-direction: column;" in render.BASE_CSS
+    assert ".dialog-body { padding: var(--space-4); display: grid;" not in render.BASE_CSS
+    # The truncating URL may not define anything's width.
+    assert ".ctx-list .ctx-url { flex: 1 1 auto; min-width: 0;" in render.BASE_CSS

@@ -283,7 +283,10 @@ main { max-width: 1440px; margin: 0 auto; padding: var(--space-6); }
   background: hsl(var(--popover)); z-index: 1;
 }
 .dialog-head h2 { font-size: var(--text-base); }
-.dialog-body { padding: var(--space-4); display: grid; gap: var(--space-3); }
+.dialog-body { padding: var(--space-4); display: flex; flex-direction: column; gap: var(--space-3); }
+/* Flex, not grid: a one-column grid sizes its implicit column to the widest
+   child's max-content, which is how a nowrap URL pushed this container to 5910px
+   inside a 315px dialog. A flex column takes its width from the dialog. */
 /* The picture's box is fixed here, by markup, not by whatever the browser
    returns. `object-fit: contain` letterboxes a larger frame instead of scaling
    the dialog, and never crops the page the way a CDP clip does. */
@@ -320,7 +323,8 @@ main { max-width: 1440px; margin: 0 auto; padding: var(--space-6); }
 .ctx-list { list-style: none; margin: 0; padding: 0; display: flex;
   flex-direction: column; gap: 2px; font-size: var(--text-xs); }
 .ctx-list li { display: flex; gap: var(--space-2); align-items: baseline; min-width: 0; }
-.ctx-list .ctx-url { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ctx-list .ctx-url { flex: 1 1 auto; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* One tab per browser context. Only the selected one is captured, so a tab is a
    way to choose which page the frame and the input are addressed at. */
 .ctx-tabs { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: var(--space-2); }
