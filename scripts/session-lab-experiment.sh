@@ -107,6 +107,20 @@ strip_flag() {
   (( ${#kept[@]} )) && printf '%s\n' "${kept[@]}"
 }
 
+# redact_args prints an argument list with any long value collapsed. A riot run
+# passes hundreds of URLs in one --target-url; printing them buried everything else.
+redact_args() {
+  local out=() arg
+  for arg in "$@"; do
+    if (( ${#arg} > 120 )); then
+      out+=("<${#arg} chars>")
+    else
+      out+=("${arg}")
+    fi
+  done
+  printf '%s ' "${out[@]}"
+}
+
 usage() {
   sed -n '2,20p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
   exit "${1:-0}"
@@ -215,6 +229,10 @@ main() {
   for arg in "${filtered[@]}"; do
     [[ "${arg}" == "--riot" ]] && riot=1
   done
+  if (( riot )) && [[ " $(redact_args "${layer_args[@]}")" != *"--cdp-transport ws"* ]]; then
+    echo "--riot needs --layer session: without browser contexts nothing opens a page" >&2
+    exit 2
+  fi
   if (( riot )); then
     filtered=("${filtered[@]/--riot/}")
     count="$(session_count "${filtered[@]}")"
@@ -232,16 +250,15 @@ main() {
   fi
 
   if ((${#layer_args[@]})); then
-    echo "==> layer: ${layer_args[*]}"
+    say "layer: $(redact_args "${layer_args[@]}")"
   else
-    echo "==> layer: runner default (one session per pod)"
+    say "layer: runner default (one session per pod)"
   fi
 
   echo "==> run"
-  set -x
+  say "command: session-lab $(redact_args "${filtered[@]}" "${layer_args[@]}")"
   "${out}/session-lab" "${filtered[@]}" "${layer_args[@]}" --namespace "${namespace}" --pool "${pool}" \
       --kubeconfig "${kubeconfig}" --out "${out}"
-  set +x
 
   say "run finished; checking for leaked resources"
   left=$(kubectl -n "${namespace}" get sandboxclaims -o name 2>/dev/null | grep -c 'lab-' || true)
