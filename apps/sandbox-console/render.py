@@ -306,6 +306,16 @@ main { max-width: 1440px; margin: 0 auto; padding: var(--space-6); }
   flex-direction: column; gap: 2px; font-size: var(--text-xs); }
 .ctx-list li { display: flex; gap: var(--space-2); align-items: baseline; min-width: 0; }
 .ctx-list .ctx-url { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* One tab per browser context. Only the selected one is captured, so a tab is a
+   way to choose which page the frame and the input are addressed at. */
+.ctx-tabs { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: var(--space-2); }
+.ctx-tab { height: 26px; padding: 0 var(--space-2); border-radius: 999px; cursor: pointer;
+  border: 1px solid hsl(var(--input)); background: hsl(var(--card)); font: inherit;
+  font-size: var(--text-xs); color: hsl(var(--muted-foreground)); max-width: 240px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ctx-tab:hover { background: hsl(var(--secondary)); color: hsl(var(--foreground)); }
+.ctx-tab[aria-selected="true"] { background: hsl(var(--primary)); border-color: hsl(var(--primary));
+  color: hsl(var(--primary-foreground)); }
 
 #toasts {
   position: fixed; right: var(--space-4); bottom: var(--space-4); z-index: 60;
@@ -601,6 +611,8 @@ def expanded(tile_obj: inventory.Tile) -> str:
       <img class="big" src="/sandboxes/{esc(tile_obj.id)}/shot?v={tile_obj.screenshot_ts}"
            alt="expanded live screenshot of {esc(tile_obj.id)}"/>
       <div class="big-placeholder">no frame yet</div>
+      <div class="ctx-tabs" data-tabs="{esc(tile_obj.id)}" role="tablist"
+           aria-label="browser contexts of {esc(tile_obj.id)}"></div>
       {reason}{extra}
       {isolation_badges(tile_obj)}
       <section class="traffic" data-traffic="{esc(tile_obj.id)}">
@@ -1282,10 +1294,64 @@ TRAFFIC_JS = """
       var payload = await response.json();
       if (!response.ok) { say(id, payload.detail || ("status " + response.status)); return; }
       render(id, payload.contexts || []);
+      renderTabs(id, payload.contexts || [], payload.active_context_id || "");
     } catch (error) {
       say(id, "cannot read contexts: " + error.message);
     }
   }
+  // One tab per context, plus the default page as the first tab. Selecting a tab
+  // attaches to that page, so the frame and every input go there and nowhere else.
+  function host(url) {
+    try { return new URL(url).host || url; } catch (error) { return url || "about:blank"; }
+  }
+  function renderTabs(id, contexts, activeId) {
+    var strip = row(id, "tabs");
+    if (!strip) return;
+    var tabs = [{id: "", label: "browser", title: "the default page this sandbox booted"}];
+    contexts.forEach(function (context) {
+      var url = (context.urls && context.urls[0]) || "about:blank";
+      tabs.push({
+        id: context.browser_context_id,
+        label: host(url),
+        title: url + " · " + String(context.browser_context_id).slice(0, 8)
+      });
+    });
+    strip.innerHTML = tabs.map(function (tab) {
+      var selected = tab.id === activeId;
+      return '<button type="button" class="ctx-tab" role="tab" data-tab-context="' +
+             tab.id + '" data-tab-sandbox="' + id + '" aria-selected="' + selected + '"' +
+             ' title="' + tab.title + '">' + tab.label + '</button>';
+    }).join("");
+  }
+  async function pick(id, contextId, button) {
+    if (button) button.setAttribute("aria-busy", "true");
+    say(id, contextId ? "attaching to " + String(contextId).slice(0, 8) + "…" : "back to the default page");
+    try {
+      var response = await fetch("/sandboxes/" + encodeURIComponent(id) + "/active", {
+        method: "POST",
+        headers: {"content-type": "application/json"},
+        body: JSON.stringify({context: contextId})
+      });
+      var payload = await response.json();
+      if (!response.ok) throw new Error(payload.detail || ("status " + response.status));
+      say(id, payload.url || "attached");
+      var dialog = document.getElementById("dialog");
+      var image = dialog && dialog.querySelector("img.big");
+      if (image) { image.src = "/sandboxes/" + encodeURIComponent(id) + "/shot?fresh=1&v=" + Date.now(); }
+    } catch (error) {
+      say(id, "attach failed: " + error.message);
+    } finally {
+      if (button) button.removeAttribute("aria-busy");
+      refresh(id);
+    }
+  }
+  document.addEventListener("click", function (event) {
+    var tab = event.target.closest("[data-tab-context]");
+    if (!tab) return;
+    event.stopPropagation();
+    event.preventDefault();
+    pick(tab.dataset.tabSandbox, tab.dataset.tabContext, tab);
+  }, true);
   document.addEventListener("submit", async function (event) {
     var form = event.target.closest("[data-act='traffic-start']");
     if (!form) return;

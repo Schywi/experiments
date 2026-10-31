@@ -133,6 +133,9 @@ class Screen:
         self._last_shot_source = "live"
         self._urls: dict[str, str] = {}
         self._locks: dict[str, asyncio.Lock] = {}
+        # The browser context each sandbox's commands are addressed at. Empty
+        # means the default page, which is what the Pool view has always driven.
+        self._active_context: dict[str, str] = {}
         self.cdp = cdp.RouterCDP(
             config.ROUTER_URL,
             port=config.SANDBOX_PORT,
@@ -307,6 +310,55 @@ class Screen:
                 return tile, report
         return None, report
 
+    # -- browser contexts --------------------------------------------------
+
+    def active_context(self, sandbox_id: str) -> str:
+        """The browser context this sandbox's commands are addressed at."""
+        return self._active_context.get(sandbox_id, "")
+
+    async def select_context(self, sandbox_id: str, context_id: str) -> dict:
+        """Point this sandbox at one browser context, or back at the default page.
+
+        Attaching is what makes a context's page drivable. `Target.attachToTarget
+        {flatten: true}` returns a session that addresses Page and Input commands
+        at that page only, so a click and a frame in one tab cannot land in
+        another. An empty `context_id` returns to the default page.
+        """
+        targets = (await self.cdp.call(sandbox_id, "Target.getTargets") or {}).get("targetInfos") or []
+        pages = [item for item in targets if isinstance(item, dict) and item.get("type") == "page"]
+        if not context_id:
+            self._active_context.pop(sandbox_id, None)
+            self.cdp.use_context(sandbox_id, None)
+            page = pages[0] if pages else {}
+            return {
+                "context": "",
+                "target": str(page.get("targetId") or ""),
+                "url": str(page.get("url") or ""),
+            }
+        page = next(
+            (item for item in pages if str(item.get("browserContextId") or "") == context_id), None
+        )
+        if page is None:
+            raise cdp.CDPError(f"no page in browser context {context_id}")
+        attached = await self.cdp.call(
+            sandbox_id,
+            "Target.attachToTarget",
+            {"targetId": page["targetId"], "flatten": True},
+        )
+        session_id = str((attached or {}).get("sessionId") or "")
+        if not session_id:
+            raise cdp.CDPError("attachToTarget returned no sessionId")
+        self._active_context[sandbox_id] = context_id
+        self.cdp.use_context(sandbox_id, session_id)
+        # The stored frame belongs to the page that was on screen before.
+        self._shots.pop(sandbox_id, None)
+        return {
+            "context": context_id,
+            "target": str(page.get("targetId") or ""),
+            "session": session_id,
+            "url": str(page.get("url") or ""),
+        }
+
     # -- actions -----------------------------------------------------------
 
     async def shot(self, sandbox_id: str, fresh: bool = False) -> bytes:
@@ -315,14 +367,17 @@ class Screen:
         A cached frame is only trustworthy while nothing outside the pane
         changed the page. After a click or a navigation the caller asks for a
         capture regardless of age, so two viewers cannot show each other's
-        stale picture.
+        stale picture. A selected browser context bypasses the read cache
+        entirely: that frame belongs to one tab out of N, and serving it to
+        another tab would be a lie about what is on screen.
         """
+        in_context = self.cdp.context_session(sandbox_id) is not None
         cached = self.cached_shot(sandbox_id)
-        if cached and not fresh and (time.time() - cached[0]) < config.SHOT_TTL_SECONDS:
+        if cached and not fresh and not in_context and (time.time() - cached[0]) < config.SHOT_TTL_SECONDS:
             return cached[1]
         async with self.lock(sandbox_id):
             cached = self.cached_shot(sandbox_id)
-            if cached and not fresh and (time.time() - cached[0]) < config.SHOT_TTL_SECONDS:
+            if cached and not fresh and not in_context and (time.time() - cached[0]) < config.SHOT_TTL_SECONDS:
                 return cached[1]
             payload = await self.cdp.screenshot(sandbox_id)
             self.store_shot(sandbox_id, payload)
@@ -705,13 +760,41 @@ def _no_capacity() -> HTTPException:
     )
 
 
+class ActiveRequest(BaseModel):
+    """Which browser context the dialog's frame and input are addressed at.
+
+    Empty means the default page: the one the sandbox booted with, which is what
+    the Pool view has always shown.
+    """
+
+    context: str = ""
+
+
+@app.post("/sandboxes/{sandbox_id}/active")
+async def select_active(sandbox_id: str, payload: ActiveRequest) -> JSONResponse:
+    """Switch this sandbox's frame and input to one context, or the default page."""
+    tile = await _known_tile(sandbox_id)
+    try:
+        async with LIMITER.slot():
+            chosen = await SCREEN.select_context(tile.id, payload.context.strip())
+    except QueueFull:
+        raise _no_capacity()
+    except Exception as error:  # noqa: BLE001 - a context that went away is a result
+        raise _http_error(error)
+    audit.record(
+        config.AUDIT_LOG, "select_context", sandbox=tile.id, context=chosen["context"]
+    )
+    return JSONResponse({"sandbox": tile.id, **chosen})
+
+
 @app.get("/sandboxes/{sandbox_id}/contexts")
 async def list_contexts(sandbox_id: str) -> JSONResponse:
     """Every browser context in one instance, with the pages inside it.
 
     Reads only: `Target.getBrowserContexts` and `Target.getTargets`, which the
     in-pod bridge sends on the browser socket because Chromium refuses them on a
-    page socket with "Not allowed".
+    page socket with "Not allowed". `active_context_id` is the tab the dialog is
+    currently driving.
     """
     tile = await _known_tile(sandbox_id)
     try:
@@ -721,7 +804,14 @@ async def list_contexts(sandbox_id: str) -> JSONResponse:
         raise _no_capacity()
     except traffic.TrafficError as error:
         raise HTTPException(status_code=502, detail=str(error))
-    return JSONResponse({"sandbox": tile.id, "contexts": rows, "sites": list(traffic.DEFAULT_SITES)})
+    return JSONResponse(
+        {
+            "sandbox": tile.id,
+            "contexts": rows,
+            "sites": list(traffic.DEFAULT_SITES),
+            "active_context_id": SCREEN.active_context(tile.id),
+        }
+    )
 
 
 @app.post("/sandboxes/{sandbox_id}/contexts")

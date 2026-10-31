@@ -116,9 +116,33 @@ class RouterCDP:
         self._http = http_client
         self._owns_http = http_client is None
         self._sessions: dict[str, _Session] = {}
-        # Sandboxes whose Page domain and viewport are already set up. In http
-        # mode there is no per-sandbox socket to hang that flag on.
-        self._enabled: set[str] = set()
+        # Sandboxes whose Page domain and viewport are already set up. Keyed by
+        # (sandbox, context session): entering a browser context is a different
+        # target, and Page.enable/Emulation have to be applied to it separately.
+        self._enabled: set[tuple[str, str | None]] = set()
+        # The flattened CDP session a sandbox's commands are addressed at. Empty
+        # means the default page, which is what the Pool view has always driven.
+        self._targets: dict[str, str] = {}
+
+    # -- which target the sandbox's commands go to --------------------------
+
+    def use_context(self, sandbox_id: str, session_id: str | None) -> None:
+        """Address this sandbox at one browser context, or back at the default page.
+
+        The session comes from `Target.attachToTarget {flatten: true}`. Page and
+        Input commands sent with it act on that context's page only, which is
+        what makes a tab per session drivable without touching the others.
+        """
+        if session_id:
+            self._targets[sandbox_id] = session_id
+            self._enabled.discard((sandbox_id, session_id))
+        else:
+            self._targets.pop(sandbox_id, None)
+            self._enabled.discard((sandbox_id, None))
+
+    def context_session(self, sandbox_id: str) -> str | None:
+        """The session this sandbox is addressed at, or None for the default page."""
+        return self._targets.get(sandbox_id)
 
     # -- transport ---------------------------------------------------------
 
@@ -192,14 +216,20 @@ class RouterCDP:
             return await websockets.connect(url, extra_headers=headers, **kwargs)
 
     async def call(self, sandbox_id: str, method: str, params: dict | None = None) -> dict:
-        """Issue one CDP command and return its result."""
+        """Issue one CDP command and return its result.
+
+        When a context session is selected with `use_context`, the command is
+        addressed at that context's page; otherwise it goes to the default page
+        the sandbox booted.
+        """
+        session_id = self._targets.get(sandbox_id)
         if self.transport == "http":
-            return await self._call_http(sandbox_id, method, params or {})
+            return await self._call_http(sandbox_id, method, params or {}, session_id)
         session = await self._session(sandbox_id)
         async with session.lock:
             try:
                 return await asyncio.wait_for(
-                    self._roundtrip(session, method, params or {}), self.command_timeout
+                    self._roundtrip(session, method, params or {}, session_id), self.command_timeout
                 )
             except asyncio.TimeoutError as exc:
                 await self.close(sandbox_id)
@@ -208,19 +238,29 @@ class RouterCDP:
                 await self.close(sandbox_id)
                 raise CDPError(f"{method} socket failed: {exc.__class__.__name__}") from exc
 
-    async def _call_http(self, sandbox_id: str, method: str, params: dict) -> dict:
+    async def _call_http(
+        self, sandbox_id: str, method: str, params: dict, session_id: str | None = None
+    ) -> dict:
         """POST the command to the in-pod bridge.
 
         The bridge owns the WebSocket to Chromium; the router only ever sees
         plain HTTP, which it forwards correctly. A 502 here means the bridge
         could not reach the browser, not that routing failed.
+
+        `sessionId` is the flattened session from `Target.attachToTarget`. The
+        bridge echoes it onto the CDP message and, because a session lives on the
+        socket that attached it, sends it on the browser socket; without it the
+        command goes to the page socket as it always has.
         """
         client = await self._client()
+        body: dict = {"method": method, "params": params}
+        if session_id:
+            body["sessionId"] = session_id
         try:
             response = await client.post(
                 f"{self.router_url}/cdp",
                 headers={**self.headers(sandbox_id), "Content-Type": "application/json"},
-                json={"method": method, "params": params},
+                json=body,
                 timeout=self.command_timeout,
             )
         except httpx.HTTPError as exc:
@@ -237,9 +277,14 @@ class RouterCDP:
             raise CDPError(str(payload["error"]))
         return payload.get("result") or {}
 
-    async def _roundtrip(self, session: _Session, method: str, params: dict) -> dict:
+    async def _roundtrip(
+        self, session: _Session, method: str, params: dict, session_id: str | None = None
+    ) -> dict:
         message_id = next(session.ids)
-        await session.socket.send(json.dumps({"id": message_id, "method": method, "params": params}))
+        message: dict = {"id": message_id, "method": method, "params": params}
+        if session_id:
+            message["sessionId"] = session_id
+        await session.socket.send(json.dumps(message))
         while True:
             raw = await session.socket.recv()
             try:
@@ -396,7 +441,9 @@ class RouterCDP:
         return str(await self.evaluate(sandbox_id, "location.href") or "")
 
     async def _enable_page(self, sandbox_id: str) -> None:
-        if sandbox_id in self._enabled:
+        session_id = self._targets.get(sandbox_id)
+        key = (sandbox_id, session_id)
+        if key in self._enabled:
             return
         try:
             await self.call(sandbox_id, "Page.enable", {})
@@ -404,7 +451,8 @@ class RouterCDP:
             pass  # captureScreenshot works on some builds without Page.enable
         # Pin the viewport. The window the entrypoint opened is only a hint; this
         # is what makes the 1280x600 the console divides click coordinates by
-        # the viewport the page actually has.
+        # the viewport the page actually has. A context's page gets its own
+        # override, which is why this is keyed by session as well.
         try:
             await self.call(
                 sandbox_id,
@@ -418,14 +466,15 @@ class RouterCDP:
             )
         except CDPError:
             pass
-        self._enabled.add(sandbox_id)
+        self._enabled.add(key)
         if self.transport == "ws":
             session = self._sessions.get(sandbox_id)
             if session is not None:
                 session.page_enabled = True
 
     async def close(self, sandbox_id: str) -> None:
-        self._enabled.discard(sandbox_id)
+        self._enabled = {item for item in self._enabled if item[0] != sandbox_id}
+        self._targets.pop(sandbox_id, None)
         session = self._sessions.pop(sandbox_id, None)
         if session is None:
             return

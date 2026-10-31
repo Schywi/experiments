@@ -12,6 +12,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 import config
+import cdp
 import fixtures
 import inventory
 import kube
@@ -26,8 +27,15 @@ class FakeCDP:
     def __init__(self, refuse=None, pages=None):
         self.calls: list[tuple[str, str, dict]] = []
         self.contexts: list[str] = []
+        self.session: str | None = None
         self._refuse = refuse or {}
         self._pages = pages or {}
+
+    def use_context(self, sandbox_id, session_id):
+        self.session = session_id
+
+    def context_session(self, sandbox_id):
+        return self.session
 
     async def call(self, sandbox_id, method, params=None):
         self.calls.append((sandbox_id, method, params or {}))
@@ -39,6 +47,8 @@ class FakeCDP:
             return {"browserContextId": context_id}
         if method == "Target.createTarget":
             return {"targetId": "target-" + params["browserContextId"]}
+        if method == "Target.attachToTarget":
+            return {"sessionId": "sess-" + params["targetId"]}
         if method == "Target.getBrowserContexts":
             return {"browserContextIds": list(self.contexts)}
         if method == "Target.getTargets":
@@ -282,3 +292,108 @@ def test_the_page_ships_the_traffic_script():
     assert "/contexts" in page
     assert "start traffic" in page
     assert "__TRAFFIC_JS__" not in page
+
+
+# --------------------------------------------------------------------------- #
+# Tabs: choosing which context the frame and the input are addressed at
+# --------------------------------------------------------------------------- #
+def _pages_with_two_contexts():
+    return {
+        "ctx-01": {"type": "page", "browserContextId": "ctx-01", "targetId": "t1",
+                   "url": "https://example.com/"},
+        "ctx-02": {"type": "page", "browserContextId": "ctx-02", "targetId": "t2",
+                   "url": "https://example.org/"},
+    }
+
+
+def test_select_active_attaches_to_that_context(client, fake):
+    fake._pages = _pages_with_two_contexts()
+    response = client.post(f"/sandboxes/{SANDBOX}/active", json={"context": "ctx-02"})
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["context"] == "ctx-02"
+    assert payload["target"] == "t2"
+    assert payload["session"] == "sess-t2"
+    # The attach is what makes Page/Input commands address that page only.
+    assert ("Target.attachToTarget" in [method for _, method, _ in fake.calls])
+    assert fake.context_session(SANDBOX) == "sess-t2"
+
+
+def test_selecting_the_default_page_drops_the_session(client, fake):
+    fake._pages = _pages_with_two_contexts()
+    client.post(f"/sandboxes/{SANDBOX}/active", json={"context": "ctx-01"})
+    response = client.post(f"/sandboxes/{SANDBOX}/active", json={"context": ""})
+    assert response.status_code == 200
+    assert response.json()["context"] == ""
+    assert fake.context_session(SANDBOX) is None
+
+
+def test_the_context_list_reports_which_tab_is_active(client, fake):
+    fake._pages = _pages_with_two_contexts()
+    client.post(f"/sandboxes/{SANDBOX}/active", json={"context": "ctx-01"})
+    payload = client.get(f"/sandboxes/{SANDBOX}/contexts").json()
+    assert payload["active_context_id"] == "ctx-01"
+
+
+def test_attaching_to_a_context_with_no_page_is_an_error(client, fake):
+    fake._pages = _pages_with_two_contexts()
+    response = client.post(f"/sandboxes/{SANDBOX}/active", json={"context": "ctx-ghost"})
+    assert response.status_code == 502
+    assert "no page in browser context ctx-ghost" in response.json()["detail"]
+
+
+def test_the_dialog_ships_a_tab_strip():
+    report = inventory.build_report(
+        fixtures.copy_of(fixtures.READY_SANDBOX),
+        claims=fixtures.copy_of(fixtures.CLAIM),
+        pods=fixtures.copy_of(*fixtures.PODS),
+        usage=dict(fixtures.USAGE),
+    )
+    markup = render.expanded(report.tiles[0])
+    assert 'class="ctx-tabs" data-tabs="sb-4f2a"' in markup
+    assert 'role="tablist"' in markup
+
+
+def test_the_script_builds_a_tab_per_context():
+    report = inventory.build_report(
+        fixtures.copy_of(fixtures.READY_SANDBOX),
+        claims=fixtures.copy_of(fixtures.CLAIM),
+        pods=fixtures.copy_of(*fixtures.PODS),
+        usage=dict(fixtures.USAGE),
+    )
+    page = render.page(report)
+    assert "data-tab-context=" in page
+    assert "/active" in page
+    assert "aria-selected" in page
+
+
+def test_use_context_addresses_commands_at_the_session():
+    class FakeResponse:
+        status_code = 200
+        text = ""
+
+        def json(self):
+            return {"result": {"data": "UE5H"}}
+
+    class FakeHTTP:
+        def __init__(self):
+            self.bodies = []
+
+        async def post(self, url, headers=None, json=None, timeout=None):
+            self.bodies.append(json)
+            return FakeResponse()
+
+    client = cdp.RouterCDP("http://router", transport="http", http_client=FakeHTTP())
+
+    async def body():
+        await client.call("sb-1", "Page.navigate", {"url": "https://one.example/"})
+        client.use_context("sb-1", "sess-9")
+        await client.call("sb-1", "Page.captureScreenshot", {"format": "png"})
+        client.use_context("sb-1", None)
+        await client.call("sb-1", "Page.captureScreenshot", {"format": "png"})
+
+    asyncio.run(body())
+    first, second, third = client._http.bodies
+    assert "sessionId" not in first
+    assert second["sessionId"] == "sess-9"
+    assert "sessionId" not in third
