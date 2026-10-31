@@ -720,3 +720,45 @@ class _FailingHTTP:
             "text": "",
             "json": staticmethod(lambda: {"error": "WebSocketError: Session with given id not found."}),
         })()
+
+
+# --------------------------------------------------------------------------- #
+# Frame geometry: one size, always
+# --------------------------------------------------------------------------- #
+def test_the_capture_is_clipped_to_the_viewport():
+    """Every frame must be the configured size.
+
+    Measured on a live Chromium: a context page whose device-metrics override did
+    not apply reported 1280x513 while the pinned default page reported 1280x600.
+    Rendered at `width:100%; height:auto` that resizes the picture, which reads as
+    the dialog zooming. The clip is what makes all frames one size.
+    """
+    http = _NullHTTP()
+    client = cdp.RouterCDP(
+        "http://router", transport="http", http_client=http, viewport=(1280, 600)
+    )
+
+    async def body():
+        client._enabled.add(("sb-1", None))  # skip Page.enable round trips
+        return await client.screenshot("sb-1")
+
+    with pytest.raises(cdp.CDPError):
+        asyncio.run(body())  # the fake returns no data; the params are what matter
+    shot = [item for item in http.bodies if item.get("method") == "Page.captureScreenshot"]
+    assert shot, http.bodies
+    assert shot[-1]["params"]["clip"] == {
+        "x": 0, "y": 0, "width": 1280, "height": 600, "scale": 1
+    }
+
+
+def test_the_dialog_frame_has_a_fixed_box():
+    page = render.page(
+        inventory.build_report(
+            fixtures.copy_of(fixtures.READY_SANDBOX),
+            claims=fixtures.copy_of(fixtures.CLAIM),
+            pods=fixtures.copy_of(*fixtures.PODS),
+            usage=dict(fixtures.USAGE),
+        )
+    )
+    assert "aspect-ratio: 1280 / 600" in page
+    assert "object-fit: contain" in page

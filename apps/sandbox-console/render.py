@@ -285,8 +285,13 @@ main { max-width: 1440px; margin: 0 auto; padding: var(--space-6); }
 .dialog-head h2 { font-size: var(--text-base); }
 .dialog-body { padding: var(--space-4); display: grid; gap: var(--space-3); }
 .dialog img.big {
-  width: 100%; height: auto; border-radius: var(--radius);
-  background: hsl(240 10% 2%); cursor: crosshair; display: block;
+  /* The frame keeps one box no matter what the browser returns. The capture is
+     pinned to the viewport by a clip on the server; this is the second lock, so a
+     stray size can never resize the dialog under the operator. */
+  width: 100%; aspect-ratio: 1280 / 600; height: auto;
+  object-fit: contain; object-position: top left;
+  border-radius: var(--radius); background: hsl(240 10% 2%);
+  cursor: crosshair; display: block;
 }
 .big-placeholder {
   display: none; align-items: center; justify-content: center; height: 320px;

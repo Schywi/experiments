@@ -343,12 +343,26 @@ class RouterCDP:
     # -- commands ----------------------------------------------------------
 
     async def screenshot(self, sandbox_id: str) -> bytes:
-        """One PNG frame of the current page."""
+        """One PNG frame, always at the configured viewport geometry.
+
+        `clip` is load-bearing, not decoration. A page whose device-metrics
+        override did not apply reports its natural viewport — measured 1280x513 on
+        this Chromium against 1280x600 for the pinned default page — and since the
+        dialog renders the image at `width: 100%` with `height: auto`, a frame that
+        changes size resizes the picture under the operator. That reads as the UI
+        zooming in and out. Clipping gives every frame one size.
+        """
         await self._enable_page(sandbox_id)
+        width, height = self.viewport
         result = await self.call(
             sandbox_id,
             "Page.captureScreenshot",
-            {"format": "png", "captureBeyondViewport": False, "fromSurface": True},
+            {
+                "format": "png",
+                "captureBeyondViewport": False,
+                "fromSurface": True,
+                "clip": {"x": 0, "y": 0, "width": width, "height": height, "scale": 1},
+            },
         )
         data = result.get("data")
         if not data:
