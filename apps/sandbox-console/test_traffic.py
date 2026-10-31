@@ -474,3 +474,64 @@ def test_the_report_carries_the_session_count_onto_the_tile(client):
     server._CONTEXT_COUNT_CACHE.clear()
     payload = client.get("/api/sandboxes").json()
     assert payload["tiles"][0]["contexts"] == 3
+
+
+# --------------------------------------------------------------------------- #
+# The strip must exist, be on top, and never be looked up wrongly
+# --------------------------------------------------------------------------- #
+def _dialog():
+    report = inventory.build_report(
+        fixtures.copy_of(fixtures.READY_SANDBOX),
+        claims=fixtures.copy_of(fixtures.CLAIM),
+        pods=fixtures.copy_of(*fixtures.PODS),
+        usage=dict(fixtures.USAGE),
+    )
+    return render.expanded(report.tiles[0])
+
+
+def test_the_tab_strip_sits_above_the_frame():
+    markup = _dialog()
+    assert markup.index('class="ctx-tabs"') < markup.index('class="big"')
+
+
+def test_the_script_reads_the_dialog_id_from_the_inner_element():
+    """`data-id` is on `.dialog`, not on the `#dialog` backdrop.
+
+    Reading it from the backdrop returned undefined, so the strip was never
+    populated: this is the regression that made every tab invisible.
+    """
+    page = render.page(
+        inventory.build_report(
+            fixtures.copy_of(fixtures.READY_SANDBOX),
+            claims=fixtures.copy_of(fixtures.CLAIM),
+            pods=fixtures.copy_of(*fixtures.PODS),
+            usage=dict(fixtures.USAGE),
+        )
+    )
+    assert '#dialog .dialog' in page
+    assert "trafficRead" not in page
+
+
+def test_the_strip_says_so_when_the_browser_will_not_report():
+    page = render.page(
+        inventory.build_report(
+            fixtures.copy_of(fixtures.READY_SANDBOX),
+            claims=fixtures.copy_of(fixtures.CLAIM),
+            pods=fixtures.copy_of(*fixtures.PODS),
+            usage=dict(fixtures.USAGE),
+        )
+    )
+    assert "no sessions reported" in page
+
+
+def test_entering_a_tab_reloads_the_frame_with_fresh():
+    page = render.page(
+        inventory.build_report(
+            fixtures.copy_of(fixtures.READY_SANDBOX),
+            claims=fixtures.copy_of(fixtures.CLAIM),
+            pods=fixtures.copy_of(*fixtures.PODS),
+            usage=dict(fixtures.USAGE),
+        )
+    )
+    # pick() posts the context, then forces a capture of that page.
+    assert "shot?fresh=1&v=" in page

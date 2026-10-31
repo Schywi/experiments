@@ -632,11 +632,11 @@ def expanded(tile_obj: inventory.Tile) -> str:
       <button class="btn btn-ghost btn-sm" data-act="close">close</button>
     </div>
     <div class="dialog-body" id="dialog-body">
+      <div class="ctx-tabs" data-tabs="{esc(tile_obj.id)}" role="tablist"
+           aria-label="browser contexts of {esc(tile_obj.id)}"></div>
       <img class="big" src="/sandboxes/{esc(tile_obj.id)}/shot?v={tile_obj.screenshot_ts}"
            alt="expanded live screenshot of {esc(tile_obj.id)}"/>
       <div class="big-placeholder">no frame yet</div>
-      <div class="ctx-tabs" data-tabs="{esc(tile_obj.id)}" role="tablist"
-           aria-label="browser contexts of {esc(tile_obj.id)}"></div>
       {reason}{extra}
       {isolation_badges(tile_obj)}
       <section class="traffic" data-traffic="{esc(tile_obj.id)}">
@@ -1322,6 +1322,13 @@ TRAFFIC_JS = """
           detail = "this sandbox's bridge predates browser contexts: its pod must be recreated";
         }
         say(id, detail);
+        // Never leave the strip blank: a browser that will not report its
+        // contexts still gets a pill saying so, so the control does not vanish.
+        var strip = row(id, "tabs");
+        if (strip && !strip.innerHTML) {
+          strip.innerHTML = '<button type="button" class="ctx-tab" role="tab" ' +
+            'aria-selected="true" disabled>no sessions reported</button>';
+        }
         return;
       }
       render(id, payload.contexts || []);
@@ -1428,16 +1435,30 @@ TRAFFIC_JS = """
       refresh(id);
     }
   }, true);
-  // The dialog opens on a frame and is rebuilt on every expand, so the list is
-  // read once when it appears rather than polled.
+  // `data-id` lives on the inner `.dialog`, NOT on the `#dialog` backdrop. Reading
+  // it from the backdrop returned undefined and the strip stayed empty on every
+  // open — that is why no tabs ever appeared.
+  function currentDialogId() {
+    var inner = document.querySelector("#dialog .dialog");
+    return inner ? inner.dataset.id || "" : "";
+  }
+  var lastDialogId = "";
   var observer = new MutationObserver(function () {
-    var dialog = document.getElementById("dialog");
-    if (dialog && dialog.dataset.id && !dialog.dataset.trafficRead) {
-      dialog.dataset.trafficRead = "1";
-      refresh(dialog.dataset.id);
+    var id = currentDialogId();
+    if (id && id !== lastDialogId) {
+      lastDialogId = id;
+      refresh(id);
+      return;
     }
+    if (!id) lastDialogId = "";
   });
   observer.observe(document.body, {childList: true, subtree: true});
+  // A dialog that stays open keeps its list fresh without the observer having to
+  // fire on every innerHTML write (which would loop).
+  setInterval(function () {
+    var id = currentDialogId();
+    if (id) refresh(id);
+  }, 4000);
 })();
 """
 
