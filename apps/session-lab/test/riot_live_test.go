@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -39,14 +40,18 @@ func TestRiotLive(t *testing.T) {
 		t.Skipf("no kubeconfig at %s", kubeconfig)
 	}
 
-	sessions := len(riotChampions) // one full pass: skin 0 only, every image valid
-	hold := 20 * time.Second
+	// Defaults keep a plain `go test -run TestRiotLive` short. The three knobs turn
+	// it into a soak without touching this file:
+	//   RIOT_SESSIONS=300 RIOT_HOLD=75s RIOT_RATE=0.5  -> ten-minute window
+	sessions := envInt("RIOT_SESSIONS", len(riotChampions))
+	hold := envDuration("RIOT_HOLD", 20*time.Second)
+	rate := envFloat("RIOT_RATE", 2)
 	urls := riotURLs(sessions)
 
 	cfg := model.RunConfig{
 		RunID:     "riot-" + time.Now().UTC().Format("20060102t150405"),
 		Namespace: "sandbox-demo", Pool: "browser-pool", Template: "browser-tpl",
-		Policy: model.PolicyReuse, Class: model.ClassNormal, FixedArrival: true, Rate: 2,
+		Policy: model.PolicyReuse, Class: model.ClassNormal, FixedArrival: true, Rate: rate,
 		ContextsPerBrowser: 8, CDPTransport: "ws", CDPPort: 9224,
 		TargetURLs: urls, SampleSeconds: 1, Sessions: sessions,
 		Mix: []model.Bucket{{Label: hold.String(), Hold: hold, Count: sessions}},
@@ -71,7 +76,10 @@ func TestRiotLive(t *testing.T) {
 		Adapter: adapter, Store: st, Plan: plan, Sampler: sampler,
 		Log: log.New(os.Stderr, "riot: ", log.LstdFlags),
 	})
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	// Bound the run by what it is meant to take, not by a constant: a ten-minute
+	// window plus one hold plus teardown.
+	window := time.Duration(float64(sessions)/rate) * time.Second
+	ctx, cancel := context.WithTimeout(context.Background(), window+hold+5*time.Minute)
 	defer cancel()
 	if err := runner.Run(ctx); err != nil {
 		t.Fatalf("run: %v", err)
@@ -81,6 +89,8 @@ func TestRiotLive(t *testing.T) {
 	if err != nil {
 		t.Fatalf("sessions: %v", err)
 	}
+	t.Logf("workload: %d sessions at %.2f/s, hold %s, window ~%s, offered %.1f",
+		sessions, rate, hold, window.Round(time.Second), float64(sessions)/window.Seconds()*hold.Seconds())
 	if len(rows) != sessions {
 		t.Fatalf("%d rows for %d sessions", len(rows), sessions)
 	}
@@ -130,6 +140,36 @@ func TestRiotLive(t *testing.T) {
 	}
 
 	assertNoRiotLeaks(t, cfg)
+}
+
+// envInt reads an integer knob, falling back to a default.
+func envInt(key string, fallback int) int {
+	if value := os.Getenv(key); value != "" {
+		if parsed, err := strconv.Atoi(value); err == nil && parsed > 0 {
+			return parsed
+		}
+	}
+	return fallback
+}
+
+// envFloat reads a float knob.
+func envFloat(key string, fallback float64) float64 {
+	if value := os.Getenv(key); value != "" {
+		if parsed, err := strconv.ParseFloat(value, 64); err == nil && parsed > 0 {
+			return parsed
+		}
+	}
+	return fallback
+}
+
+// envDuration reads a duration knob such as 75s or 5m.
+func envDuration(key string, fallback time.Duration) time.Duration {
+	if value := os.Getenv(key); value != "" {
+		if parsed, err := time.ParseDuration(value); err == nil && parsed > 0 {
+			return parsed
+		}
+	}
+	return fallback
 }
 
 func assertNoRiotLeaks(t *testing.T, cfg model.RunConfig) {
