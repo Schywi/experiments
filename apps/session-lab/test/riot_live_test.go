@@ -24,6 +24,7 @@ import (
 	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/infra/measure"
 	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/platform/model"
 	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/platform/store"
+	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/runtime/report"
 	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/runtime/schedule"
 	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/runtime/session"
 )
@@ -65,7 +66,18 @@ func TestRiotLive(t *testing.T) {
 	if err != nil {
 		t.Fatalf("kube adapter: %v", err)
 	}
-	st, err := store.Open(filepath.Join(t.TempDir(), "riot.db"))
+	// Keep the record: a run whose database lives in a temp directory leaves
+	// nothing to inspect afterwards, which is exactly what went wrong the first
+	// time. RIOT_OUT overrides the location.
+	outDir := os.Getenv("RIOT_OUT")
+	if outDir == "" {
+		outDir = repoRunsDir(t)
+	}
+	if err := os.MkdirAll(outDir, 0o755); err != nil {
+		t.Fatalf("out dir %s: %v", outDir, err)
+	}
+	dbPath := filepath.Join(outDir, cfg.RunID+".db")
+	st, err := store.Open(dbPath)
 	if err != nil {
 		t.Fatalf("store: %v", err)
 	}
@@ -139,7 +151,37 @@ func TestRiotLive(t *testing.T) {
 			heavyAvg/1000, lightAvg/1000)
 	}
 
+	// The same report the CLI writes: JSON next to the database, and the summary
+	// in the terminal, so a test run is as inspectable as a script run.
+	built, err := report.Build(cfg, plan, st)
+	if err != nil {
+		t.Fatalf("report: %v", err)
+	}
+	jsonPath := filepath.Join(outDir, cfg.RunID+".json")
+	if err := built.Write(jsonPath); err != nil {
+		t.Fatalf("write report: %v", err)
+	}
+	built.Print(os.Stdout)
+	t.Logf("database: %s", dbPath)
+	t.Logf("report:   %s", jsonPath)
+
 	assertNoRiotLeaks(t, cfg)
+}
+
+// repoRunsDir finds <repo>/docs/session-lab-runs, the directory the script uses.
+func repoRunsDir(t *testing.T) string {
+	t.Helper()
+	dir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	for depth := 0; depth < 6; depth++ {
+		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+			return filepath.Join(dir, "..", "..", "docs", "session-lab-runs")
+		}
+		dir = filepath.Dir(dir)
+	}
+	return filepath.Join(os.TempDir(), "session-lab-runs")
 }
 
 // envInt reads an integer knob, falling back to a default.
