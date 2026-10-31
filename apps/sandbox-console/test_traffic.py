@@ -24,10 +24,12 @@ import traffic
 class FakeCDP:
     """Stands in for cdp.RouterCDP: records commands, models Chromium's answers."""
 
-    def __init__(self, refuse=None, pages=None):
+    def __init__(self, refuse=None, pages=None, blank=False):
         self.calls: list[tuple[str, str, dict]] = []
         self.contexts: list[str] = []
         self.session: str | None = None
+        self.created: list[dict] = []
+        self.blank = blank
         self._refuse = refuse or {}
         self._pages = pages or {}
 
@@ -46,13 +48,20 @@ class FakeCDP:
             self.contexts.append(context_id)
             return {"browserContextId": context_id}
         if method == "Target.createTarget":
-            return {"targetId": "target-" + params["browserContextId"]}
+            target = {
+                "type": "page",
+                "targetId": "target-" + params["browserContextId"],
+                "browserContextId": params["browserContextId"],
+                "url": "about:blank" if self.blank else (params.get("url") or "about:blank"),
+            }
+            self.created.append(target)
+            return {"targetId": target["targetId"]}
         if method == "Target.attachToTarget":
             return {"sessionId": "sess-" + params["targetId"]}
         if method == "Target.getBrowserContexts":
             return {"browserContextIds": list(self.contexts)}
         if method == "Target.getTargets":
-            return {"targetInfos": list(self._pages.values())}
+            return {"targetInfos": list(self._pages.values()) + list(self.created)}
         if method == "Target.disposeBrowserContext":
             self.contexts.remove(params["browserContextId"])
             return {}
@@ -80,12 +89,16 @@ def clean_ledger():
 # --------------------------------------------------------------------------- #
 def test_start_creates_one_context_per_session_each_on_its_own_page():
     cdp = FakeCDP()
-    created = asyncio.run(traffic.start(cdp, "browser-7k2", 3))
+    created, rejected = asyncio.run(traffic.start(cdp, "browser-7k2", 3))
+    assert rejected == []
     assert len(created) == 3
-    assert cdp.methods() == [
+    # Per session: a context, then its page. One read at the end checks where
+    # each page actually landed.
+    assert cdp.methods()[:6] == [
         "Target.createBrowserContext",
         "Target.createTarget",
     ] * 3
+    assert "Target.getTargets" in cdp.methods()
     targets = [params for _, method, params in cdp.calls if method == "Target.createTarget"]
     assert [target["url"] for target in targets] == list(traffic.DEFAULT_SITES[:3])
     assert [target["browserContextId"] for target in targets] == ["ctx-01", "ctx-02", "ctx-03"]
@@ -96,9 +109,10 @@ def test_start_creates_one_context_per_session_each_on_its_own_page():
 
 def test_start_honours_the_site_list_and_cycles_it():
     cdp = FakeCDP()
-    created = asyncio.run(
+    created, rejected = asyncio.run(
         traffic.start(cdp, "browser-7k2", 3, urls=["https://a.example/", "https://b.example/"])
     )
+    assert rejected == []
     assert [session.url for session in created] == [
         "https://a.example/",
         "https://b.example/",
@@ -109,7 +123,8 @@ def test_start_honours_the_site_list_and_cycles_it():
 def test_start_is_capped_by_the_configured_density(monkeypatch):
     monkeypatch.setattr(config, "MAX_SESSIONS_PER_BROWSER", 2)
     cdp = FakeCDP()
-    assert len(asyncio.run(traffic.start(cdp, "browser-7k2", 50))) == 2
+    created, _ = asyncio.run(traffic.start(cdp, "browser-7k2", 50))
+    assert len(created) == 2
 
 
 def test_start_reports_the_browser_refusal_it_actually_gets():
@@ -124,6 +139,7 @@ def test_start_reports_the_browser_refusal_it_actually_gets():
 def test_listing_pairs_each_context_with_the_page_inside_it():
     cdp = FakeCDP()
     asyncio.run(traffic.start(cdp, "browser-7k2", 2))
+    cdp.created.clear()  # this test states the pages itself
     cdp._pages = {
         "ctx-01": {"type": "page", "browserContextId": "ctx-01", "targetId": "t1",
                    "url": "https://example.com/"},
@@ -240,6 +256,7 @@ def test_get_contexts_reports_the_browser_refusal_as_502(client, monkeypatch):
 
 def test_get_contexts_after_starting_traffic(client, fake):
     client.post(f"/sandboxes/{SANDBOX}/contexts", json={"count": 2})
+    fake.created.clear()  # this test states the pages itself
     fake._pages = {
         "ctx-01": {"type": "page", "browserContextId": "ctx-01", "targetId": "t1",
                    "url": "https://example.com/"},
@@ -535,3 +552,74 @@ def test_entering_a_tab_reloads_the_frame_with_fresh():
     )
     # pick() posts the context, then forces a capture of that page.
     assert "shot?fresh=1&v=" in page
+
+
+# --------------------------------------------------------------------------- #
+# URLs: a bare host must not become an empty session
+# --------------------------------------------------------------------------- #
+def test_a_bare_host_is_made_absolute():
+    assert traffic.normalise_url("google.com") == "https://google.com"
+    assert traffic.normalise_url("  example.org/path ") == "https://example.org/path"
+    assert traffic.normalise_url("http://insecure.example/") == "http://insecure.example/"
+
+
+def test_something_that_is_not_http_is_refused():
+    for bad in ("", "   ", "ftp://example.com/", "javascript:alert(1)", "about:blank"):
+        with pytest.raises(traffic.InvalidURL):
+            traffic.normalise_url(bad)
+
+
+def test_start_sends_the_absolute_url_to_the_browser():
+    cdp = FakeCDP()
+    created, rejected = asyncio.run(
+        traffic.start(cdp, "browser-7k2", 1, urls=["google.com"])
+    )
+    sent = [params for _, method, params in cdp.calls if method == "Target.createTarget"]
+    assert sent[0]["url"] == "https://google.com"
+    assert [session.url for session in created] == ["https://google.com"]
+    assert rejected == []
+
+
+def test_a_page_that_stays_blank_is_disposed_and_reported():
+    """The bug the operator hit: `google.com` opened at about:blank."""
+    cdp = FakeCDP(blank=True)
+    created, rejected = asyncio.run(traffic.start(cdp, "browser-7k2", 2))
+    assert created == []
+    assert len(rejected) == 2
+    assert "about:blank" in rejected[0].error
+    methods = cdp.methods()
+    assert methods.count("Target.disposeBrowserContext") == 2
+    assert traffic.LEDGER.ours("browser-7k2") == {}
+
+
+def test_a_bad_site_fails_before_any_context_exists():
+    cdp = FakeCDP()
+    with pytest.raises(traffic.InvalidURL):
+        asyncio.run(traffic.start(cdp, "browser-7k2", 2, urls=["ftp://example.com/"]))
+    assert cdp.methods() == []
+
+
+def test_the_route_normalises_and_reports_what_it_rejected(client, fake):
+    response = client.post(
+        f"/sandboxes/{SANDBOX}/contexts", json={"count": 1, "urls": ["google.com"]}
+    )
+    assert response.status_code == 202
+    payload = response.json()
+    assert payload["created"][0]["url"] == "https://google.com"
+    assert payload["rejected"] == []
+
+    fake.blank = True
+    response = client.post(
+        f"/sandboxes/{SANDBOX}/contexts", json={"count": 1, "urls": ["duckduckgo.com"]}
+    )
+    payload = response.json()
+    assert payload["created"] == []
+    assert "about:blank" in payload["rejected"][0]["reason"]
+
+
+def test_the_route_answers_400_for_a_site_it_cannot_use(client):
+    response = client.post(
+        f"/sandboxes/{SANDBOX}/contexts", json={"count": 1, "urls": ["ftp://example.com/"]}
+    )
+    assert response.status_code == 400
+    assert "not an http(s) url" in response.json()["detail"]

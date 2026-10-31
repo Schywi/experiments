@@ -1409,7 +1409,10 @@ TRAFFIC_JS = """
       });
       var payload = await response.json();
       if (!response.ok) throw new Error(payload.detail || ("status " + response.status));
-      say(id, "started " + (payload.created || []).length + " session(s)");
+      var made = payload.created || [];
+      var refused = payload.rejected || [];
+      say(id, "started " + made.length +
+        (refused.length ? " · rejected " + refused.length + ": " + (refused[0].reason || "page did not load") : ""));
     } catch (error) {
       say(id, "failed: " + error.message);
     } finally {

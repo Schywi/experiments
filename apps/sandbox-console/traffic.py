@@ -23,8 +23,10 @@ Three facts decide the implementation:
 
 from __future__ import annotations
 
+import asyncio
 import time
 from dataclasses import dataclass, field
+from urllib.parse import urlparse
 
 import config
 
@@ -47,6 +49,35 @@ class TrafficError(Exception):
     """The browser refused a command, so no context was created."""
 
 
+class InvalidURL(TrafficError):
+    """A site was not an absolute http(s) URL, so nothing was created."""
+
+
+def normalise_url(raw: str) -> str:
+    """An absolute http(s) URL, or `InvalidURL`.
+
+    Chromium accepts a schemeless host in `Target.createTarget` **without
+    erroring** and gives the new tab `about:blank`, so `google.com` silently
+    became an empty session. Everything is made absolute here, before a context
+    exists to leak.
+    """
+    value = str(raw or "").strip()
+    if not value:
+        raise InvalidURL("empty site")
+    parsed = urlparse(value)
+    # A scheme that is not http(s) is refused before anything is prepended:
+    # `javascript:` and `about:` are not sites, and `ftp://host` would otherwise
+    # be turned into `https://ftp://host`.
+    if parsed.scheme and parsed.scheme not in ("http", "https"):
+        raise InvalidURL(f"not an http(s) url: {raw!r}")
+    if not parsed.scheme:
+        value = "https://" + value
+        parsed = urlparse(value)
+    if not parsed.netloc:
+        raise InvalidURL(f"not an http(s) url: {raw!r}")
+    return value
+
+
 @dataclass
 class Session:
     """One context the console created inside one instance."""
@@ -56,6 +87,9 @@ class Session:
     url: str
     target_id: str = ""
     created_at: float = field(default_factory=time.time)
+    # Set when the page did not land where it was sent. Such a context is
+    # disposed before `start` returns, so a blank tab is never left behind.
+    error: str = ""
 
 
 @dataclass
@@ -95,10 +129,19 @@ async def start(
     count: int,
     urls: list[str] | None = None,
     ledger: Ledger | None = None,
-) -> list[Session]:
-    """Create `count` contexts on one instance, each opened at its own URL."""
+) -> tuple[list[Session], list[Session]]:
+    """Create `count` contexts on one instance, each opened at its own URL.
+
+    Returns `(created, rejected)`. A rejected session is one whose page did not
+    land where it was sent: the context is disposed before this returns, so a
+    tab showing `about:blank` is never left behind to be mistaken for a session.
+    """
     ledger = ledger if ledger is not None else LEDGER
-    choices = [url for url in (urls or DEFAULT_SITES) if url.strip()] or list(DEFAULT_SITES)
+    provided = [str(url).strip() for url in (urls or []) if str(url).strip()]
+    # Normalising raises before any context exists: `google.com` is sent to
+    # Chromium as `https://google.com`, because the browser accepts the bare host
+    # and quietly gives the tab about:blank.
+    choices = [normalise_url(url) for url in provided] if provided else list(DEFAULT_SITES)
     wanted = max(1, min(int(count), _limit()))
     # Continue through the site list rather than restarting it: starting traffic
     # twice should give two sets of distinct origins, not two copies of the same.
@@ -121,11 +164,67 @@ async def start(
                 {"url": url, "browserContextId": context_id},
             )
             session.target_id = str((target or {}).get("targetId") or "")
-        except Exception as error:  # noqa: BLE001 - keep the context, report the page
-            session.url = f"failed: {error}"
-        ledger.add(session)
+        except Exception as error:  # noqa: BLE001 - the context exists; the page did not
+            session.error = f"createTarget: {error}"
         created.append(session)
-    return created
+    return await _verify(client, sandbox, created, ledger)
+
+
+async def _verify(
+    client, sandbox: str, created: list[Session], ledger: Ledger
+) -> tuple[list[Session], list[Session]]:
+    """Keep only the sessions whose page actually loaded where it was sent.
+
+    `Target.createTarget` reports success for a URL Chromium cannot use, so the
+    only trustworthy answer is the target's own URL, read back after the
+    navigation has had a moment. A context that is still blank is disposed: a
+    session the operator cannot see is worse than a failed start, because it
+    looks like traffic.
+    """
+    if not created:
+        return [], []
+    landed: dict[str, str] = {}
+    for attempt in range(3):
+        try:
+            answer = await client.call(sandbox, "Target.getTargets")
+        except Exception:  # noqa: BLE001 - no reading means take the create at its word
+            answer = {}
+        landed = {
+            str(item.get("targetId") or ""): str(item.get("url") or "")
+            for item in (answer or {}).get("targetInfos") or []
+            if isinstance(item, dict) and item.get("type") == "page"
+        }
+        if all(
+            session.target_id in landed and landed[session.target_id] != "about:blank"
+            for session in created
+            if not session.error
+        ):
+            break
+        if attempt < 2:
+            await asyncio.sleep(0.2 * (attempt + 1))
+    kept: list[Session] = []
+    rejected: list[Session] = []
+    for session in created:
+        if session.error:
+            rejected.append(session)
+            continue
+        page_url = landed.get(session.target_id, "")
+        if page_url == "about:blank" or not page_url:
+            session.error = f"the page opened at {page_url or 'nothing'}"
+            rejected.append(session)
+            continue
+        kept.append(session)
+    for session in kept:
+        ledger.add(session)
+    for session in rejected:
+        ledger.forget(sandbox, session.context_id)
+        try:
+            await client.call(
+                sandbox, "Target.disposeBrowserContext", {"browserContextId": session.context_id}
+            )
+        except Exception:  # noqa: BLE001 - a context already gone is disposed enough
+            pass
+    return kept, rejected
 
 
 async def listing(client, sandbox: str, ledger: Ledger | None = None) -> list[dict]:

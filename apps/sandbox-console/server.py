@@ -827,9 +827,14 @@ async def start_contexts(sandbox_id: str, payload: TrafficRequest) -> JSONRespon
     tile = await _known_tile(sandbox_id)
     try:
         async with LIMITER.slot():
-            created = await traffic.start(SCREEN.cdp, tile.id, payload.count, payload.urls)
+            created, rejected = await traffic.start(
+                SCREEN.cdp, tile.id, payload.count, payload.urls
+            )
     except QueueFull:
         raise _no_capacity()
+    except traffic.InvalidURL as error:
+        audit.record(config.AUDIT_LOG, "traffic_invalid_url", sandbox=tile.id, error=str(error))
+        raise HTTPException(status_code=400, detail=str(error))
     except traffic.TrafficError as error:
         audit.record(config.AUDIT_LOG, "traffic_failed", sandbox=tile.id, error=str(error))
         raise HTTPException(status_code=502, detail=str(error))
@@ -838,6 +843,7 @@ async def start_contexts(sandbox_id: str, payload: TrafficRequest) -> JSONRespon
         "traffic_start",
         sandbox=tile.id,
         count=len(created),
+        rejected=len(rejected),
         urls=[session.url for session in created],
     )
     return JSONResponse(
@@ -851,6 +857,9 @@ async def start_contexts(sandbox_id: str, payload: TrafficRequest) -> JSONRespon
                     "target_id": session.target_id,
                 }
                 for session in created
+            ],
+            "rejected": [
+                {"url": session.url, "reason": session.error} for session in rejected
             ],
             "limit": config.MAX_SESSIONS_PER_BROWSER,
         },
