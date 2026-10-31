@@ -34,6 +34,7 @@
 | [16 — Browser contexts and slots](16-browser-contexts-and-slots.md) | How does one Chromium carry eight sessions, and what are we now load-testing? | The slot allocator, contexts via CDP, the two layers (`infra` = 1 pod per session, `session` = 8 contexts per pod), and the CPU-division caveat |
 | [17 — A CDP client in Go](17-cdp-client-in-go.md) | Why does the runtime need to speak CDP itself instead of calling the Python bridge? | Sessions, events and per-context metrics the HTTP shim cannot provide; package layout in `runtime/browser`, the raw-TCP forwarder, crash handling, and the transport switch |
 | [18 — Capacity, elasticity, kine](18-capacity-elasticity-and-kine.md) | Is 600 sessions a limit, are we elastic, and why does the control plane fall over? | The four levels (claim/pod/slot/session), the slot ceiling at 168 contexts, a pool that cannot see CPU pressure, and kine's 1–3 s SQLite commits with the metrics that expose them |
+| [Handoff — CPU oversubscription](HANDOFF-cpu-oversubscription.md) | What does the next agent need to run a CPU density study? | The measured per-session CPU, the current ceilings, the six bugs that must not come back, and a five-step ladder that needs no code change |
 
 | [16 — The session wall](16-session-wall-ui.md) | How does the console draw a run, now that a session is a slot? | Four zooms of one object — skyline, bucket/instance/slot glyphs, eight tracks per browser, one slot card — the `sessionId` gap in `cdp-bridge.py`, the read-only run SQLite, and the six slices |
 
