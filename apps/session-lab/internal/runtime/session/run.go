@@ -20,6 +20,7 @@ import (
 
 	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/infra/measure"
 	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/infra/sandbox"
+	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/platform/logging"
 	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/platform/model"
 	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/platform/store"
 	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/runtime/admission"
@@ -50,6 +51,8 @@ type Recorder interface {
 	Release(policy string, seconds float64)
 	Resume(policy string, seconds float64)
 	Resources(policy string, reading Reading)
+	// SessionUsage records what one browser session cost inside its own context.
+	SessionUsage(taskSeconds, jsHeapBytes float64)
 	Pool(desired, ready int32)
 	Template(cpuLimitCores, memLimitBytes float64)
 	Boundary(kind string)
@@ -57,6 +60,9 @@ type Recorder interface {
 
 // Options are the runner's collaborators.
 type Options struct {
+	// Log writes structured run and session events. Optional: a nil Logger is
+	// replaced with a discarded one.
+	Logger  *logging.Logger
 	Adapter sandbox.Adapter
 	Store   *store.Store
 	Sampler Sampler
@@ -116,6 +122,8 @@ type Runner struct {
 	// browsers holds one direct CDP connection per instance, used when the run
 	// asks for the ws transport.
 	browsers map[string]*browser.Conn
+	// lg is the structured logger; log is kept for the plain lines that predate it.
+	lg *logging.Logger
 	// inRun is true between Run's start and its cleanup, so a socket closing
 	// during teardown is not reported as a browser failure.
 	inRun bool
@@ -141,11 +149,15 @@ func New(cfg model.RunConfig, opts Options) *Runner {
 	if logger == nil {
 		logger = log.Default()
 	}
+	lg := opts.Logger
+	if lg == nil {
+		lg = logging.Discard()
+	}
 	gate := admission.NewGate(cfg.Admit)
 	runner := &Runner{
 		cfg: cfg, ad: opts.Adapter, st: opts.Store, smp: opts.Sampler, plan: opts.Plan,
 		gate: gate, queue: admission.NewQueue(), browsers: map[string]*browser.Conn{},
-		log: logger, now: now, all: map[string]*sandbox.Instance{}, counts: map[model.Outcome]int{},
+		log: logger, lg: lg, now: now, all: map[string]*sandbox.Instance{}, counts: map[model.Outcome]int{},
 		hostMemory: opts.HostMemory,
 		rec:        opts.Recorder,
 		autoscaler: opts.AutoscalerInfo,
@@ -177,6 +189,11 @@ func (r *Runner) Run(ctx context.Context) error {
 	}
 	r.log.Printf("run %s: %d sessions, %.3f/s, policy %s, mean hold %s, offered concurrency %.1f",
 		r.cfg.RunID, len(r.plan.Sessions), r.plan.Rate, r.cfg.Policy, r.plan.MeanHold(), r.plan.PeakOffered())
+	r.lg.Info("run start", logging.F("run", r.cfg.RunID), logging.F("sessions", len(r.plan.Sessions)),
+		logging.F("rate", r.plan.Rate), logging.F("policy", r.cfg.Policy),
+		logging.F("class", r.cfg.Class), logging.F("contexts_per_browser", r.cfg.ContextsPerBrowser),
+		logging.F("cdp_transport", r.cfg.CDPTransport), logging.F("admit", r.cfg.Admit),
+		logging.F("offered", fmt.Sprintf("%.1f", r.plan.PeakOffered())))
 
 	r.mu.Lock()
 	r.inRun = true
@@ -527,8 +544,9 @@ func (r *Runner) session(ctx context.Context, planned schedule.Planned) {
 		holdCtx, cancelHold = context.WithTimeout(sampleCtx, r.cfg.SessionDeadline)
 		defer cancelHold()
 	}
-	reading, completed, sampled := r.hold(holdCtx, instance, planned.Hold)
-	if !completed {
+	held := r.hold(holdCtx, instance, planned.Hold)
+	reading, sampled := held.Reading, held.Sampled
+	if held.interrupted() {
 		// A cancelled or expired hold still reports the resources it consumed.
 		applyReading(&session, reading, sampled)
 		session.HoldEndNS = r.now().UnixNano()
@@ -597,7 +615,7 @@ func (r *Runner) session(ctx context.Context, planned schedule.Planned) {
 }
 
 // hold sleeps for the session's duration while sampling the instance.
-func (r *Runner) hold(ctx context.Context, instance *sandbox.Instance, d time.Duration) (Reading, bool, bool) {
+func (r *Runner) hold(ctx context.Context, instance *sandbox.Instance, d time.Duration) holdResult {
 	var merged Reading
 	var have bool
 	sample := func() {
@@ -624,10 +642,10 @@ func (r *Runner) hold(ctx context.Context, instance *sandbox.Instance, d time.Du
 		select {
 		case <-ctx.Done():
 			sample()
-			return merged, false, have
+			return holdResult{Reading: merged, Sampled: have, Completed: false, Reason: "cancelled"}
 		case <-timer.C:
 			sample()
-			return merged, true, have
+			return holdResult{Reading: merged, Sampled: have, Completed: true}
 		case <-ticker.C:
 			sample()
 		}

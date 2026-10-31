@@ -9,7 +9,9 @@ import (
 	"fmt"
 
 	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/infra/sandbox"
+	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/platform/logging"
 	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/platform/model"
+	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/runtime/browser"
 	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/runtime/schedule"
 	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/runtime/slots"
 )
@@ -98,17 +100,27 @@ func (r *Runner) sessionShared(ctx context.Context, planned schedule.Planned) {
 	}
 	session.CPUShared = lease.Shared
 	sharing := r.spool.InUseOn(lease.Instance)
+	r.lg.Debug("slot", logging.F("session", session.ID), logging.F("instance", lease.Instance.ID),
+		logging.F("slot", lease.Index), logging.F("sharing", sharing),
+		logging.F("warm", session.LaunchType))
 
 	isolatedState, err := r.openIsolated(ctx, lease.Instance)
 	if err != nil {
+		r.lg.Error("isolate failed", logging.F("session", session.ID),
+			logging.F("instance", lease.Instance.ID), logging.F("transport", r.cfg.CDPTransport),
+			logging.F("error", err))
 		r.spool.Give(lease)
 		r.settle(session.ID, model.OutcomeResetFailed, "browser context: "+err.Error(), &session)
 		return
 	}
 	session.BrowserContext = string(isolatedState.context)
+	r.lg.Debug("context opened", logging.F("session", session.ID),
+		logging.F("instance", lease.Instance.ID), logging.F("context", session.BrowserContext),
+		logging.F("target", string(isolatedState.target)), logging.F("transport", r.cfg.CDPTransport))
 
 	session.HoldStartNS = r.now().UnixNano()
-	reading, completed, sampled := r.hold(ctx, lease.Instance, planned.Hold)
+	held := r.hold(ctx, lease.Instance, planned.Hold)
+	reading, sampled := held.Reading, held.Sampled
 	session.HoldEndNS = r.now().UnixNano()
 	// The cgroup counter is the pod's, and this pod carries `sharing` sessions.
 	applyReading(&session, divideReading(reading, sharing), sampled)
@@ -118,9 +130,12 @@ func (r *Runner) sessionShared(ctx context.Context, planned schedule.Planned) {
 			r.rec.Resources(string(r.cfg.Policy), divideReading(reading, sharing))
 		}
 	}
-	if !completed {
+	if held.interrupted() {
 		// The hold was cut short, but the context still has to be released.
-		_ = r.closeIsolated(ctx, lease.Instance, isolatedState)
+		r.lg.Warn("hold interrupted", logging.F("session", session.ID),
+			logging.F("instance", lease.Instance.ID), logging.F("reason", held.Reason),
+			logging.F("hold_ms", (session.HoldEndNS-session.HoldStartNS)/1e6))
+		_, _ = r.closeIsolated(ctx, lease.Instance, isolatedState)
 		lease.Instance.Sessions++
 		r.persistInstance(lease.Instance)
 		r.spool.Give(lease)
@@ -135,7 +150,17 @@ func (r *Runner) sessionShared(ctx context.Context, planned schedule.Planned) {
 	// Closing the context replaces the old blank-page reset: the next session on
 	// this browser starts with no cookies, storage or cache from this one.
 	session.ResetStartNS = r.now().UnixNano()
-	closeErr := r.closeIsolated(ctx, lease.Instance, isolatedState)
+	cost, closeErr := r.closeIsolated(ctx, lease.Instance, isolatedState)
+	applyUsage(&session, cost)
+	r.lg.Debug("context closed", logging.F("session", session.ID),
+		logging.F("instance", lease.Instance.ID),
+		logging.F("task_ms", int64(cost.TaskDurationSeconds*1000)),
+		logging.F("script_ms", int64(cost.ScriptDurationSeconds*1000)),
+		logging.F("heap_kib", int64(cost.JSHeapUsedBytes)/1024),
+		logging.F("hold_ms", (session.HoldEndNS-session.HoldStartNS)/1e6))
+	if r.rec != nil && (cost.TaskDurationSeconds > 0 || cost.JSHeapUsedBytes > 0) {
+		r.rec.SessionUsage(cost.TaskDurationSeconds, cost.JSHeapUsedBytes)
+	}
 	session.ResetEndNS = r.now().UnixNano()
 	if r.rec != nil {
 		r.rec.Reset(string(r.cfg.Policy), float64(session.ResetEndNS-session.ResetStartNS)/1e9)
@@ -166,12 +191,21 @@ func (r *Runner) sessionShared(ctx context.Context, planned schedule.Planned) {
 	}
 
 	if closeErr != nil {
+		r.lg.Error("context close failed", logging.F("session", session.ID),
+			logging.F("instance", lease.Instance.ID), logging.F("error", closeErr))
 		r.settle(session.ID, model.OutcomeResetFailed, "close context: "+closeErr.Error(), &session)
 		return
 	}
 	session.Outcome = model.OutcomeSuccess
 	session.Error = ""
 	r.settle(session.ID, model.OutcomeSuccess, "", &session)
+}
+
+// applyUsage records what the browser reported about this session's own context.
+func applyUsage(session *model.Session, cost browser.Usage) {
+	session.TaskDurationUS = int64(cost.TaskDurationSeconds * 1e6)
+	session.ScriptDurationUS = int64(cost.ScriptDurationSeconds * 1e6)
+	session.JSHeapBytes = int64(cost.JSHeapUsedBytes)
 }
 
 // divideReading turns a pod's counters into a share of the pod, for the case

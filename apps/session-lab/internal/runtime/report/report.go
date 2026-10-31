@@ -19,6 +19,15 @@ import (
 	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/runtime/schedule"
 )
 
+// PerSession aggregates the per-session cost columns.
+type PerSession struct {
+	TaskMS   Latency `json:"task_ms"`
+	ScriptMS Latency `json:"script_ms"`
+	HeapMiB  Latency `json:"js_heap_mib"`
+	CPUCores Latency `json:"cpu_core_seconds"`
+	MemMiB   Latency `json:"mem_mib"`
+}
+
 // Report is the machine-readable result of one run.
 type Report struct {
 	RunID          string                `json:"run_id"`
@@ -53,6 +62,9 @@ type Report struct {
 
 	ArrivalWindowS float64 `json:"arrival_window_s"`
 	Admission      Latency `json:"admission_ms"`
+	// PerSession is what one browser session costs: its own main-thread task
+	// time and JS heap, plus its share of the pod's CPU and memory.
+	PerSession PerSession `json:"per_session"`
 	// SharedSessions counts sessions that ran in a browser shared with others,
 	// so their CPU figure is a division of the pod's usage.
 	SharedSessions  int                `json:"shared_sessions"`
@@ -171,6 +183,7 @@ func Build(cfg model.RunConfig, plan schedule.Plan, st *store.Store) (*Report, e
 		Elasticity:  "not tested: the workload did not exceed what the platform served",
 	}
 
+	var taskMS, scriptMS, heapMiB, cpuCores, memMiB []float64
 	var admissionMS []float64
 	var queueMS, acquireMS, holdMS, resetMS, releaseMS, resumeMS []float64
 	acquireByLaunch := map[string][]float64{}
@@ -210,6 +223,21 @@ func Build(cfg model.RunConfig, plan schedule.Plan, st *store.Store) (*Report, e
 		}
 		if session.GoneNS > 0 && session.DeleteCalledNS > 0 {
 			releaseMS = append(releaseMS, ms(session.GoneNS-session.DeleteCalledNS))
+		}
+		if session.TaskDurationUS > 0 {
+			taskMS = append(taskMS, float64(session.TaskDurationUS)/1000)
+		}
+		if session.ScriptDurationUS > 0 {
+			scriptMS = append(scriptMS, float64(session.ScriptDurationUS)/1000)
+		}
+		if session.JSHeapBytes > 0 {
+			heapMiB = append(heapMiB, float64(session.JSHeapBytes)/(1<<20))
+		}
+		if session.CPUUsec > 0 {
+			cpuCores = append(cpuCores, float64(session.CPUUsec)/1e6)
+		}
+		if session.MemPeakBytes > 0 {
+			memMiB = append(memMiB, float64(session.MemPeakBytes)/(1<<20))
 		}
 		if session.CPUShared {
 			rep.SharedSessions++
@@ -255,6 +283,13 @@ func Build(cfg model.RunConfig, plan schedule.Plan, st *store.Store) (*Report, e
 		for launchType, values := range acquireByLaunch {
 			rep.AcquireByLaunch[launchType] = summarise(values)
 		}
+	}
+	rep.PerSession = PerSession{
+		TaskMS:   summarise(taskMS),
+		ScriptMS: summarise(scriptMS),
+		HeapMiB:  summarise(heapMiB),
+		CPUCores: summarise(cpuCores),
+		MemMiB:   summarise(memMiB),
 	}
 	rep.Admission = summarise(admissionMS)
 	rep.Queue = summarise(queueMS)
@@ -469,6 +504,12 @@ func (r *Report) Print(w io.Writer) {
 		r.Instances.Total, r.Instances.MaxSessions, r.Instances.MeanSessions)
 	if r.Instances.RebuildP50Ms > 0 {
 		fmt.Fprintf(w, ", rebuild p50 %.0fms", r.Instances.RebuildP50Ms)
+	}
+	if r.PerSession.TaskMS.Count > 0 {
+		fmt.Fprintf(w, "per session        task p50 %.0fms p95 %.0fms (n=%d)  script p50 %.0fms  heap p50 %.1fMiB  cpu p50 %.2f core-s  mem p50 %.0fMiB\n",
+			r.PerSession.TaskMS.P50, r.PerSession.TaskMS.P95, r.PerSession.TaskMS.Count,
+			r.PerSession.ScriptMS.P50, r.PerSession.HeapMiB.P50,
+			r.PerSession.CPUCores.P50, r.PerSession.MemMiB.P50)
 	}
 	if r.Config.ContextsPerBrowser > 1 {
 		fmt.Fprintf(w, "\nbrowsers: %d sessions per Chromium; %d of %d sessions shared a browser, so their CPU is the pod's usage divided by the contexts in flight\n",

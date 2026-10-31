@@ -75,7 +75,7 @@ validate_args "$@"
 
 cleanup() {
       local exit_code=$?
-      echo "==> running automated teardown and cleanup..."
+      printf '%s script: teardown (exit %d)\n' "$(date -u +%H:%M:%S)" "${exit_code}"
 
       # Delete all claims created by session-lab. The label selector must stay on
       # one line: split, kubectl sees a bare -l and refuses the whole command.
@@ -96,10 +96,23 @@ cleanup() {
     trap cleanup EXIT INT TERM
 
 
+# Every line the script prints is timestamped and mirrored into the run's
+# directory, so a failed experiment leaves a log next to its report.
+log_file="${SESSION_LAB_LOG:-${out}/session-lab-script-$(date -u +%Y%m%dT%H%M%SZ).log}"
+mkdir -p "${out}"
+exec > >(tee -a "${log_file}") 2>&1
+
+say()  { printf '%s script: %s\n' "$(date -u +%H:%M:%S)" "$*"; }
+warn() { printf '%s script: WARN %s\n' "$(date -u +%H:%M:%S)" "$*" >&2; }
+fail() { printf '%s script: ERROR %s\n' "$(date -u +%H:%M:%S)" "$*" >&2; }
+
+say "log file: ${log_file}"
+say "args: $*"
+
 echo "==> control plane"
 kubectl get --raw=/readyz >/dev/null || { echo "apiserver not ready; refusing to run" >&2; exit 1; }
 kubectl get node --no-headers | grep -q ' Ready ' || { echo "no Ready node; refusing to run" >&2; exit 1; }
-echo "    apiserver ok, node Ready, pool replicas=$(kubectl -n "${namespace}" get sandboxwarmpool "${pool}" -o jsonpath='{.spec.replicas}' 2>/dev/null || echo '?')"
+say "control plane ok, node Ready, pool replicas=$(kubectl -n "${namespace}" get sandboxwarmpool "${pool}" -o jsonpath='{.spec.replicas}' 2>/dev/null || echo '?')"
 
 echo "==> build"
 ( cd "${app}" && go build -o "${out}/session-lab" ./cmd/session-lab )
@@ -126,6 +139,10 @@ for arg in "$@"; do
   filtered+=("${arg}")
 done
 
+if [[ -n "${SESSION_LAB_LOG_LEVEL:-}" ]]; then
+  layer_args+=(--log-level "${SESSION_LAB_LOG_LEVEL}")
+fi
+
 if ((${#layer_args[@]})); then
   echo "==> layer: ${layer_args[*]}"
 else
@@ -138,10 +155,14 @@ set -x
     --kubeconfig "${kubeconfig}" --out "${out}"
 set +x
 
-echo "==> afterwards"
+say "run finished; checking for leaked resources"
 left=$(kubectl -n "${namespace}" get sandboxclaims -o name 2>/dev/null | grep -c 'lab-' || true)
-echo "    leaked lab- claims: ${left}"
-echo "    pool replicas now: $(kubectl -n "${namespace}" get sandboxwarmpool "${pool}" -o jsonpath='{.spec.replicas}')"
-echo "    paused annotation: \"$(kubectl -n "${namespace}" get sandboxwarmpool "${pool}" -o jsonpath='{.metadata.annotations.session-lab\.io/autoscaler}')\""
-echo "    newest report: $(ls -t "${out}"/*.json | head -1)"
+if [[ "${left}" != "0" ]]; then
+  warn "leaked lab- claims: ${left} (delete: kubectl -n ${namespace} delete sandboxclaims -l app.kubernetes.io/managed-by=session-lab)"
+else
+  say "leaked lab- claims: 0"
+fi
+say "pool replicas now: $(kubectl -n "${namespace}" get sandboxwarmpool "${pool}" -o jsonpath='{.spec.replicas}')"
+say "paused annotation: \"$(kubectl -n "${namespace}" get sandboxwarmpool "${pool}" -o jsonpath='{.metadata.annotations.session-lab\.io/autoscaler}')\""
+say "newest report: $(ls -t "${out}"/*.json | head -1)"
 [[ "${left}" == "0" ]] || { echo "    WARNING: leaked claims; delete with: kubectl -n ${namespace} delete sandboxclaims -l app.kubernetes.io/managed-by=session-lab" >&2; exit 3; }

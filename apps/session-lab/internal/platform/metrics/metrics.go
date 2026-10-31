@@ -38,6 +38,8 @@ type Recorder struct {
 	tplMem   prometheus.Gauge
 	boundary *prometheus.CounterVec
 	resume   *prometheus.HistogramVec
+	taskTime *prometheus.HistogramVec
+	jsHeap   *prometheus.HistogramVec
 
 	// The gauges are also tracked here so decrementing them cannot go negative
 	// when a session settles without ever having arrived through this recorder.
@@ -63,6 +65,16 @@ func New() *Recorder {
 			Name: "session_lab_sessions_total",
 			Help: "Sessions that reached a terminal outcome, by outcome.",
 		}, []string{"policy", "outcome"}),
+		taskTime: prometheus.NewHistogramVec(prometheus.HistogramOpts{
+			Name:    "session_lab_session_task_seconds",
+			Help:    "Main-thread task time one browser session spent inside its own context.",
+			Buckets: []float64{0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1, 5, 10, 30, 60},
+		}, []string{"policy"}),
+		jsHeap: prometheus.NewHistogramVec(prometheus.HistogramOpts{
+			Name:    "session_lab_session_js_heap_bytes",
+			Help:    "JavaScript heap of one browser session's context.",
+			Buckets: []float64{1 << 20, 4 << 20, 8 << 20, 16 << 20, 32 << 20, 64 << 20, 128 << 20},
+		}, []string{"policy"}),
 		queue: prometheus.NewHistogramVec(prometheus.HistogramOpts{
 			Name:    "session_lab_queue_wait_seconds",
 			Help:    "Claim create to Ready, the time a session waited for an instance.",
@@ -202,6 +214,18 @@ func (r *Recorder) Release(policy string, seconds float64) {
 }
 
 // Resources implements session.Recorder.
+// SessionUsage records what one browser session cost inside its own context. These
+// are the per-session numbers: main-thread task time and that context's heap, both
+// read from the target the session owned.
+func (r *Recorder) SessionUsage(taskSeconds, jsHeapBytes float64) {
+	if taskSeconds > 0 {
+		r.taskTime.WithLabelValues("all").Observe(taskSeconds)
+	}
+	if jsHeapBytes > 0 {
+		r.jsHeap.WithLabelValues("all").Observe(jsHeapBytes)
+	}
+}
+
 func (r *Recorder) Resources(policy string, reading session.Reading) {
 	r.cpu.WithLabelValues(policy).Add(float64(reading.CPUUsec) / 1e6)
 	if reading.ThrottledUsec > 0 {

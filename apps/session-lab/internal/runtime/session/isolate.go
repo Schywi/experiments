@@ -76,25 +76,26 @@ func (r *Runner) openIsolated(ctx context.Context, instance *sandbox.Instance) (
 	return opened, nil
 }
 
-// closeIsolated releases the session's state and reports what it cost, when the
-// transport can measure that.
-func (r *Runner) closeIsolated(ctx context.Context, instance *sandbox.Instance, opened isolated) error {
+// closeIsolated releases the session's state and reports what it cost. The second
+// return is this session's own measurement: main-thread task time, script time and
+// its context's JS heap, all read from the target the session owned.
+func (r *Runner) closeIsolated(ctx context.Context, instance *sandbox.Instance, opened isolated) (browser.Usage, error) {
 	if opened.viaHTTP {
-		return r.ad.CloseSession(ctx, instance, sandbox.BrowserSession{
+		return browser.Usage{}, r.ad.CloseSession(ctx, instance, sandbox.BrowserSession{
 			InstanceID: instance.ID,
 			ContextID:  string(opened.context),
 			TargetID:   string(opened.target),
 		})
 	}
 
+	var cost browser.Usage
 	var firstErr error
 	if opened.session != nil {
 		usage, err := opened.session.Metrics(ctx)
 		if err == nil {
-			delta := usage.Delta(opened.before)
-			r.log.Printf("session cpu (task) %.0fms script %.0fms heap %.0fKiB on %s",
-				delta.TaskDurationSeconds*1000, delta.ScriptDurationSeconds*1000,
-				delta.JSHeapUsedBytes/1024, instance.ID)
+			cost = usage.Delta(opened.before)
+		} else if firstErr == nil {
+			firstErr = fmt.Errorf("metrics: %w", err)
 		}
 		if err := opened.session.Close(ctx); err != nil {
 			firstErr = err
@@ -106,7 +107,7 @@ func (r *Runner) closeIsolated(ctx context.Context, instance *sandbox.Instance, 
 	if err := opened.conn.DisposeContext(ctx, opened.context); err != nil && firstErr == nil {
 		firstErr = err
 	}
-	return firstErr
+	return cost, firstErr
 }
 
 // browserConn returns the run's connection to this instance's Chromium, dialling

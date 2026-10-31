@@ -23,6 +23,8 @@ type Config struct {
 	Kubeconfig  string
 	Context     string
 	MetricsAddr string
+	// LogLevel is debug, info, warn or error.
+	LogLevel string
 }
 
 // Parse reads args (without the program name).
@@ -61,6 +63,7 @@ func Parse(args []string) (*Config, error) {
 	fs.BoolVar(&cfg.DryRun, "dry-run", false, "create and delete a small number of real objects, then stop")
 	fs.StringVar(&cfg.Kubeconfig, "kubeconfig", "", "kubeconfig path; empty uses the in-cluster or default config")
 	fs.StringVar(&cfg.Context, "context", "", "kubeconfig context")
+	fs.StringVar(&cfg.LogLevel, "log-level", "info", "debug, info, warn or error")
 	fs.StringVar(&cfg.MetricsAddr, "metrics-addr", ":9109", "address to serve /metrics on; empty disables it")
 	fs.StringVar(&cfg.RunID, "run-id", "", "run identifier; defaults to a timestamp")
 	fs.StringVar(&cfg.Template, "pool-template", "", "deprecated alias for --template")

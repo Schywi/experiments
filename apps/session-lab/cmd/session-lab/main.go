@@ -19,6 +19,7 @@ import (
 	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/infra/kube"
 	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/infra/measure"
 	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/platform/config"
+	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/platform/logging"
 	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/platform/metrics"
 	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/platform/model"
 	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/platform/store"
@@ -39,6 +40,13 @@ func realMain() error {
 	if err != nil {
 		return err
 	}
+
+	level, levelErr := logging.ParseLevel(cfg.LogLevel)
+	if levelErr != nil {
+		fmt.Fprintf(os.Stderr, "session-lab: %v\n", levelErr)
+		os.Exit(2)
+	}
+	lg := logging.New(os.Stdout, level)
 
 	logger := log.New(os.Stdout, "", log.Ltime|log.Lmicroseconds)
 
@@ -115,6 +123,7 @@ func realMain() error {
 		Sampler:        sampler,
 		Plan:           plan,
 		Log:            logger,
+		Logger:         lg,
 		Recorder:       recorder,
 		AutoscalerInfo: info,
 		HostMemory: func() (int64, int64, int64, int64) {

@@ -125,18 +125,25 @@ type Session struct {
 	CPUShared bool `json:"cpu_shared,omitempty"`
 	// BrowserContext and Target identify the context this session ran in.
 	BrowserContext string `json:"browser_context,omitempty"`
-	ClaimCreatedNS int64  `json:"claim_created_ns,omitempty"`
-	ReadyNS        int64  `json:"ready_ns,omitempty"`
-	HoldStartNS    int64  `json:"hold_start_ns,omitempty"`
-	HoldEndNS      int64  `json:"hold_end_ns,omitempty"`
-	DeleteCalledNS int64  `json:"delete_called_ns,omitempty"`
-	GoneNS         int64  `json:"gone_ns,omitempty"`
-	ResetStartNS   int64  `json:"reset_start_ns,omitempty"`
-	ResetEndNS     int64  `json:"reset_end_ns,omitempty"`
-	RebuildStartNS int64  `json:"rebuild_start_ns,omitempty"`
-	RebuildEndNS   int64  `json:"rebuild_end_ns,omitempty"`
-	ResumeStartNS  int64  `json:"resume_start_ns,omitempty"`
-	ResumeEndNS    int64  `json:"resume_end_ns,omitempty"`
+	// Per-session cost, measured inside the browser on the session's own target.
+	// TaskDurationUS is main-thread time, not process CPU: it belongs beside
+	// CPUUsec, never added to it. JSHeapBytes is this context's heap, which is an
+	// exact per-session number even when the browser is shared.
+	TaskDurationUS   int64 `json:"task_duration_us,omitempty"`
+	ScriptDurationUS int64 `json:"script_duration_us,omitempty"`
+	JSHeapBytes      int64 `json:"js_heap_bytes,omitempty"`
+	ClaimCreatedNS   int64 `json:"claim_created_ns,omitempty"`
+	ReadyNS          int64 `json:"ready_ns,omitempty"`
+	HoldStartNS      int64 `json:"hold_start_ns,omitempty"`
+	HoldEndNS        int64 `json:"hold_end_ns,omitempty"`
+	DeleteCalledNS   int64 `json:"delete_called_ns,omitempty"`
+	GoneNS           int64 `json:"gone_ns,omitempty"`
+	ResetStartNS     int64 `json:"reset_start_ns,omitempty"`
+	ResetEndNS       int64 `json:"reset_end_ns,omitempty"`
+	RebuildStartNS   int64 `json:"rebuild_start_ns,omitempty"`
+	RebuildEndNS     int64 `json:"rebuild_end_ns,omitempty"`
+	ResumeStartNS    int64 `json:"resume_start_ns,omitempty"`
+	ResumeEndNS      int64 `json:"resume_end_ns,omitempty"`
 
 	LaunchType string `json:"launch_type,omitempty"`
 	Node       string `json:"node,omitempty"`
