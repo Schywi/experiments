@@ -390,7 +390,57 @@ The first rollout crashlooped: the image runs the app from `/app`, where
 `docs/session-lab-runs` and falls back to `/runs`, with a test that resolves from both, and
 that fix is what revision 6 runs.
 
-Still open, in the order §8 lists them: slot capture and the `sessionId` field in
-`cdp-bridge.py` (slice 3), interaction with the `touched` mark (slice 4), and §9 questions 2
-and 3 — whether `Target.createBrowserContext` works from the page socket, and what a per-slot
-capture costs.
+## 11. Synthetic sessions: traffic from the console
+
+§9 question 2 is answered, and the answer decided the design: `Target.*` is refused on a page
+socket and allowed on the browser socket.
+
+```
+POST /cdp {"method": "Target.getBrowserContexts"}   page socket  → "Not allowed"
+POST /cdp {"method": "Target.createBrowserContext"} page socket  → "Not allowed"
+```
+
+`apps/browser-sandbox/cdp-bridge.py` routes `Target.`, `Browser.` and `SystemInfo.` to
+`/devtools/browser/<id>` (`BROWSER_DOMAINS`, commit `7a87a35`), so the console only has to send
+the command. The pod that answered "Not allowed" was carrying an image from before that commit;
+rebuilding `browser-sandbox` with kaniko and creating a fresh claim made both work, verified on
+`claim-mvvnfvnk` (`10.42.0.192`):
+
+```
+POST /sandboxes/claim-mvvnfvnk/contexts {"count": 3,
+     "urls": ["https://example.com/", "https://example.org/", "https://httpbin.org/html"]}
+  → FDF44BB7… example.com, 1DDCFE0F… example.org, 62243702… httpbin.org/html
+GET  /sandboxes/claim-mvvnfvnk/contexts
+  → three contexts, each with its page, created_by_console: true
+```
+
+### What it does
+
+`apps/sandbox-console/traffic.py` treats a session as the slot §2 defined: create a context,
+then `Target.createTarget {url, browserContextId}` so the page is populated in one call, which is
+why starting traffic needs no `sessionId` and no `Page.navigate`. Eight distinct origins are the
+default site list, because same-origin sessions share caches and connections, which is the thing
+a per-session context exists to isolate.
+
+The console keeps a per-instance ledger of what it created. `DELETE /sandboxes/{id}/contexts`
+disposes only those, so stopping console traffic can never dispose a context session-lab owns;
+`?all=1` disposes every non-default context for a clean slate. Contexts the runner created are
+listed with `created_by_console: false`.
+
+Starting traffic twice continues through the site list instead of restarting it — the first
+implementation restarted at index 0 and gave session four the site of session one.
+
+### Where it is drawn
+
+The Pool tile's dialog carries a sessions block: count, site list, start, stop, and the live list
+of contexts with their URLs. The run rack already draws one slot per context from
+`Target.getTargets` and labels a group with `N ctx`, so a run whose instances are alive shows the
+traffic it is carrying. A claim that belongs to no run has no position in a rack, which is why
+the control lives on the sandbox rather than on the wall.
+
+### What traffic still cannot do
+
+Photograph each context. A browser-level `Page.captureScreenshot` shows the page the renderer
+composites — the group card's frame — and a per-context frame needs `Target.attachToTarget` plus
+a top-level `sessionId` on the bridge's `/cdp` body, which the bridge does not accept yet. That is
+slice 3, unchanged by this section: creating contexts did not need it, but seeing each one does.
