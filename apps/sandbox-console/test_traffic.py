@@ -73,6 +73,9 @@ class FakeCDP:
     async def close(self, sandbox_id):  # the lifespan closes sockets on shutdown
         return None
 
+    async def location(self, sandbox_id):
+        return "https://example.com/"
+
     async def close_all(self):
         return None
 
@@ -623,3 +626,97 @@ def test_the_route_answers_400_for_a_site_it_cannot_use(client):
     )
     assert response.status_code == 400
     assert "not an http(s) url" in response.json()["detail"]
+
+
+# --------------------------------------------------------------------------- #
+# Session hygiene: one dead tab must not brick a sandbox
+# --------------------------------------------------------------------------- #
+class SessionAware(FakeCDP):
+    """Refuses any command that names a session it no longer has."""
+
+    def __init__(self, live_session="sess-live"):
+        super().__init__()
+        self.live_session = live_session
+        self.sent: list[tuple[str, str | None]] = []
+
+    async def call(self, sandbox_id, method, params=None):
+        session = getattr(self, "session", None)
+        carried = session if method.startswith(cdp.SESSION_DOMAINS) else None
+        self.sent.append((method, carried))
+        if carried and carried != self.live_session:
+            raise cdp.CDPError("Session with given id not found.")
+        return await super().call(sandbox_id, method, params)
+
+
+def test_browser_scoped_commands_never_carry_a_session(monkeypatch):
+    client = cdp.RouterCDP("http://router", transport="http", http_client=_NullHTTP())
+    client.use_context("sb-1", "sess-1")
+
+    async def body():
+        await client.call("sb-1", "Target.getBrowserContexts")
+        await client.call("sb-1", "Target.getTargets")
+        await client.call("sb-1", "Page.captureScreenshot", {"format": "png"})
+        await client.call("sb-1", "Input.dispatchMouseEvent", {"type": "mousePressed"})
+        return client._http.bodies
+
+    bodies = asyncio.run(body())
+    assert [body.get("sessionId") for body in bodies] == [None, None, "sess-1", "sess-1"]
+
+
+def test_a_dead_session_is_forgotten_and_reported_as_such(monkeypatch):
+    client = cdp.RouterCDP("http://router", transport="http", http_client=_FailingHTTP())
+    client.use_context("sb-1", "sess-dead")
+
+    with pytest.raises(cdp.CDPError) as caught:
+        asyncio.run(client.call("sb-1", "Page.captureScreenshot"))
+    assert "browser context is gone" in str(caught.value)
+    # and the sandbox is back on its default page, so the next call works
+    assert client.context_session("sb-1") is None
+
+
+def test_the_shot_falls_back_to_the_default_page_when_the_context_died(client, fake):
+    fake._pages = _pages_with_two_contexts()
+    client.post(f"/sandboxes/{SANDBOX}/active", json={"context": "ctx-01"})
+    assert server.SCREEN.active_context(SANDBOX) == "ctx-01"
+
+    calls = {"shots": 0}
+
+    async def dying_shot(sandbox_id):
+        calls["shots"] += 1
+        if calls["shots"] == 1:
+            raise cdp.CDPError("Page.captureScreenshot: the browser context is gone (…not found)")
+        return b"\x89PNG"
+
+    fake.screenshot = dying_shot
+    response = client.get(f"/sandboxes/{SANDBOX}/shot?fresh=1")
+    assert response.status_code == 200, response.text
+    assert response.content == b"\x89PNG"
+    # the dead tab is dropped rather than retried forever
+    assert server.SCREEN.active_context(SANDBOX) == ""
+
+
+def test_stopping_traffic_returns_the_sandbox_to_its_default_page(client, fake):
+    fake._pages = _pages_with_two_contexts()
+    client.post(f"/sandboxes/{SANDBOX}/active", json={"context": "ctx-01"})
+    client.post(f"/sandboxes/{SANDBOX}/contexts", json={"count": 1})
+    client.delete(f"/sandboxes/{SANDBOX}/contexts")
+    assert server.SCREEN.active_context(SANDBOX) == ""
+    assert fake.context_session(SANDBOX) is None
+
+
+class _NullHTTP:
+    def __init__(self):
+        self.bodies: list[dict] = []
+
+    async def post(self, url, headers=None, json=None, timeout=None):
+        self.bodies.append(json)
+        return type("R", (), {"status_code": 200, "text": "", "json": staticmethod(lambda: {"result": {}})})()
+
+
+class _FailingHTTP:
+    async def post(self, url, headers=None, json=None, timeout=None):
+        return type("R", (), {
+            "status_code": 502,
+            "text": "",
+            "json": staticmethod(lambda: {"error": "WebSocketError: Session with given id not found."}),
+        })()

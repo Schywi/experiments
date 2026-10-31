@@ -321,14 +321,27 @@ class Screen:
         """The browser context this sandbox's commands are addressed at."""
         return self._active_context.get(sandbox_id, "")
 
+    def clear_context(self, sandbox_id: str) -> None:
+        """Point this sandbox back at its default page.
+
+        Called when the context is disposed, when its page is gone, and by the
+        `[browser]` tab. Cheap and always safe: it only forgets.
+        """
+        self._active_context.pop(sandbox_id, None)
+        self.cdp.use_context(sandbox_id, None)
+        self._shots.pop(sandbox_id, None)
+
     async def select_context(self, sandbox_id: str, context_id: str) -> dict:
         """Point this sandbox at one browser context, or back at the default page.
 
         Attaching is what makes a context's page drivable. `Target.attachToTarget
         {flatten: true}` returns a session that addresses Page and Input commands
         at that page only, so a click and a frame in one tab cannot land in
-        another. An empty `context_id` returns to the default page.
+        another. The session from a previous tab is dropped *first*: it may name a
+        context that was disposed, and every command that carried it would be
+        refused.
         """
+        self.cdp.use_context(sandbox_id, None)
         targets = (await self.cdp.call(sandbox_id, "Target.getTargets") or {}).get("targetInfos") or []
         pages = [item for item in targets if isinstance(item, dict) and item.get("type") == "page"]
         if not context_id:
@@ -384,7 +397,15 @@ class Screen:
             cached = self.cached_shot(sandbox_id)
             if cached and not fresh and not in_context and (time.time() - cached[0]) < config.SHOT_TTL_SECONDS:
                 return cached[1]
-            payload = await self.cdp.screenshot(sandbox_id)
+            try:
+                payload = await self.cdp.screenshot(sandbox_id)
+            except cdp.CDPError as error:
+                if "browser context is gone" not in str(error):
+                    raise
+                # The tab being driven no longer exists. Fall back to the default
+                # page rather than failing every frame from here on.
+                self.clear_context(sandbox_id)
+                payload = await self.cdp.screenshot(sandbox_id)
             self.store_shot(sandbox_id, payload)
             # The first frame is also the first chance to learn what the page
             # is: the template's TARGET_URL is the boot value, not the truth
@@ -880,6 +901,9 @@ async def stop_contexts(sandbox_id: str, all: int = 0) -> JSONResponse:
     except Exception as error:  # noqa: BLE001 - a browser that refuses is the result
         audit.record(config.AUDIT_LOG, "traffic_stop_failed", sandbox=tile.id, error=str(error))
         raise HTTPException(status_code=502, detail=str(error))
+    # Disposing contexts invalidates the session the dialog was driving, so the
+    # sandbox goes back to its default page rather than keeping a dead session.
+    SCREEN.clear_context(tile.id)
     audit.record(
         config.AUDIT_LOG,
         "traffic_stop",

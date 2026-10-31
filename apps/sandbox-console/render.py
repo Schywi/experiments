@@ -1000,6 +1000,8 @@ PAGE_JS = """
 
   var frameTimer = null;
   var frameEpoch = 0;      // every frame request carries one; older ones lose
+  var frameFailures = 0;   // consecutive failed captures, for backoff
+  var frameTick = 0;
   var lastActionAt = 0;    // the last on-demand action (tap, compare, probe)
 
   function stopFrameRefresh() {
@@ -1024,6 +1026,8 @@ PAGE_JS = """
     stopFrameRefresh();
     if (!id) return;
     var every = everyMs || 2000;
+    frameFailures = 0;
+    frameTick = 0;
     frameTimer = setInterval(function () {
       var dialog = document.getElementById("dialog");
       var image = dialog && dialog.querySelector("img.big");
@@ -1034,6 +1038,11 @@ PAGE_JS = """
       if (document.hidden) return;
       if (inFlight > 0) return;
       if (Date.now() - lastActionAt < every) return;
+      // Back off while captures keep failing: three consecutive failures and the
+      // timer drops to every third tick instead of hammering a broken path (the
+      // server log filled with one 502 every two seconds because of this).
+      frameTick += 1;
+      if (frameFailures >= 3 && frameTick % 3 !== 0) return;
       requestFrame(id, "cadence");
     }, every);
   }
@@ -1262,14 +1271,35 @@ PAGE_JS = """
     } else {
       delete image.dataset.stale;
     }
+    // A frame arrived: the path works again.
+    frameFailures = 0;
+    var holder = image.closest(".dialog");
+    var note = holder && holder.querySelector(".frame-error");
+    if (note) note.remove();
   }, true);
 
   document.addEventListener("error", function (event) {
     var image = event.target;
     if (!image || image.tagName !== "IMG") return;
     var shot = image.closest(".shot");
-    if (shot) shot.classList.add("is-broken");
     var dialog = image.closest(".dialog");
+    // A dialog frame: keep the last picture the operator could see and say why it
+    // stopped updating. Hiding it, which is what used to happen, left a blank box
+    // and no explanation at all.
+    if (image.dataset.epoch) {
+      frameFailures += 1;
+      var where = dialog && (dialog.querySelector(".dialog-body") || dialog);
+      if (where && !where.querySelector(".frame-error")) {
+        var note = document.createElement("p");
+        note.className = "hint frame-error";
+        note.textContent =
+          "live frames are failing — showing the last one that worked. " +
+          "The browser context behind this tab may be gone; pick [browser] to reset.";
+        where.appendChild(note);
+      }
+      return;
+    }
+    if (shot) shot.classList.add("is-broken");
     if (dialog) dialog.classList.add("is-broken");
   }, true);
 

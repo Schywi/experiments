@@ -50,6 +50,23 @@ class CDPError(Exception):
     """The browser answered a command with a protocol error."""
 
 
+# Domains whose commands are addressed at one page. Everything else (`Target.`,
+# `Browser.`, `SystemInfo.`) is browser-scoped and must not name a page session.
+SESSION_DOMAINS = ("Page.", "Input.", "Runtime.", "Emulation.")
+
+# What Chromium says when the context a session belonged to is gone.
+_SESSION_LOST = (
+    "Session with given id not found",
+    "No session with given id",
+    "session not found",
+)
+
+
+def _session_lost(error: Exception) -> bool:
+    message = str(error)
+    return any(text.lower() in message.lower() for text in _SESSION_LOST)
+
+
 def rewrite_ws_url(router_url: str, target_url: str) -> str:
     """Point a loopback devtools URL at the router, keeping its path.
 
@@ -218,18 +235,43 @@ class RouterCDP:
     async def call(self, sandbox_id: str, method: str, params: dict | None = None) -> dict:
         """Issue one CDP command and return its result.
 
-        When a context session is selected with `use_context`, the command is
-        addressed at that context's page; otherwise it goes to the default page
-        the sandbox booted.
+        When a context session is selected with `use_context`, target-scoped
+        commands are addressed at that context's page. Browser-scoped commands
+        (`Target.`, `Browser.`) never carry it: Chromium answers a browser command
+        that names a page session with "Session with given id not found", and one
+        stale tab used to make the sandbox uncapturable forever.
         """
+        session_id = self._session_for(sandbox_id, method)
+        try:
+            return await self._call_once(sandbox_id, method, params or {}, session_id)
+        except (CDPError, RouterError) as error:
+            if not session_id or not _session_lost(error):
+                raise
+            # The context behind this session is gone. Forget it and say so, so
+            # the caller can fall back to the default page instead of retrying a
+            # dead session on a timer.
+            self.use_context(sandbox_id, None)
+            raise CDPError(
+                f"{method}: the browser context is gone ({error})"
+            ) from error
+
+    def _session_for(self, sandbox_id: str, method: str) -> str | None:
+        """The session to send with this command, or None for a browser command."""
         session_id = self._targets.get(sandbox_id)
+        if not session_id:
+            return None
+        return session_id if method.startswith(SESSION_DOMAINS) else None
+
+    async def _call_once(
+        self, sandbox_id: str, method: str, params: dict, session_id: str | None
+    ) -> dict:
         if self.transport == "http":
-            return await self._call_http(sandbox_id, method, params or {}, session_id)
+            return await self._call_http(sandbox_id, method, params, session_id)
         session = await self._session(sandbox_id)
         async with session.lock:
             try:
                 return await asyncio.wait_for(
-                    self._roundtrip(session, method, params or {}, session_id), self.command_timeout
+                    self._roundtrip(session, method, params, session_id), self.command_timeout
                 )
             except asyncio.TimeoutError as exc:
                 await self.close(sandbox_id)
