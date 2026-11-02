@@ -186,3 +186,90 @@ func TestPoolDoesNotGrowFasterThanBrowsersCanBoot(t *testing.T) {
 			settings.Target)
 	}
 }
+
+func nodeLoadScaler(t *testing.T, min, max int32, load NodeLoadFunc) (*Scaler, *sandbox.Fake) {
+	t.Helper()
+	fake := sandbox.NewFake()
+	scaler := New(Config{
+		Namespace: "sandbox-demo", Pool: "browser-pool",
+		Min: min, Max: max, Interval: time.Second, NodeLoad: load,
+		Log: log.New(io.Discard, "", 0),
+	}, fake, nil, nil)
+	return scaler, fake
+}
+
+func TestPressureSaturationShrinksDespiteDemand(t *testing.T) {
+	// A saturated node shrinks by one step even with a queue: the queue cannot
+	// be served until the node has headroom, and adding pods starves it further.
+	scaler, fake := nodeLoadScaler(t, 1, 40, func() (NodeLoad, error) {
+		return NodeLoad{Utilization: 0.9, PressureFull: 40}, nil
+	})
+	if err := fake.SetPoolReplicas(context.Background(), "sandbox-demo", "browser-pool", 10); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	fake.Stats = sandbox.ClaimStats{Ready: 10, Pending: 30}
+
+	settings, err := scaler.Step(context.Background())
+	if err != nil {
+		t.Fatalf("step: %v", err)
+	}
+	if settings.Target != 9 {
+		t.Fatalf("target = %d, want 9 (one step down from 10 despite demand)", settings.Target)
+	}
+	if settings.PressureFull != 40 || settings.Utilization != 0.9 {
+		t.Fatalf("settings do not carry the load: %+v", settings)
+	}
+}
+
+func TestPressureFreeGrowsTowardDemand(t *testing.T) {
+	scaler, fake := nodeLoadScaler(t, 1, 40, func() (NodeLoad, error) {
+		return NodeLoad{Utilization: 0.1, PressureFull: 1}, nil
+	})
+	fake.Stats = sandbox.ClaimStats{Ready: 4, Pending: 8}
+	settings, err := scaler.Step(context.Background())
+	if err != nil {
+		t.Fatalf("step: %v", err)
+	}
+	if settings.Target != 12 {
+		t.Fatalf("target = %d, want 12 (demand) on a free node", settings.Target)
+	}
+}
+
+func TestPressureBandHolds(t *testing.T) {
+	// Inside the hysteresis band the autoscaler holds, so it cannot oscillate
+	// every reconcile even when demand says grow.
+	scaler, fake := nodeLoadScaler(t, 1, 40, func() (NodeLoad, error) {
+		return NodeLoad{Utilization: 0.75, PressureFull: 10}, nil
+	})
+	if err := fake.SetPoolReplicas(context.Background(), "sandbox-demo", "browser-pool", 6); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	fake.Stats = sandbox.ClaimStats{Ready: 6, Pending: 14}
+	settings, err := scaler.Step(context.Background())
+	if err != nil {
+		t.Fatalf("step: %v", err)
+	}
+	if settings.Target != 6 {
+		t.Fatalf("target = %d, want 6 (hold in the band despite demand 20)", settings.Target)
+	}
+}
+
+func TestNodeLoadErrorFallsBackToDemand(t *testing.T) {
+	scaler, fake := nodeLoadScaler(t, 1, 40, func() (NodeLoad, error) {
+		return NodeLoad{}, errNodeLoad
+	})
+	fake.Stats = sandbox.ClaimStats{Ready: 2, Pending: 10}
+	settings, err := scaler.Step(context.Background())
+	if err != nil {
+		t.Fatalf("step: %v", err)
+	}
+	if settings.Target != 12 {
+		t.Fatalf("target = %d, want 12 (demand) when node load is unavailable", settings.Target)
+	}
+}
+
+var errNodeLoad = &nodeLoadError{}
+
+type nodeLoadError struct{}
+
+func (e *nodeLoadError) Error() string { return "no /proc" }

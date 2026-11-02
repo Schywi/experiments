@@ -24,6 +24,7 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 
 	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/infra/kube"
+	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/infra/measure"
 	poolscaler "github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/infra/pool"
 )
 
@@ -84,10 +85,23 @@ func run() error {
 		}()
 	}
 
+	hostCPU := &measure.NodeCPUUtilization{}
+
 	scaler := poolscaler.New(poolscaler.Config{
 		Namespace: *namespace, Pool: *pool, ContextsPerBrowser: *contexts,
 		Min: int32(*minR), Max: int32(*maxR),
 		Interval: *interval, ConfigMap: *configMap, Log: logger,
+		NodeLoad: func() (poolscaler.NodeLoad, error) {
+			util, _, err := hostCPU.Utilization()
+			if err != nil {
+				return poolscaler.NodeLoad{}, err
+			}
+			pressure, err := measure.ReadHostCPUPressureFull()
+			if err != nil {
+				return poolscaler.NodeLoad{}, err
+			}
+			return poolscaler.NodeLoad{Utilization: util, PressureFull: pressure}, nil
+		},
 	}, kube, &publisher{core: core, namespace: *namespace}, metrics)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

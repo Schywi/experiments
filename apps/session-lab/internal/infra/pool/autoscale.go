@@ -21,6 +21,30 @@ import (
 	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/infra/sandbox"
 )
 
+// NodeLoad is the autoscaler's second input: how busy the node is. It is what
+// turns demand-only sizing into pressure-aware sizing.
+type NodeLoad struct {
+	// Utilization is cores in use / cores available, 0..1.
+	Utilization float64
+	// PressureFull is the CPU PSI "full avg10" value, 0..100: the share of the
+	// last ten seconds in which everything was stalled waiting for a core.
+	PressureFull float64
+}
+
+// NodeLoadFunc reads the node's current load. A nil func, or a func that
+// returns an error, keeps demand-only sizing, so the autoscaler still works on
+// a host without /proc.
+type NodeLoadFunc func() (NodeLoad, error)
+
+// Pressure thresholds. The band between the two pairs is hysteresis: inside it
+// the autoscaler holds, so it cannot oscillate every reconcile.
+const (
+	pressureHigh = 25.0  // above this, relieve the node
+	pressureLow  = 5.0   // below this and util below utilLow, grow toward demand
+	utilHigh     = 0.85  // cores in use fraction above which to shrink
+	utilLow      = 0.70  // below which to grow, when pressure also says free
+)
+
 // Config is one autoscaler's settings.
 type Config struct {
 	Namespace string
@@ -36,6 +60,8 @@ type Config struct {
 	// the autoscaler was configured to do.
 	ConfigMap string
 	Log       *log.Logger
+	// NodeLoad reads node CPU utilisation and pressure each step.
+	NodeLoad NodeLoadFunc
 }
 
 // Settings is the published form: what a run reads back.
@@ -52,6 +78,11 @@ type Settings struct {
 	Failed    int32   `json:"failed,omitempty"`
 	Paused    bool    `json:"paused,omitempty"`
 	Desired   int32   `json:"desired"`
+	// Utilization is the node CPU fraction seen at this step (0..1); empty when
+	// no node-load reader is configured.
+	Utilization float64 `json:"utilization,omitempty"`
+	// PressureFull is the CPU PSI full avg10 percentage seen at this step.
+	PressureFull float64 `json:"pressure_full,omitempty"`
 }
 
 // Publisher writes the settings somewhere the cluster can read them.
@@ -103,7 +134,35 @@ func (s *Scaler) Step(ctx context.Context) (Settings, error) {
 	if perBrowser < 1 {
 		perBrowser = 1
 	}
-	target := int32((int(slots) + perBrowser - 1) / perBrowser)
+	demand := int32((int(slots) + perBrowser - 1) / perBrowser)
+
+	// The node's own load is the second input. When it is unavailable the
+	// autoscaler sizes on demand alone, which is the historical behaviour and
+	// stays correct off-host.
+	var load NodeLoad
+	if s.cfg.NodeLoad != nil {
+		load, err = s.cfg.NodeLoad()
+		if err != nil {
+			s.log.Printf("autoscaler: node load unavailable: %v; sizing on demand only", err)
+			load = NodeLoad{}
+		}
+	}
+
+	// Pressure-based sizing with hysteresis. Grow toward demand only when the
+	// node is clearly free, shrink one step when it is clearly saturated, and
+	// hold inside the band so the loop cannot oscillate at the reconcile rate.
+	target := demand
+	if s.cfg.NodeLoad != nil {
+		switch {
+		case load.PressureFull > pressureHigh || load.Utilization > utilHigh:
+			target = pool.Desired - 1 // relieve the node
+		case load.PressureFull < pressureLow && load.Utilization < utilLow:
+			target = demand // grow toward what is waiting
+		default:
+			target = pool.Desired // hold
+		}
+	}
+
 	// A pool that grows faster than the runner can boot just piles up pending pods,
 	// and pending pods hold requests that starve the scheduler. When the runner
 	// publishes a boot limit, growth per reconcile is bounded by it.
@@ -126,6 +185,7 @@ func (s *Scaler) Step(ctx context.Context) (Settings, error) {
 			Namespace: s.cfg.Namespace, Pool: s.cfg.Pool, UpdatedNS: time.Now().UnixNano(),
 			Target: pool.Desired, Ready: stats.Ready, Pending: stats.Pending,
 			Failed: stats.Failed, Desired: pool.Desired, Paused: true,
+			Utilization: load.Utilization, PressureFull: load.PressureFull,
 		}
 		if s.pub != nil && s.cfg.ConfigMap != "" {
 			if err := s.pub.Publish(ctx, s.cfg.ConfigMap, settings); err != nil {
@@ -143,7 +203,7 @@ func (s *Scaler) Step(ctx context.Context) (Settings, error) {
 		Namespace: s.cfg.Namespace, Pool: s.cfg.Pool,
 		UpdatedNS: time.Now().UnixNano(),
 		Target:    target, Ready: stats.Ready, Pending: stats.Pending, Failed: stats.Failed,
-		Desired: pool.Desired,
+		Desired: pool.Desired, Utilization: load.Utilization, PressureFull: load.PressureFull,
 	}
 
 	changed := false
