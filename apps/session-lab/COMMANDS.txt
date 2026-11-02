@@ -119,6 +119,30 @@ CDP_ADDR=$(kubectl -n sandbox-demo get pods -l agents.x-k8s.io/warm-pool-sandbox
 #     session-lab.io/autoscaler-
 
 # ─────────────────────────────────────────────────────────────────────────────
+# 3b. PROFILING
+# ─────────────────────────────────────────────────────────────────────────────
+# Runner-side profile for a whole run (client cost, not Chromium's):
+scripts/session-lab-experiment.sh --layer session --duration 120s --rate 1 --hold 30s
+# add --cpuprofile /tmp/sl.cpu --pprof if the binary is called directly:
+apps/session-lab/session-lab --duration 120s --rate 1 --hold 30s \
+  --cpuprofile /tmp/sl.cpu --memprofile /tmp/sl.heap --pprof
+go tool pprof -top -nodecount=20 /tmp/sl.cpu
+go tool pprof -top -nodecount=20 /tmp/sl.heap
+
+# Live profile of a running experiment (30 s sample, pprof endpoint):
+go tool pprof "http://127.0.0.1:9109/debug/pprof/profile?seconds=30"
+curl -s "http://127.0.0.1:9109/debug/pprof/goroutine?debug=1" | head -40
+
+# Go test binary (the riot test's own cost):
+cd apps/session-lab && SESSION_LAB_INTEGRATION=1 RIOT_SESSIONS=30 RIOT_HOLD=30s RIOT_RATE=2 \
+  RIOT_HEAVY=0 go test -tags integration -cpuprofile /tmp/riot.cpu ./test/ -run TestRiotLive
+go tool pprof -top -nodecount=20 /tmp/riot.cpu
+
+# Whole-system: who is actually burning the node (needs perf, not the runner):
+sudo perf top -p $(pgrep -f chrome | head -1)
+sudo perf record -a -g -- sleep 30 && sudo perf report --no-children --stdio | head -30
+
+# ─────────────────────────────────────────────────────────────────────────────
 # 4. READING A RUN
 # ─────────────────────────────────────────────────────────────────────────────
 ls -t docs/session-lab-runs/*.json | head -1        # newest report

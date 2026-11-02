@@ -11,8 +11,11 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	httppprof "net/http/pprof"
 	"os"
 	"os/signal"
+	"runtime"
+	"runtime/pprof"
 	"syscall"
 	"time"
 
@@ -100,11 +103,54 @@ func realMain() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	// A CPU profile covers the whole run, including the wait for browsers, which is
+	// where a client-side cost would show up.
+	if cfg.CPUProfile != "" {
+		file, err := os.Create(cfg.CPUProfile)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "session-lab: cpuprofile: %v\n", err)
+		} else if err := pprof.StartCPUProfile(file); err != nil {
+			fmt.Fprintf(os.Stderr, "session-lab: cpuprofile: %v\n", err)
+			file.Close()
+		} else {
+			defer func() {
+				pprof.StopCPUProfile()
+				file.Close()
+				logger.Printf("cpuprofile: %s", cfg.CPUProfile)
+			}()
+		}
+	}
+	if cfg.MemProfile != "" {
+		defer func() {
+			file, err := os.Create(cfg.MemProfile)
+			if err != nil {
+				logger.Printf("memprofile: %v", err)
+				return
+			}
+			defer file.Close()
+			runtime.GC()
+			if err := pprof.WriteHeapProfile(file); err != nil {
+				logger.Printf("memprofile: %v", err)
+				return
+			}
+			logger.Printf("memprofile: %s", cfg.MemProfile)
+		}()
+	}
+
 	recorder := metrics.New()
 	if cfg.MetricsAddr != "" {
 		go func() {
 			mux := http.NewServeMux()
 			mux.Handle("/metrics", recorder.Handler())
+			if cfg.Pprof {
+				// Profiling endpoint for the runner process. Useful mid-run:
+				//   go tool pprof http://127.0.0.1:9109/debug/pprof/profile?seconds=30
+				mux.HandleFunc("/debug/pprof/", httppprof.Index)
+				mux.HandleFunc("/debug/pprof/cmdline", httppprof.Cmdline)
+				mux.HandleFunc("/debug/pprof/profile", httppprof.Profile)
+				mux.HandleFunc("/debug/pprof/symbol", httppprof.Symbol)
+				mux.HandleFunc("/debug/pprof/trace", httppprof.Trace)
+			}
 			logger.Printf("metrics: serving %s on %s", "/metrics", cfg.MetricsAddr)
 			if err := http.ListenAndServe(cfg.MetricsAddr, mux); err != nil {
 				logger.Printf("metrics: %v", err)

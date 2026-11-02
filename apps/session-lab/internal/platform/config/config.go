@@ -25,6 +25,12 @@ type Config struct {
 	MetricsAddr string
 	// LogLevel is debug, info, warn or error.
 	LogLevel string
+	// Pprof serves net/http/pprof on the metrics address.
+	Pprof bool
+	// CPUProfile is a path for a CPU profile of the whole run; empty disables it.
+	CPUProfile string
+	// MemProfile is a path for a heap profile written at the end of the run.
+	MemProfile string
 }
 
 // Parse reads args (without the program name).
@@ -66,6 +72,9 @@ func Parse(args []string) (*Config, error) {
 	fs.StringVar(&cfg.Kubeconfig, "kubeconfig", "", "kubeconfig path; empty uses the in-cluster or default config")
 	fs.StringVar(&cfg.Context, "context", "", "kubeconfig context")
 	fs.StringVar(&cfg.LogLevel, "log-level", "info", "debug, info, warn or error")
+	fs.BoolVar(&cfg.Pprof, "pprof", false, "serve /debug/pprof on the metrics address")
+	fs.StringVar(&cfg.CPUProfile, "cpuprofile", "", "write a CPU profile of the run to this file")
+	fs.StringVar(&cfg.MemProfile, "memprofile", "", "write a heap profile at the end of the run to this file")
 	fs.StringVar(&cfg.MetricsAddr, "metrics-addr", ":9109", "address to serve /metrics on; empty disables it")
 	fs.StringVar(&cfg.RunID, "run-id", "", "run identifier; defaults to a timestamp")
 	fs.StringVar(&cfg.Template, "pool-template", "", "deprecated alias for --template")
