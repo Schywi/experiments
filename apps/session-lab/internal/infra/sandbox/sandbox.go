@@ -188,6 +188,10 @@ type Fake struct {
 	// PausedHistory records every SetPoolPaused call, in order.
 	PausedHistory []bool
 
+	// Pools records the pool name of every Acquire call, in order, so a test can
+	// assert that routing sent claims to the intended warm pool.
+	Pools []string
+
 	// ReadyAfter is how many acquisitions adopt a warm instance; later ones
 	// cold-start. Zero means every acquisition is warm.
 	WarmInstances int
@@ -215,6 +219,7 @@ func NewFake() *Fake {
 // Acquire implements Adapter.
 func (f *Fake) Acquire(ctx context.Context, namespace, pool, name string, class model.Class) (*Instance, error) {
 	f.mu.Lock()
+	f.Pools = append(f.Pools, pool)
 	if len(f.AcquireErrors) > 0 {
 		err := f.AcquireErrors[0]
 		f.AcquireErrors = f.AcquireErrors[1:]

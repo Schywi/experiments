@@ -20,6 +20,9 @@ type Planned struct {
 	Bucket string
 	Hold   time.Duration
 	Offset time.Duration
+	// Pool is the warm pool this session is routed to. Empty means "derive
+	// from the run's class mapping", which is the common case.
+	Pool string
 }
 
 // Plan is the whole generated workload.

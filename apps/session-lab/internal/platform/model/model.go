@@ -231,6 +231,11 @@ type RunConfig struct {
 	Namespace    string   `json:"namespace"`
 	Pool         string   `json:"pool"`
 	Template     string   `json:"template"`
+	// PoolByClass maps a workload class to the warm pool that serves it. A
+	// class with no entry falls through to Pool. It is what turns one run into
+	// a CPU tier and a GPU tier: the class chooses the pool, the pool chooses
+	// the template, the template carries the pod spec.
+	PoolByClass  map[string]string `json:"pool_by_class,omitempty"`
 	PoolReplicas *int32   `json:"pool_replicas,omitempty"`
 	Workers      int      `json:"workers"`
 	Admit        int      `json:"admit,omitempty"`

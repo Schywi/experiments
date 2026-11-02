@@ -104,8 +104,8 @@ type Runner struct {
 	reps   []store.ReplicaSample
 	counts map[model.Outcome]int
 
-	// originalReplicas is the pool's desired count before the run changed it.
-	originalReplicas *int32
+	// originalReplicas is each pool's desired count before the run changed it.
+	originalReplicas map[string]int32
 
 	// hostMemory reports the node's memory, when a reader was supplied.
 	hostMemory func() (total, available, swapTotal, swapFree int64)
@@ -125,9 +125,10 @@ type Runner struct {
 	// bounds admissions, boot bounds the CPU spikes those admissions cause.
 	boot *admission.Gate
 
-	// spool hands out browsing slots when one Chromium serves several
-	// sessions. Nil means the historical one-session-per-instance path.
-	spool       *slots.Pool
+	// spools hands out browsing slots when one Chromium serves several
+	// sessions, keyed by warm pool so a run can route classes to different
+	// pools. Nil when the run uses the historical one-session-per-instance path.
+	spools      map[string]*slots.Pool
 	instanceSeq int
 
 	// browsers holds one direct CDP connection per instance, used when the run
@@ -179,7 +180,7 @@ func New(cfg model.RunConfig, opts Options) *Runner {
 		autoscaler: opts.AutoscalerInfo,
 	}
 	if cfg.ContextsPerBrowser > 1 {
-		runner.spool = slots.New(cfg.ContextsPerBrowser, runner.acquireInstance)
+		runner.spools = map[string]*slots.Pool{}
 	}
 	return runner
 }
@@ -326,35 +327,49 @@ func (r *Runner) preflight(ctx context.Context) error {
 	if r.cfg.PoolReplicas == nil {
 		return nil
 	}
-	// Tell any autoscaler this pool is owned by the experiment. Without this the
-	// runner and the scaler would both write spec.replicas, and whichever ran
-	// last would win.
-	if err := r.ad.SetPoolPaused(ctx, r.cfg.Namespace, r.cfg.Pool, true); err != nil {
-		r.log.Printf("preflight: cannot claim the pool: %v", err)
-	}
-	if err := r.ad.SetBootConcurrency(ctx, r.cfg.Namespace, r.cfg.Pool, r.cfg.BootConcurrency); err != nil {
-		r.log.Printf("preflight: cannot publish boot concurrency: %v", err)
-	}
-	original := pool.Desired
-	r.originalReplicas = &original
-	r.log.Printf("preflight: setting pool replicas %d -> %d", original, *r.cfg.PoolReplicas)
-	if err := r.ad.SetPoolReplicas(ctx, r.cfg.Namespace, r.cfg.Pool, *r.cfg.PoolReplicas); err != nil {
-		return err
-	}
-	deadline := time.Now().Add(30 * time.Minute)
-	for {
-		state, err := r.ad.Pool(ctx, r.cfg.Namespace, r.cfg.Pool)
+	// A fixed-pool run owns every pool it may draw from: the replica count is
+	// written to each one and every pool is restored on the way out.
+	pools := r.poolNames()
+	r.originalReplicas = make(map[string]int32, len(pools))
+	for _, name := range pools {
+		state, err := r.ad.Pool(ctx, r.cfg.Namespace, name)
 		if err != nil {
 			return err
 		}
-		r.recordReplicas(state, "resize")
-		if state.Ready >= state.Desired {
-			r.log.Printf("preflight: pool reached desired=%d ready=%d", state.Desired, state.Ready)
+		r.originalReplicas[name] = state.Desired
+		// Tell any autoscaler this pool is owned by the experiment. Without this
+		// the runner and the scaler would both write spec.replicas, and whichever
+		// ran last would win.
+		if err := r.ad.SetPoolPaused(ctx, r.cfg.Namespace, name, true); err != nil {
+			r.log.Printf("preflight: cannot claim pool %s: %v", name, err)
+		}
+		if err := r.ad.SetBootConcurrency(ctx, r.cfg.Namespace, name, r.cfg.BootConcurrency); err != nil {
+			r.log.Printf("preflight: cannot publish boot concurrency on %s: %v", name, err)
+		}
+		r.log.Printf("preflight: setting pool %s replicas %d -> %d", name, state.Desired, *r.cfg.PoolReplicas)
+		if err := r.ad.SetPoolReplicas(ctx, r.cfg.Namespace, name, *r.cfg.PoolReplicas); err != nil {
+			return err
+		}
+	}
+	deadline := time.Now().Add(30 * time.Minute)
+	for {
+		allReady := true
+		for _, name := range pools {
+			state, err := r.ad.Pool(ctx, r.cfg.Namespace, name)
+			if err != nil {
+				return err
+			}
+			r.recordReplicas(state, "resize")
+			if state.Ready < state.Desired {
+				allReady = false
+			}
+		}
+		if allReady {
+			r.log.Printf("preflight: all pools reached desired=%d", *r.cfg.PoolReplicas)
 			return nil
 		}
 		if time.Now().After(deadline) {
-			r.log.Printf("preflight: pool still at desired=%d ready=%d after 30m; starting anyway",
-				state.Desired, state.Ready)
+			r.log.Printf("preflight: pools still not at desired=%d after 30m; starting anyway", *r.cfg.PoolReplicas)
 			return nil
 		}
 		select {
@@ -373,7 +388,7 @@ func (r *Runner) insertSessions() error {
 			Policy:    r.cfg.Policy,
 			Namespace: r.cfg.Namespace,
 			Template:  r.cfg.Template,
-			Pool:      r.cfg.Pool,
+			Pool:      r.poolFor(planned),
 			Outcome:   model.OutcomePending,
 			ArrivalNS: r.start.Add(planned.Offset).UnixNano(),
 		}
@@ -445,10 +460,10 @@ func (r *Runner) dispatch(ctx context.Context) error {
 func (r *Runner) session(ctx context.Context, planned schedule.Planned) {
 	session := model.Session{
 		ID: planned.ID, Bucket: planned.Bucket, Policy: r.cfg.Policy,
-		Namespace: r.cfg.Namespace, Template: r.cfg.Template, Pool: r.cfg.Pool,
+		Namespace: r.cfg.Namespace, Template: r.cfg.Template, Pool: r.poolFor(planned),
 		Outcome: model.OutcomePending, ArrivalNS: r.start.Add(planned.Offset).UnixNano(),
 	}
-	if r.spool != nil {
+	if r.cfg.ContextsPerBrowser > 1 {
 		r.sessionShared(ctx, planned)
 		return
 	}
@@ -506,7 +521,7 @@ func (r *Runner) session(ctx context.Context, planned schedule.Planned) {
 		session.AdmissionWaitNS = r.now().Sub(admitStart).Nanoseconds()
 
 		name := claimName(r.cfg.RunID, planned.ID)
-		acquired, err := r.ad.Acquire(ctx, r.cfg.Namespace, r.cfg.Pool, name, r.cfg.Class)
+		acquired, err := r.ad.Acquire(ctx, r.cfg.Namespace, r.poolFor(planned), name, r.cfg.Class)
 		r.gate.Release()
 		if err != nil {
 			outcome := model.OutcomeAcquisitionFailed
@@ -971,22 +986,26 @@ func (r *Runner) storeTemplateLimits(limits sandbox.TemplateLimits) {
 	}
 }
 
-// restorePool puts the warm pool back to the replica count it had before the
-// run, so an experiment leaves the platform as it found it.
+// restorePool puts every pool the run touched back to the replica count it had
+// before the run, so an experiment leaves the platform as it found it.
 func (r *Runner) restorePool(ctx context.Context) error {
-	if r.originalReplicas == nil || r.cfg.PoolReplicas == nil || *r.originalReplicas == *r.cfg.PoolReplicas {
+	if r.originalReplicas == nil || r.cfg.PoolReplicas == nil {
 		return nil
 	}
-	r.log.Printf("restore: pool replicas %d -> %d", *r.cfg.PoolReplicas, *r.originalReplicas)
-	if err := r.ad.SetPoolReplicas(ctx, r.cfg.Namespace, r.cfg.Pool, *r.originalReplicas); err != nil {
-		return err
-	}
-	if err := r.ad.SetPoolPaused(ctx, r.cfg.Namespace, r.cfg.Pool, false); err != nil {
-		r.log.Printf("restore: release the pool: %v", err)
-	}
-	state, err := r.ad.Pool(ctx, r.cfg.Namespace, r.cfg.Pool)
-	if err == nil {
-		r.recordReplicas(state, "restore")
+	for name, original := range r.originalReplicas {
+		if original == *r.cfg.PoolReplicas {
+			continue
+		}
+		r.log.Printf("restore: pool %s replicas %d -> %d", name, *r.cfg.PoolReplicas, original)
+		if err := r.ad.SetPoolReplicas(ctx, r.cfg.Namespace, name, original); err != nil {
+			return err
+		}
+		if err := r.ad.SetPoolPaused(ctx, r.cfg.Namespace, name, false); err != nil {
+			r.log.Printf("restore: release pool %s: %v", name, err)
+		}
+		if state, err := r.ad.Pool(ctx, r.cfg.Namespace, name); err == nil {
+			r.recordReplicas(state, "restore")
+		}
 	}
 	return nil
 }

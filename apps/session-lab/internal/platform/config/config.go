@@ -61,6 +61,20 @@ func Parse(args []string) (*Config, error) {
 	fs.StringVar((*string)(&cfg.Policy), "policy", string(model.PolicyReuse), "instance policy: reuse|destroy|suspend")
 	fs.StringVar(&cfg.Namespace, "namespace", "sandbox-demo", "namespace holding the pool and the claims")
 	fs.StringVar(&cfg.Pool, "pool", "browser-pool", "SandboxWarmPool name")
+	fs.Func("pool-by-class", "route a class to a pool, e.g. normal=gpu-pool,bulk=cpu-pool (repeatable)", func(value string) error {
+		if cfg.PoolByClass == nil {
+			cfg.PoolByClass = map[string]string{}
+		}
+		key, val, ok := strings.Cut(value, "=")
+		if !ok || strings.TrimSpace(key) == "" || strings.TrimSpace(val) == "" {
+			return fmt.Errorf("pool-by-class wants class=pool, got %q", value)
+		}
+		if _, err := model.ParseClass(key); err != nil {
+			return err
+		}
+		cfg.PoolByClass[strings.TrimSpace(key)] = strings.TrimSpace(val)
+		return nil
+	})
 	fs.StringVar(&cfg.Template, "template", "", "SandboxTemplate name; empty reads it from the pool")
 	fs.IntVar(&cfg.Workers, "workers", 0, "concurrent workers; 0 means one goroutine per live session")
 	fs.Float64Var(&cfg.OverloadFactor, "overload-factor", 1, "offered load as a multiple of one instance's throughput")

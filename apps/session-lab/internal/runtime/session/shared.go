@@ -19,17 +19,18 @@ import (
 )
 
 // acquireInstance is the pool's provider: it is the only place the shared path
-// reaches the capacity plane, and it runs only when a session has no slot.
-func (r *Runner) acquireInstance(ctx context.Context) (*sandbox.Instance, error) {
+// reaches the capacity plane, and it runs only when a session has no slot. The
+// pool name is chosen by the session that needed the slot, not by the runner.
+func (r *Runner) acquireInstance(ctx context.Context, pool string) (*sandbox.Instance, error) {
 	r.mu.Lock()
 	r.instanceSeq++
 	seq := int64(r.instanceSeq)
 	r.mu.Unlock()
 
 	name := claimName(r.cfg.RunID, seq)
-	r.log.Printf("capacity: no free slot, acquiring %s", name)
+	r.log.Printf("capacity: no free slot, acquiring %s from %s", name, pool)
 
-	instance, err := r.acquireWithRetry(ctx, name)
+	instance, err := r.acquireWithRetry(ctx, name, pool)
 	if err != nil {
 		return nil, fmt.Errorf("acquire: %w", err)
 	}
@@ -63,11 +64,11 @@ func (r *Runner) acquireInstance(ctx context.Context) (*sandbox.Instance, error)
 // single-node control plane under load answers POSTs with EOF or a deadline; that
 // is a property of the cluster, not an outcome of the session, and failing the
 // session on it turns control-plane noise into a fake capacity boundary.
-func (r *Runner) acquireWithRetry(ctx context.Context, name string) (*sandbox.Instance, error) {
+func (r *Runner) acquireWithRetry(ctx context.Context, name, pool string) (*sandbox.Instance, error) {
 	delay := 200 * time.Millisecond
 	var lastErr error
 	for attempt := 1; attempt <= 5; attempt++ {
-		instance, err := r.ad.Acquire(ctx, r.cfg.Namespace, r.cfg.Pool, name, r.cfg.Class)
+		instance, err := r.ad.Acquire(ctx, r.cfg.Namespace, pool, name, r.cfg.Class)
 		if err == nil {
 			if attempt > 1 {
 				r.lg.Info("claim created after retry", logging.F("claim", name),
@@ -114,9 +115,11 @@ func transient(err error) bool {
 
 // sessionShared runs one session inside a browser context on a shared Chromium.
 func (r *Runner) sessionShared(ctx context.Context, planned schedule.Planned) {
+	pool := r.poolFor(planned)
+	spool := r.spoolFor(pool)
 	session := model.Session{
 		ID: planned.ID, Bucket: planned.Bucket, Policy: r.cfg.Policy,
-		Namespace: r.cfg.Namespace, Template: r.cfg.Template, Pool: r.cfg.Pool,
+		Namespace: r.cfg.Namespace, Template: r.cfg.Template, Pool: pool,
 		Outcome: model.OutcomePending, ArrivalNS: r.start.Add(planned.Offset).UnixNano(),
 	}
 
@@ -158,7 +161,7 @@ func (r *Runner) sessionShared(ctx context.Context, planned schedule.Planned) {
 	}
 
 	session.ClaimCreatedNS = r.now().UnixNano()
-	lease, err := r.spool.Take(ctx)
+	lease, err := spool.Take(ctx)
 	if err != nil {
 		releaseBoot()
 		outcome := model.OutcomeAcquisitionFailed
@@ -175,7 +178,7 @@ func (r *Runner) sessionShared(ctx context.Context, planned schedule.Planned) {
 	// readiness made the acquisition latency structurally zero.
 	session.ReadyNS = r.now().UnixNano()
 	session.CPUShared = lease.Shared
-	sharing := r.spool.InUseOn(lease.Instance)
+	sharing := spool.InUseOn(lease.Instance)
 	r.lg.Debug("slot", logging.F("session", session.ID), logging.F("instance", lease.Instance.ID),
 		logging.F("slot", lease.Index), logging.F("sharing", sharing),
 		logging.F("warm", session.LaunchType))
@@ -186,7 +189,7 @@ func (r *Runner) sessionShared(ctx context.Context, planned schedule.Planned) {
 		r.lg.Error("isolate failed", logging.F("session", session.ID),
 			logging.F("instance", lease.Instance.ID), logging.F("transport", r.cfg.CDPTransport),
 			logging.F("error", err))
-		r.spool.Give(lease)
+		spool.Give(lease)
 		r.settle(session.ID, model.OutcomeResetFailed, "browser context: "+err.Error(), &session)
 		return
 	}
@@ -215,7 +218,7 @@ func (r *Runner) sessionShared(ctx context.Context, planned schedule.Planned) {
 		_, _ = r.closeIsolated(ctx, lease.Instance, isolatedState)
 		lease.Instance.Sessions++
 		r.persistInstance(lease.Instance)
-		r.spool.Give(lease)
+		spool.Give(lease)
 		outcome := model.OutcomeWaiting
 		if ctx.Err() == nil {
 			outcome = model.OutcomeTimeout
@@ -249,14 +252,14 @@ func (r *Runner) sessionShared(ctx context.Context, planned schedule.Planned) {
 		session.DeleteCalledNS = r.now().UnixNano()
 		if err := r.deleteWithRetry(ctx, lease.Instance); err != nil {
 			r.settle(session.ID, model.OutcomeDestroyFailed, "release: "+err.Error(), &session)
-			r.spool.Retire(lease.Instance)
+			spool.Retire(lease.Instance)
 			return
 		}
 		session.GoneNS = lease.Instance.DeletedNS
 		if r.rec != nil && session.GoneNS > 0 {
 			r.rec.Release(string(r.cfg.Policy), float64(session.GoneNS-session.DeleteCalledNS)/1e9)
 		}
-		r.spool.Retire(lease.Instance)
+		spool.Retire(lease.Instance)
 		r.forgetBrowser(lease.Instance)
 		r.mu.Lock()
 		delete(r.all, lease.Instance.ID)
@@ -264,7 +267,7 @@ func (r *Runner) sessionShared(ctx context.Context, planned schedule.Planned) {
 	} else {
 		// Reuse keeps the browser: an idle instance is exactly what the next
 		// session needs, and deleting it would make every session a cold start.
-		r.spool.Give(lease)
+		spool.Give(lease)
 	}
 
 	if closeErr != nil {
@@ -339,10 +342,19 @@ func divideReading(reading Reading, shares int) Reading {
 	}
 }
 
-// poolShape is what the report and the log say about the slot pool.
+// poolShape is what the report and the log say about the slot pools, summed
+// across every warm pool the run may draw from.
 func (r *Runner) poolShape() (slots.Snapshot, int) {
-	if r.spool == nil {
+	if r.spools == nil {
 		return slots.Snapshot{}, 0
 	}
-	return r.spool.Snapshot(), r.spool.Capacity()
+	var total slots.Snapshot
+	for _, spool := range r.spools {
+		snap := spool.Snapshot()
+		total.Instances += snap.Instances
+		total.Slots += snap.Slots
+		total.InUse += snap.InUse
+		total.IdleInstances += snap.IdleInstances
+	}
+	return total, r.cfg.ContextsPerBrowser
 }
