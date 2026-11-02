@@ -50,28 +50,32 @@ Two properties make it safe: a **hysteresis band** (act only outside it, or it o
 **asymmetry** (grow when free, shrink when pressured). Missing pieces: node PSI is not read at all
 (pods are), and the autoscaler has no second input.
 
-## 3. Three gaps, verified
+## 3. Three gaps, verified — and since fixed
 
-### Gap 1 — the autoscaler is blind to CPU (confirmed)
+All three were confirmed against the code below and have since been implemented. Status and
+locations are given so the section reads as a record, not an open list.
 
-`autoscale.go:89` reads claim counts and nothing else. No CPU, no PSI, no `FailedScheduling`.
-Consequence: it grows the pool toward demand with no idea whether the node has headroom, which is how
-`20261031T024806Z` reached 21 browsers and then `FailedScheduling … Insufficient cpu`.
+### Gap 1 — the autoscaler is blind to CPU (fixed, `77cc684`)
 
-### Gap 2 — the class label is never written (confirmed, and it is a bug)
+`autoscale.go` read claim counts and nothing else, so it grew the pool toward demand with no idea
+whether the node had headroom — how `20261031T024806Z` reached 21 browsers and then
+`FailedScheduling … Insufficient cpu`. It now takes a second input: node CPU PSI `full avg10` and
+interval CPU utilisation (`internal/infra/measure/node.go`), wired through `Config.NodeLoad`
+(`autoscale.go:64`). Each step shrinks one replica when saturated, grows toward demand when free, and
+holds inside a hysteresis band (`autoscale.go:157`).
 
-- `labelClass = "session-lab.io/class"` — `kube.go:46`
-- read by the demand watcher — `watch.go:33`
-- **written nowhere**: `Acquire` builds `"labels": {managedBy: managedValue}` only — `kube.go:143`
+### Gap 2 — the class label is never written (fixed, `c757981`)
 
-So `ClaimStats.Bulk` is always 0, `--class bulk` reorders the local queue and nothing else, and the
-autoscaler's "bulk never grows the pool" rule is dead code. One line fixes it: add
-`labelClass: string(class)` next to `managedBy` in `Acquire`.
+`Acquire` built `"labels": {managedBy: managedValue}` only, while the demand watcher already read
+`session-lab.io/class`. `ClaimStats.Bulk` was therefore always 0 and the "bulk never grows the pool"
+rule was dead code. `Acquire` now writes `labelClass: string(class)` next to `managedBy`
+(`kube.go:143`), and `TestObserveClaimReadsClassLabel` covers the round trip.
 
-### Gap 3 — the boot spike is measured, then ignored (confirmed)
+### Gap 3 — the boot spike is measured, then ignored (fixed, `8caec1c` + `3a4069e`)
 
-`instance.BootCPUPeakCores` is set in `boot.go:86` and read by nobody. k_max is typed into
-`--boot-concurrency`. It could be derived at run start: `k_max = (cores × 0.8) / measured_peak`.
+`instance.BootCPUPeakCores` was set and then discarded; k_max was typed into `--boot-concurrency`.
+It is now persisted per instance and read back at preflight, so k_max is derived —
+`k_max = (cores × 0.8) / measured_peak`. §6 works through the mechanism.
 
 ## 4. The line to draw
 
@@ -125,25 +129,27 @@ run 2   at preflight        → read the stored peaks, take the highest
         k_max = (6 × 0.8) / 1.89 = 2       → --boot-concurrency 2, derived
 ```
 
-The write half exists:
+Both halves exist:
 
 | Piece | Where |
 |---|---|
-| column `boot_cpu_peak_cores REAL NOT NULL DEFAULT 0` | `internal/platform/store/store.go:102` |
-| written per instance | `store.go:352-363`, fed from `instance.BootCPUPeakCores` |
-| measured at 100 ms from sandbox binding to Ready | `internal/runtime/session/boot.go:18-88` |
+| columns `boot_cpu_peak_cores`, `class`, `contexts_per_browser` | `internal/platform/store/store.go:103-105` |
+| written per instance | `store.go:355`, fed from `instance.BootCPUPeakCores`, `Class`, `ContextsPerBrowser` |
+| measured at 100 ms from sandbox binding to Ready | `internal/runtime/session/boot.go` |
+| `store.BootPeakCores(class, contexts)` — `MAX(boot_cpu_peak_cores)`, filtered | `store.go:474` |
+| `store.PriorBootPeakCores(dir, runID, class, contexts)` — worst peak across prior runs | `store.go:493` |
+| `deriveBootConcurrency(cores, peak)` — `int(cores*0.8/peak)`, floor 1 | `boot.go:101` |
+| preflight branch when `--boot-concurrency` is 0 | `internal/runtime/session/run.go:296` |
 
-The read half does not: no query returns those rows at preflight, and nothing performs the division.
-Gap 3 is therefore two small pieces of code:
-
-1. `store.BootPeakCores()` — `select max(boot_cpu_peak_cores) from instances` (optionally filtered).
-2. One preflight branch: when `--boot-concurrency` is 0 and stored peaks exist, set it to
-   `int(cores × 0.8 / peak)`; otherwise leave it unbounded as today.
+One detail the "run 2 reads run 1" picture hides: each run writes its own `<run-id>.db`, so the read
+cannot be a single query against the current store — its instances table is empty at preflight.
+Preflight combines `BootPeakCores` (rows already in this run) with `PriorBootPeakCores`, which globs
+the run databases in the output directory and takes the highest matching peak. A run with a fresh
+`--out` directory, or the first run in one, has nothing to read and keeps the typed flag.
 
 ### The guard that keeps it honest
 
-A boot peak depends on the workload being rendered and on `contexts-per-browser`. A splash boot and
-an SPA boot are different jobs. Deriving `k_max` from rows produced by a different workload makes the
-number drift toward whatever the last experiment happened to be, so the query must filter on the
-same page class and the same contexts-per-browser count, and fall back to the flag when no matching
-rows exist.
+A boot peak depends on the workload being rendered and on `contexts-per-browser`, so each row carries
+both and `BootPeakCores` filters on both. Deriving `k_max` from rows produced by a different workload
+would let the number drift toward whatever the last experiment happened to be. No matching rows means
+no derivation: the flag stands.
