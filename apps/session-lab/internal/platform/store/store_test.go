@@ -18,6 +18,28 @@ func openTemp(t *testing.T) *Store {
 	return s
 }
 
+func TestInstanceBootCPURoundTrips(t *testing.T) {
+	s := openTemp(t)
+	instance := model.Instance{
+		ID: "inst-1", Kind: "claim", Namespace: "sandbox-demo", Node: "fedora",
+		PodUID: "uid-1", CreatedNS: 1000, ReadyNS: 2000,
+		Sessions: 3, BootCPUPeakCores: 1.94,
+	}
+	if err := s.SaveInstance(instance); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+	rows, err := s.Instances()
+	if err != nil {
+		t.Fatalf("instances: %v", err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("instances = %d, want 1", len(rows))
+	}
+	if rows[0].BootCPUPeakCores != 1.94 {
+		t.Fatalf("boot cpu peak = %v, want 1.94", rows[0].BootCPUPeakCores)
+	}
+}
+
 func TestSessionTransitionsSurviveReopen(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "run.db")

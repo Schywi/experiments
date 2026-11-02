@@ -865,6 +865,7 @@ func (r *Runner) persistInstance(instance *sandbox.Instance) {
 		ReadyNS: instance.ReadyNS, DeletedNS: instance.DeletedNS,
 		Suspends: instance.Suspends, Resumes: instance.Resumes,
 		Resets: instance.Resets, Sessions: instance.Sessions,
+		BootCPUPeakCores: instance.BootCPUPeakCores,
 	})
 	if err != nil {
 		r.log.Printf("save instance %s: %v", instance.ID, err)

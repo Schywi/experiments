@@ -167,6 +167,11 @@ type InstanceSummary struct {
 	MaxSessions  int64   `json:"max_sessions_per_instance"`
 	MeanSessions float64 `json:"mean_sessions_per_instance"`
 	RebuildP50Ms float64 `json:"rebuild_p50_ms"`
+	// BootCPUPeakP50/Max are the boot spike size: the peak cores one cold
+	// Chromium used between binding and Ready. This is the number the
+	// boot-concurrency cap is derived from.
+	BootCPUPeakP50 float64 `json:"boot_cpu_peak_p50"`
+	BootCPUPeakMax float64 `json:"boot_cpu_peak_max"`
 }
 
 // Build assembles a report from the store.
@@ -671,13 +676,22 @@ func summariseInstances(instances []model.Instance) InstanceSummary {
 		return summary
 	}
 	var totalSessions int64
+	peaks := make([]float64, 0, len(instances))
 	for _, instance := range instances {
 		totalSessions += instance.Sessions
 		if instance.Sessions > summary.MaxSessions {
 			summary.MaxSessions = instance.Sessions
 		}
+		if instance.BootCPUPeakCores > 0 {
+			peaks = append(peaks, instance.BootCPUPeakCores)
+		}
 	}
 	summary.MeanSessions = float64(totalSessions) / float64(len(instances))
+	if len(peaks) > 0 {
+		sort.Float64s(peaks)
+		summary.BootCPUPeakP50 = percentile(peaks, 50)
+		summary.BootCPUPeakMax = peaks[len(peaks)-1]
+	}
 	return summary
 }
 

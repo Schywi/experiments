@@ -182,6 +182,10 @@ type Instance struct {
 	Resumes   int64  `json:"resumes,omitempty"`
 	Resets    int64  `json:"resets,omitempty"`
 	Sessions  int64  `json:"sessions,omitempty"`
+	// BootCPUPeakCores is the highest CPU this instance used while booting,
+	// measured between sandbox binding and browser Ready. It is the number the
+	// boot-concurrency cap is derived from.
+	BootCPUPeakCores float64 `json:"boot_cpu_peak_cores,omitempty"`
 }
 
 // Event is one lifecycle transition, kept alongside the session row so a run can

@@ -98,7 +98,8 @@ CREATE TABLE IF NOT EXISTS instances (
     suspends   INTEGER NOT NULL DEFAULT 0,
     resumes    INTEGER NOT NULL DEFAULT 0,
     resets     INTEGER NOT NULL DEFAULT 0,
-    sessions   INTEGER NOT NULL DEFAULT 0
+    sessions   INTEGER NOT NULL DEFAULT 0,
+    boot_cpu_peak_cores REAL NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS events (
@@ -348,16 +349,18 @@ func (s *Store) UpdateSession(session model.Session) error {
 func (s *Store) SaveInstance(instance model.Instance) error {
 	_, err := s.db.Exec(
 		`INSERT INTO instances (id, kind, namespace, node, pod_uid, created_ns, ready_ns, deleted_ns,
-		     suspends, resumes, resets, sessions)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		     suspends, resumes, resets, sessions, boot_cpu_peak_cores)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(id) DO UPDATE SET
 		     kind = excluded.kind, namespace = excluded.namespace, node = excluded.node,
 		     pod_uid = excluded.pod_uid, created_ns = excluded.created_ns, ready_ns = excluded.ready_ns,
 		     deleted_ns = excluded.deleted_ns, suspends = excluded.suspends, resumes = excluded.resumes,
-		     resets = excluded.resets, sessions = excluded.sessions`,
+		     resets = excluded.resets, sessions = excluded.sessions,
+		     boot_cpu_peak_cores = excluded.boot_cpu_peak_cores`,
 		instance.ID, instance.Kind, instance.Namespace, instance.Node, instance.PodUID,
 		instance.CreatedNS, instance.ReadyNS, instance.DeletedNS,
-		instance.Suspends, instance.Resumes, instance.Resets, instance.Sessions)
+		instance.Suspends, instance.Resumes, instance.Resets, instance.Sessions,
+		instance.BootCPUPeakCores)
 	return err
 }
 
@@ -442,7 +445,8 @@ func (s *Store) Sessions() ([]model.Session, error) {
 // Instances returns every instance row.
 func (s *Store) Instances() ([]model.Instance, error) {
 	rows, err := s.db.Query(`SELECT id, kind, namespace, node, pod_uid, created_ns, ready_ns,
-	    deleted_ns, suspends, resumes, resets, sessions FROM instances ORDER BY created_ns`)
+	    deleted_ns, suspends, resumes, resets, sessions, boot_cpu_peak_cores
+	    FROM instances ORDER BY created_ns`)
 	if err != nil {
 		return nil, err
 	}
@@ -451,7 +455,8 @@ func (s *Store) Instances() ([]model.Instance, error) {
 	for rows.Next() {
 		var i model.Instance
 		if err := rows.Scan(&i.ID, &i.Kind, &i.Namespace, &i.Node, &i.PodUID, &i.CreatedNS,
-			&i.ReadyNS, &i.DeletedNS, &i.Suspends, &i.Resumes, &i.Resets, &i.Sessions); err != nil {
+			&i.ReadyNS, &i.DeletedNS, &i.Suspends, &i.Resumes, &i.Resets, &i.Sessions,
+			&i.BootCPUPeakCores); err != nil {
 			return nil, err
 		}
 		out = append(out, i)
