@@ -11,6 +11,7 @@ import (
 
 	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/infra/sandbox"
 	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/platform/logging"
+	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/platform/store"
 )
 
 // sampleBoot watches one instance while it boots. done is closed by the caller when
@@ -91,4 +92,40 @@ func (r *Runner) recordBootCPU(instance *sandbox.Instance, peakCores float64) {
 	// there are tens of instances per run, not thousands of sessions.
 	r.lg.Info("boot cpu", logging.F("instance", instance.ID),
 		logging.F("peak_cores", peakCores))
+}
+
+// deriveBootConcurrency turns a measured boot spike into the number of browsers
+// that may cold-start at once while the node stays under 80% of its cores:
+// k_max = (cores * 0.8) / measured_peak, never below one. A zero or invalid
+// input returns 0, which the caller reads as "nothing to derive".
+func deriveBootConcurrency(cores, peakCores float64) int {
+	if cores <= 0 || peakCores <= 0 {
+		return 0
+	}
+	k := int((cores * 0.8) / peakCores)
+	if k < 1 {
+		k = 1
+	}
+	return k
+}
+
+// bootPeak is the worst measured boot spike for this run's class and packing,
+// taken from this run's own instance rows and from prior runs in the same output
+// directory. Only rows with the same class and contexts-per-browser count: a
+// splash boot and an SPA boot are different costs, so mixing them would drift
+// k_max toward whatever the last experiment happened to be.
+func (r *Runner) bootPeak() (float64, error) {
+	class := classKey(r.cfg.Class)
+	peak, err := r.st.BootPeakCores(class, r.cfg.ContextsPerBrowser)
+	if err != nil {
+		return 0, err
+	}
+	prior, err := store.PriorBootPeakCores(r.cfg.OutDir, r.cfg.RunID, class, r.cfg.ContextsPerBrowser)
+	if err != nil {
+		return peak, err
+	}
+	if prior > peak {
+		peak = prior
+	}
+	return peak, nil
 }

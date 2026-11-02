@@ -24,6 +24,7 @@ func TestInstanceBootCPURoundTrips(t *testing.T) {
 		ID: "inst-1", Kind: "claim", Namespace: "sandbox-demo", Node: "fedora",
 		PodUID: "uid-1", CreatedNS: 1000, ReadyNS: 2000,
 		Sessions: 3, BootCPUPeakCores: 1.94,
+		Class:    "normal", ContextsPerBrowser: 1,
 	}
 	if err := s.SaveInstance(instance); err != nil {
 		t.Fatalf("save: %v", err)
@@ -37,6 +38,70 @@ func TestInstanceBootCPURoundTrips(t *testing.T) {
 	}
 	if rows[0].BootCPUPeakCores != 1.94 {
 		t.Fatalf("boot cpu peak = %v, want 1.94", rows[0].BootCPUPeakCores)
+	}
+	if rows[0].Class != "normal" || rows[0].ContextsPerBrowser != 1 {
+		t.Fatalf("class/packing = %q/%d, want normal/1", rows[0].Class, rows[0].ContextsPerBrowser)
+	}
+}
+
+func TestBootPeakCoresFiltersByClassAndPacking(t *testing.T) {
+	s := openTemp(t)
+	save := func(id, class string, contexts int, peak float64) {
+		t.Helper()
+		if err := s.SaveInstance(model.Instance{
+			ID: id, Kind: "claim", Class: class,
+			ContextsPerBrowser: contexts, BootCPUPeakCores: peak,
+		}); err != nil {
+			t.Fatalf("save %s: %v", id, err)
+		}
+	}
+	save("a", "normal", 1, 1.2)
+	save("b", "normal", 1, 1.9)
+	save("c", "bulk", 1, 3.0)   // different class: must not count
+	save("d", "normal", 8, 0.7) // different packing: must not count
+
+	got, err := s.BootPeakCores("normal", 1)
+	if err != nil {
+		t.Fatalf("peak: %v", err)
+	}
+	if got != 1.9 {
+		t.Fatalf("peak = %v, want the worst normal/1 = 1.9", got)
+	}
+
+	// A class with no rows is zero, not an error: that is "not measured yet".
+	empty, err := s.BootPeakCores("batch", 1)
+	if err != nil || empty != 0 {
+		t.Fatalf("unmeasured class = %v (err %v), want 0", empty, err)
+	}
+}
+
+func TestPriorBootPeakCoresScansDirectory(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name string, peak float64, class string, contexts int) {
+		t.Helper()
+		st, err := Open(filepath.Join(dir, name))
+		if err != nil {
+			t.Fatalf("open %s: %v", name, err)
+		}
+		defer st.Close()
+		if err := st.SaveInstance(model.Instance{
+			ID: name + "-i", Kind: "claim", Class: class,
+			ContextsPerBrowser: contexts, BootCPUPeakCores: peak,
+		}); err != nil {
+			t.Fatalf("save %s: %v", name, err)
+		}
+	}
+	write("run1.db", 1.5, "normal", 1)
+	write("run2.db", 1.89, "normal", 1)
+	write("run3.db", 4.0, "bulk", 1)      // different class: excluded
+	write("current.db", 2.5, "normal", 1) // the current run: skipped
+
+	got, err := PriorBootPeakCores(dir, "current", "normal", 1)
+	if err != nil {
+		t.Fatalf("prior peak: %v", err)
+	}
+	if got != 1.89 {
+		t.Fatalf("prior peak = %v, want 1.89 (worst of run1/run2, bulk and current excluded)", got)
 	}
 }
 

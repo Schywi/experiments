@@ -10,6 +10,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -99,7 +100,9 @@ CREATE TABLE IF NOT EXISTS instances (
     resumes    INTEGER NOT NULL DEFAULT 0,
     resets     INTEGER NOT NULL DEFAULT 0,
     sessions   INTEGER NOT NULL DEFAULT 0,
-    boot_cpu_peak_cores REAL NOT NULL DEFAULT 0
+    boot_cpu_peak_cores REAL NOT NULL DEFAULT 0,
+    class      TEXT NOT NULL DEFAULT '',
+    contexts_per_browser INTEGER NOT NULL DEFAULT 1
 );
 
 CREATE TABLE IF NOT EXISTS events (
@@ -349,18 +352,19 @@ func (s *Store) UpdateSession(session model.Session) error {
 func (s *Store) SaveInstance(instance model.Instance) error {
 	_, err := s.db.Exec(
 		`INSERT INTO instances (id, kind, namespace, node, pod_uid, created_ns, ready_ns, deleted_ns,
-		     suspends, resumes, resets, sessions, boot_cpu_peak_cores)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		     suspends, resumes, resets, sessions, boot_cpu_peak_cores, class, contexts_per_browser)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(id) DO UPDATE SET
 		     kind = excluded.kind, namespace = excluded.namespace, node = excluded.node,
 		     pod_uid = excluded.pod_uid, created_ns = excluded.created_ns, ready_ns = excluded.ready_ns,
 		     deleted_ns = excluded.deleted_ns, suspends = excluded.suspends, resumes = excluded.resumes,
 		     resets = excluded.resets, sessions = excluded.sessions,
-		     boot_cpu_peak_cores = excluded.boot_cpu_peak_cores`,
+		     boot_cpu_peak_cores = excluded.boot_cpu_peak_cores,
+		     class = excluded.class, contexts_per_browser = excluded.contexts_per_browser`,
 		instance.ID, instance.Kind, instance.Namespace, instance.Node, instance.PodUID,
 		instance.CreatedNS, instance.ReadyNS, instance.DeletedNS,
 		instance.Suspends, instance.Resumes, instance.Resets, instance.Sessions,
-		instance.BootCPUPeakCores)
+		instance.BootCPUPeakCores, instance.Class, instance.ContextsPerBrowser)
 	return err
 }
 
@@ -445,7 +449,7 @@ func (s *Store) Sessions() ([]model.Session, error) {
 // Instances returns every instance row.
 func (s *Store) Instances() ([]model.Instance, error) {
 	rows, err := s.db.Query(`SELECT id, kind, namespace, node, pod_uid, created_ns, ready_ns,
-	    deleted_ns, suspends, resumes, resets, sessions, boot_cpu_peak_cores
+	    deleted_ns, suspends, resumes, resets, sessions, boot_cpu_peak_cores, class, contexts_per_browser
 	    FROM instances ORDER BY created_ns`)
 	if err != nil {
 		return nil, err
@@ -456,12 +460,61 @@ func (s *Store) Instances() ([]model.Instance, error) {
 		var i model.Instance
 		if err := rows.Scan(&i.ID, &i.Kind, &i.Namespace, &i.Node, &i.PodUID, &i.CreatedNS,
 			&i.ReadyNS, &i.DeletedNS, &i.Suspends, &i.Resumes, &i.Resets, &i.Sessions,
-			&i.BootCPUPeakCores); err != nil {
+			&i.BootCPUPeakCores, &i.Class, &i.ContextsPerBrowser); err != nil {
 			return nil, err
 		}
 		out = append(out, i)
 	}
 	return out, rows.Err()
+}
+
+// BootPeakCores is the highest boot CPU peak recorded in this store for the
+// given class and contexts-per-browser. A store with no matching rows returns
+// zero, which callers read as "no measurement yet".
+func (s *Store) BootPeakCores(class string, contextsPerBrowser int) (float64, error) {
+	var peak sql.NullFloat64
+	err := s.db.QueryRow(
+		`SELECT MAX(boot_cpu_peak_cores) FROM instances
+		 WHERE class = ? AND contexts_per_browser = ?`,
+		class, contextsPerBrowser).Scan(&peak)
+	if err != nil {
+		return 0, err
+	}
+	if !peak.Valid {
+		return 0, nil
+	}
+	return peak.Float64, nil
+}
+
+// PriorBootPeakCores scans the run databases in dir and returns the highest boot
+// CPU peak a previous run recorded for the same class and contexts-per-browser.
+// It skips currentRunID's own database, and skips files it cannot open: a stale
+// artefact must not stop a run from starting.
+func PriorBootPeakCores(dir, currentRunID, class string, contextsPerBrowser int) (float64, error) {
+	matches, err := filepath.Glob(filepath.Join(dir, "*.db"))
+	if err != nil {
+		return 0, err
+	}
+	current := currentRunID + ".db"
+	var peak float64
+	for _, path := range matches {
+		if filepath.Base(path) == current {
+			continue
+		}
+		prior, err := Open(path)
+		if err != nil {
+			continue
+		}
+		got, err := prior.BootPeakCores(class, contextsPerBrowser)
+		prior.Close()
+		if err != nil {
+			continue
+		}
+		if got > peak {
+			peak = got
+		}
+	}
+	return peak, nil
 }
 
 // Count returns how many sessions the store holds, which the report compares

@@ -290,6 +290,23 @@ func (r *Runner) preflight(ctx context.Context) error {
 		node.Name, node.CPUMilli, node.MemBytes/(1<<20), node.Pods)
 	r.recordReplicas(pool, "preflight")
 
+	// Boot concurrency is derived from measured spikes when the operator did not
+	// pin it. The chicken-and-egg — no peak exists before the first boot — is
+	// broken by reading prior runs' peaks from the output directory.
+	if r.cfg.BootConcurrency == 0 {
+		if peak, err := r.bootPeak(); err != nil {
+			r.log.Printf("preflight: boot peak unavailable: %v", err)
+		} else if peak > 0 {
+			cores := float64(node.CPUMilli) / 1000
+			if k := deriveBootConcurrency(cores, peak); k > 0 {
+				r.cfg.BootConcurrency = k
+				r.boot = admission.NewGate(k)
+				r.log.Printf("preflight: derived boot concurrency %d from measured peak %.2f cores on %.1f cores",
+					k, peak, cores)
+			}
+		}
+	}
+
 	// Whether anything scales this pool is part of the run's configuration.
 	if r.autoscaler != nil {
 		info, err := r.autoscaler(ctx)
@@ -880,7 +897,9 @@ func (r *Runner) persistInstance(instance *sandbox.Instance) {
 		ReadyNS: instance.ReadyNS, DeletedNS: instance.DeletedNS,
 		Suspends: instance.Suspends, Resumes: instance.Resumes,
 		Resets: instance.Resets, Sessions: instance.Sessions,
-		BootCPUPeakCores: instance.BootCPUPeakCores,
+		BootCPUPeakCores:   instance.BootCPUPeakCores,
+		Class:              classKey(r.cfg.Class),
+		ContextsPerBrowser: r.cfg.ContextsPerBrowser,
 	})
 	if err != nil {
 		r.log.Printf("save instance %s: %v", instance.ID, err)

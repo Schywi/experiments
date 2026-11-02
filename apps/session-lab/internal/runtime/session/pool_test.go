@@ -89,6 +89,26 @@ func TestRetireEverywhereIsNilSafe(t *testing.T) {
 	r.retireEverywhere(&sandbox.Instance{ID: "gone"}) // no spools: must not panic
 }
 
+func TestDeriveBootConcurrency(t *testing.T) {
+	cases := []struct {
+		cores, peak float64
+		want        int
+	}{
+		{6, 1.9, 2}, // (6*0.8)/1.9 = 2.52
+		{6, 1.5, 3}, // 4.8/1.5 = 3.2
+		{6, 1.74, 2},
+		{6, 0.5, 9},  // 4.8/0.5 = 9.6
+		{6, 10, 1},   // clamps to one
+		{0, 1.9, 0},  // no cores: nothing to derive
+		{6, 0, 0},    // no peak: nothing to derive
+	}
+	for _, c := range cases {
+		if got := deriveBootConcurrency(c.cores, c.peak); got != c.want {
+			t.Errorf("deriveBootConcurrency(%v, %v) = %d, want %d", c.cores, c.peak, got, c.want)
+		}
+	}
+}
+
 // runForRouting opens a store and runs a small plan against a fake, so the pool
 // name each claim was created against can be inspected.
 func runForRouting(t *testing.T, cfg model.RunConfig) (*sandbox.Fake, *store.Store) {

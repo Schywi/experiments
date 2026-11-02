@@ -186,6 +186,11 @@ type Instance struct {
 	// measured between sandbox binding and browser Ready. It is the number the
 	// boot-concurrency cap is derived from.
 	BootCPUPeakCores float64 `json:"boot_cpu_peak_cores,omitempty"`
+	// Class and ContextsPerBrowser are the workload the peak was measured on.
+	// A splash boot and an SPA boot are different costs, so a derived k_max must
+	// only trust peaks from the same class and packing.
+	Class              string `json:"class,omitempty"`
+	ContextsPerBrowser int    `json:"contexts_per_browser,omitempty"`
 }
 
 // Event is one lifecycle transition, kept alongside the session row so a run can

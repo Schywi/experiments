@@ -75,3 +75,12 @@ func (r *Runner) retireEverywhere(instance *sandbox.Instance) {
 		spool.Retire(instance)
 	}
 }
+
+// classKey is the class as a stable storage key: the empty class is the normal
+// class, so peaks recorded with no class match a run that asked for normal.
+func classKey(class model.Class) string {
+	if class == "" {
+		return string(model.ClassNormal)
+	}
+	return string(class)
+}
