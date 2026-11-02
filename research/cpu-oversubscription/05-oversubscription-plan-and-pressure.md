@@ -95,3 +95,55 @@ SESSION_LAB_INTEGRATION=1 RIOT_SESSIONS=600 RIOT_HOLD=75s RIOT_RATE=2 RIOT_HEAVY
 
 Read in the report: `node cpu peak X / 6 cores` (target 4.8–5.4), `first boundary:` (which wall),
 `outcomes` (control-plane refusals vs OOM).
+
+## 6. Deriving k_max from stored boot peaks (gap 3, worked through)
+
+`--boot-concurrency` is the number of browsers allowed to cold-start at the same time. Choosing it
+by arithmetic is possible:
+
+```
+k_max = (cores × 0.8) / measured_peak
+
+cores          physical cores on the node            6 here
+measured_peak  CPU cores one browser uses to start   1.5, 1.89, 1.74 measured
+→ (6 × 0.8) / 1.89 ≈ 2.5  → allow 2 concurrent boots, node stays near 80 %
+```
+
+### The circularity
+
+`measured_peak` is produced **during** a run, by sampling a booting pod's cgroup. A run that wants
+`k_max` at its own start has nothing to read on the first attempt. That is the whole obstacle: the
+formula needs a number that only exists after the thing it is sizing has happened.
+
+### Breaking it: persist, then read back
+
+```
+run 1   peak unknown        → --boot-concurrency 2 (typed in, a guess)
+        during the run      → 1.89 cores observed on instance 3
+        end of run          → the value is written to the database      ← already implemented
+run 2   at preflight        → read the stored peaks, take the highest
+        k_max = (6 × 0.8) / 1.89 = 2       → --boot-concurrency 2, derived
+```
+
+The write half exists:
+
+| Piece | Where |
+|---|---|
+| column `boot_cpu_peak_cores REAL NOT NULL DEFAULT 0` | `internal/platform/store/store.go:102` |
+| written per instance | `store.go:352-363`, fed from `instance.BootCPUPeakCores` |
+| measured at 100 ms from sandbox binding to Ready | `internal/runtime/session/boot.go:18-88` |
+
+The read half does not: no query returns those rows at preflight, and nothing performs the division.
+Gap 3 is therefore two small pieces of code:
+
+1. `store.BootPeakCores()` — `select max(boot_cpu_peak_cores) from instances` (optionally filtered).
+2. One preflight branch: when `--boot-concurrency` is 0 and stored peaks exist, set it to
+   `int(cores × 0.8 / peak)`; otherwise leave it unbounded as today.
+
+### The guard that keeps it honest
+
+A boot peak depends on the workload being rendered and on `contexts-per-browser`. A splash boot and
+an SPA boot are different jobs. Deriving `k_max` from rows produced by a different workload makes the
+number drift toward whatever the last experiment happened to be, so the query must filter on the
+same page class and the same contexts-per-browser count, and fall back to the flag when no matching
+rows exist.
