@@ -4,9 +4,10 @@
 |---|---|
 | Written | 2026-11-01 |
 | Purpose | turn the diagnosis in [04](04-datastore-capacity-brief.md) into changes that raise sessions/s |
+| Status | §8 fix applied and measured on the live node 2026-11-01 (`_synchronous=NORMAL&_busy_timeout=30000`): insert mean 64.6 → 2.06 ms, 823 Slow SQL/hour → 0, 9 fatals/24 h → 0 |
 | Verified here | `journalctl -u k3s`, apiserver `/metrics`, `/sys/fs/btrfs/*/commit_stats`, `/proc/diskstats`, `/proc/pressure/*`, `lsblk`, `kubectl` |
-| Not verified | `state.db` and WAL size, SQLite pragmas, `btrfs filesystem usage`, `dmesg` (all need root; `/var/lib/rancher/k3s/server/db` is mode 0700) |
-| Issues | `experiments-9kl` writes per session, `experiments-c4h` ceiling ladder, `experiments-0fo` kine metrics |
+| Not verified | `state.db` and WAL size, `btrfs filesystem usage`, `dmesg` (all need root; `/var/lib/rancher/k3s/server/db` is mode 0700) |
+| Issues | `experiments-oym` kine defect (this fix), `experiments-9kl` writes per session, `experiments-c4h` ceiling ladder, `experiments-0fo` kine metrics |
 
 ---
 
@@ -284,3 +285,70 @@ done
 4. Free disk ranks last, not first. The metadata and data chunk counters show no starvation: 4.33 of 8 GiB metadata used, 9.9 GB free inside allocated data chunks. The docs' 81 % figure is also now 79–80 %.
 5. The "10.4 GiB available, CPU requests 24 %" snapshot was a calm minute. During a storm this session saw 243 MiB free, load 27, 1.87 GiB of zram in use, and `io.pressure full` at 42 %. The stable fact is `cpu.pressure full = 0.00 %`, which is the whole argument for §4.
 6. The swap in `02` is `/dev/zram0`, compressed RAM, not a swapfile on `/dev/sda3`. It costs RAM and CPU, not disk IO, so "fsync contention with swap" is not a mechanism on this host.
+
+---
+
+## 8. The defect, documented and fixed
+
+Tracked as **`experiments-oym`** — *kine/SQLite fails on contention and exits on commit error*.
+
+k3s runs kine over SQLite with two defaults that turn a slow disk into a dead control plane. Everything below was read from the live node on 2026-11-01 (k3s `v1.36.5+k3s1`, `Kine built with sqlite from github.com/mattn/go-sqlite3 version 3.53.4`).
+
+| # | Defect | Evidence |
+|---|---|---|
+| 1 | `PRAGMA synchronous=FULL` — every kine commit fsyncs, and on btrfs an fsync waits for a filesystem-wide commit | `commit_stats` mean 617 ms, max 18 211 ms; inserts mean 64.6 ms with p50 < 1 ms, so the engine is idle and the commit is the cost |
+| 2 | `PRAGMA busy_timeout=0` — zero patience, contention returns `database is locked` immediately instead of waiting | `peer_endpoint_lease.go:156`, `controller.go:168` |
+| 3 | A commit error is **fatal to the whole server** | `level=fatal msg="Transaction commit failed: sql: transaction has already been committed or rolled back"` — k3s exits, ~35 s with no API, then every watch re-lists and every controller rewrites; 9 starts and 15 fatal/locked events in 24 h |
+| 4 | Compaction holds the single write lock with no budget | `COMPACT deleted 1000 rows from 1000 revisions`, 76/24 h, p50 2.34 s, worst **39.68 s** |
+
+Defect 3 is what made this expensive. A slow commit did not degrade the cluster, it removed the control plane, and the restart storm that followed was itself the write load that provoked the next stall.
+
+### The change
+
+One line in `/etc/rancher/k3s/config.yaml`, then `systemctl restart k3s`:
+
+```yaml
+datastore-endpoint: "sqlite:///var/lib/rancher/k3s/server/db/state.db?_synchronous=NORMAL&_busy_timeout=30000"
+```
+
+### Measured, before and after
+
+| Signal | Before | After | Source |
+|---|---|---|---|
+| `InsertLastInsertID` mean | 64.6 ms | **2.06 ms** | apiserver `/metrics` |
+| p99 insert | 1 500–2 000 ms | **64–128 ms** | same |
+| worst insert | > 8 192 ms | **none above 512 ms** in 1 013 inserts | same |
+| inserts abandoned by caller | 17 at 9.0 s mean | **0** | same |
+| block flushes per insert | 1.4 (402 flushes / 20 s) | **0** (0 flushes / 213 inserts / 30 s) | `/proc/diskstats` |
+| `Slow SQL` (threshold 1 s) | 823 / hour | **0** | `journalctl -u k3s` |
+| `database is locked` / fatal | 9 per 24 h | **0** | same |
+
+The flush count is the mechanism and the part that cannot be explained by load: with `synchronous=NORMAL` in WAL mode SQLite syncs at checkpoint instead of on every commit, so a kine write stops waiting for a btrfs commit at all. 213 inserts produced zero block flushes in one window.
+
+### Residual risk, stated
+
+`NORMAL` can lose the last seconds of writes on power loss. A process crash stays safe. For claims, leases and events on a workstation that is acceptable; for anything with durable user data it would not be. A nightly `.backup` of `state.db` is the mitigation, and the config line carries a comment saying so.
+
+### What upstream should change
+
+1. Set a finite `busy_timeout` by default. Zero converts every contention into a failure, and the failure escalates.
+2. Do not fsync on every commit for a log-structured workload. `NORMAL` is the right default for a datastore whose contents can be rebuilt.
+3. Never treat a commit error as fatal to the server. Failing the request costs one API call; exiting costs the control plane.
+4. Give compaction a lock budget. A 1000-row `DELETE` holding the only write lock for 39.68 s is an unbounded stall by design.
+
+---
+
+## 9. `cpu_usec` is not additive — correcting an earlier claim
+
+An earlier draft of this note said the run `riot-20261031t193244` was defective because 4 363 core-seconds over a 521 s window is 8.37 cores on a 6-core node. Two errors in that:
+
+1. 521 s was `max(hold_end) − min(hold_start)`, the **hold window**, not the run. `runs.ended_ns − runs.started_ns` gives **549 s**, so 7.95 cores.
+2. A per-session `cpu_usec` from a shared pod is a share of a pod that several sessions hold at once. Summing those across sessions adds **overlapping** windows of the same CPU, so the total can exceed the machine without any measurement being wrong. It is an aggregation artefact of the schema, not a bug in the recorder.
+
+The rule that follows: `avg(cpu_usec)` compares workloads; `sum(cpu_usec)` is not a node-cores figure and must never be reported as one. Concurrency and node load come from `hold_end_ns − hold_start_ns` and `/proc/loadavg`, not from summing sessions.
+
+The figure worth trusting for the ceiling arithmetic is the one whose sum reconciles with the hardware — `20261031T024806Z`: 1 201 core-seconds over 661 s = **1.82 cores of 6**, **2.01 core-seconds per session**, 68.9 mean concurrency against 150 intended. That run was **queue-limited, not CPU-limited**: four of six cores were idle while sessions were being refused.
+
+### Why the GPU path changes the ceiling
+
+`sessions/s = free_cores ÷ core_seconds_per_session`. Only the denominator is available to us, and page rendering is most of it. Note 08 records that the shipped image runs Chromium with `--disable-gpu` and Vulkan disabled (`apps/browser-sandbox/entrypoint.sh:46,50`), so today every pixel is CPU work; a GPU-backed run lowers core-seconds per session and raises the ceiling linearly. A measured GPU number belongs in a run record with the same URL mix before the ceiling is restated here — splash, single SPA and full SPA differ by 3.7× (1.26 / 2.01 / 4.67 core-seconds), so a GPU figure from a different mix is not comparable.
