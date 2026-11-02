@@ -30,6 +30,33 @@ func claimObject(name, pool string, ready bool, reason string) *unstructured.Uns
 	return claim
 }
 
+func TestObserveClaimReadsClassLabel(t *testing.T) {
+	// Gap 2: Acquire writes session-lab.io/class; the demand watcher must see it
+	// or the "bulk never grows the pool" rule is dead code.
+	bulk := claimObject("bulk-1", "browser-pool", false, "")
+	bulk.Object["metadata"].(map[string]any)["labels"] = map[string]any{labelClass: "bulk"}
+	_, obs := observeClaim(bulk)
+	if !obs.bulk {
+		t.Fatalf("bulk claim was not observed as bulk")
+	}
+
+	normal := claimObject("normal-1", "browser-pool", false, "")
+	normal.Object["metadata"].(map[string]any)["labels"] = map[string]any{labelClass: "normal"}
+	_, obsNormal := observeClaim(normal)
+	if obsNormal.bulk {
+		t.Fatalf("normal claim was observed as bulk")
+	}
+
+	// And the counting rule: bulk claims do not become pending demand.
+	cache := map[string]claimObservation{}
+	applyClaimEvent(cache, watch.Event{Type: watch.Added, Object: bulk})
+	applyClaimEvent(cache, watch.Event{Type: watch.Added, Object: claimObject("waiting-1", "browser-pool", false, "")})
+	stats := countObservations(cache, "browser-pool")
+	if stats.Bulk != 1 || stats.Pending != 1 {
+		t.Fatalf("stats = %+v, want bulk 1 pending 1", stats)
+	}
+}
+
 func TestClaimCacheCountsFromEventsOnly(t *testing.T) {
 	// The autoscaler's counts come from watch events; nothing here asks the API
 	// server for a list.

@@ -140,7 +140,7 @@ func (k *Kube) Acquire(ctx context.Context, namespace, pool, name string, class 
 		"metadata": map[string]any{
 			"name":      name,
 			"namespace": namespace,
-			"labels":    map[string]any{managedBy: managedValue},
+			"labels":    map[string]any{managedBy: managedValue, labelClass: string(class)},
 		},
 		"spec": map[string]any{
 			"warmPoolRef": map[string]any{"name": pool},
