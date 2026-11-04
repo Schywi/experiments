@@ -55,16 +55,18 @@ way to talk about capacity:
 
 ## The correction this phase forces on the notes
 
-`17` is filed as **"Design, not implemented"** and `15` says its admission
-classes are **not implemented**. The code exists: `internal/runtime/browser/`
-carries a working CDP client with a transport switch, and
-`internal/runtime/admission/` carries the classes. The notes predate the commits
-that landed the implementation. That mismatch is recorded here rather than
-silently fixed, because the same pattern will repeat: press-on notes are written
-before the code, and the status rows are not re-read afterwards.
+`17` was filed as **"Design, not implemented"** and `15` said its admission
+classes were **not implemented**. The code exists in both cases:
+`internal/runtime/browser/` carries a working CDP client with a transport switch
+(`browser.go`, `conn.go`, `session.go` plus a live integration test), and
+`internal/runtime/admission/` carries the classes, the queue and the gate.
 
-The honest reading of `17` today: **the design was implemented, and the note's
-open decisions stand as decisions rather than as gaps.**
+Both status rows have since been corrected — `15` and `17` now say implemented,
+and `17` marks which single work-order step is still outstanding (the ws transport
+is not yet the default path). The lesson is worth keeping anyway: press-on notes
+are written before the code, and a status row is not re-read when the code lands.
+This is the second time it happened in this directory, so treat any claim of "not
+implemented" in these notes as a claim about its own date, not about today.
 
 ## What this phase measured, and what it makes unknowable
 

@@ -1,20 +1,20 @@
 ---
 title: 'A CDP client in Go, in the runtime'
 kind: analysis
-state: hypothesis
+state: implemented
 phase: 8
 date: 2026-10-30
-tags: [session-lifecycle, cdp, state-hypothesis]
+tags: [session-lifecycle, cdp, state-implemented]
 ---
 
 # Note 17 — A CDP client in Go, in the runtime
 
 | | |
 |---|---|
-| Status | Design, not implemented |
+| Status | **Implemented** — `internal/runtime/browser/` and `apps/cdp-forward/`; `--cdp-transport ws` exists, the HTTP shim is still the default path |
 | Date | 2026-10-30 |
 | Phase | 8 — session lifecycle elasticity |
-| Code | proposed `internal/runtime/browser/`, `apps/browser-sandbox/entrypoint.sh`, `config/sandbox/templates/sandboxtemplate.yaml` |
+| Code | `internal/runtime/browser/`, `apps/browser-sandbox/entrypoint.sh`, `config/sandbox/templates/sandboxtemplate.yaml` |
 | Follows | [16 — browser contexts and slots](16.1-browser-contexts-and-slots.md) |
 
 ---
@@ -156,14 +156,19 @@ Two options:
    dispose all, assert zero contexts left (`Target.getTargets`).
 3. **Then** a `--layer session` run at 8 contexts.
 
-## 10. Work order
+## 10. Work order — steps 1–5 shipped, 6 outstanding
 
-1. Template + entrypoint: expose `CDP_WS_PORT=9224`, add the container port and the policy rule.
-2. `runtime/browser`: conn, browser discovery, context/target lifecycle.
-3. Sessions, events, crash path.
-4. `performance` metrics -> new session columns.
-5. Runner: `--cdp-transport ws` path through `runtime/browser`; `slots` unchanged.
-6. Delete `Adapter.OpenSession/CloseSession` from `infra/kube` once `ws` is the default.
+1. Template + entrypoint: `CDP_WS_PORT` with the container port and policy rule — **done**
+   (`config/sandbox/values.yaml:84`, `apps/browser-sandbox/entrypoint.sh:69`).
+2. `runtime/browser`: conn, browser discovery, context/target lifecycle — **done**
+   (`internal/runtime/browser/{browser,conn,session}.go`).
+3. Sessions, events, crash path — **done** (`browser_test.go`, `live_integration_test.go`).
+4. `performance` metrics into session columns — **done** (`Performance.enable` in `session.go`).
+5. Runner `--cdp-transport ws` through `runtime/browser`, slots unchanged — **done**
+   (`cfg.CDPTransport`, `internal/runtime/session/isolate.go`).
+6. Delete `Adapter.OpenSession/CloseSession` from `infra/kube` once `ws` is the default —
+   **outstanding**: `isolate.go` still branches on the transport, so the HTTP shim remains the
+   default path.
 
 ## 11. Decisions taken here (revisit if wrong)
 
