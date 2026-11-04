@@ -28,7 +28,11 @@ users:
   - name: fedora
     sudo: "ALL=(ALL) NOPASSWD:ALL"
     shell: /bin/bash
-    groups: [sudo]
+    # `wheel`, not `sudo`: Fedora has no `sudo` group. This line was left over from
+    # the Ubuntu image and cloud-init would have failed to create the user on
+    # Fedora ("group 'sudo' does not exist"), leaving no SSH key and a guest that
+    # never answers.
+    groups: [wheel]
     ssh_authorized_keys:
       - __SSH_PUBLIC_KEY__
 
