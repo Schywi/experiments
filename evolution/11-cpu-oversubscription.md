@@ -62,13 +62,13 @@ The trade is stated in the same section and is not free: `synchronous=NORMAL`
 removes one fsync per commit, so a process crash stays safe and a power loss can
 lose the last transactions.
 
-## The gap this phase leaves in the repository
+## The edge case this phase leaves behind
 
 The DSN was applied to the **live node**, and `config/k3s/` still carries no
 `datastore-endpoint`. A reinstall from this repository would silently lose the
-only fix that made the control plane survive 60 sessions. That is recorded here
-as open work rather than quietly patched, because changing the k3s server flags
-is a config change and this phase is a study.
+only fix that made the control plane survive 60 sessions. That is recorded as an
+**edge case** rather than quietly patched: changing the k3s server flags is a
+config change and this phase is a study, so it stays documented and not applied.
 
 ## What this phase does not claim
 

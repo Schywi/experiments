@@ -32,7 +32,7 @@ Ground rules that shaped it (from [`AGENTS.md`](AGENTS.md)):
 | AI Ops | `apps/assistant` — 15 tools, one evaluator call reads the sentence and returns the task list, evidence attached server-side |
 | Sandboxes | agent-sandbox `v1.0.7` (pinned release) + `apps/sandbox-console` at `192.168.0.250` — read-only grid, one screenshot per tap, live isolation badge, M1-M7 of `research/rfc-sandbox-console.md`. Warm pool 8/8 ready; 3 of 13 live sandboxes `PodFailed` |
 | Sessions | `apps/session-lab` — a Go session runtime (scheduler, slots, CDP client, store, metrics) plus a pool autoscaler deployed from `config/session-lab/`. 22 design notes measure what one session costs: 42 of 60 offered succeeded, queue wait p95 134 s, reuse 35 ms vs destroy 374 ms + cold start, slot ceiling 168 contexts |
-| Control plane | **The ceiling is not the workload**: kine commits to SQLite in 1–3 s under write pressure. Fix measured live 2026-11-01 (`_synchronous=NORMAL&_busy_timeout=30000`): insert mean 64.6 → 2.06 ms, 823 Slow SQL/hour → 0, 9 fatals/24 h → 0. **Recorded in the note only — `config/k3s/` still carries no `datastore-endpoint`** |
+| Control plane | **The ceiling is not the workload**: kine commits to SQLite in 1–3 s under write pressure. Fix measured live 2026-11-01 (`_synchronous=NORMAL&_busy_timeout=30000`): insert mean 64.6 → 2.06 ms, 823 Slow SQL/hour → 0, 9 fatals/24 h → 0. **Edge case: recorded in the note only — `config/k3s/` carries no `datastore-endpoint`** |
 | Swap | zram as cushion *and* as measured capacity: **5 → 6 concurrent sessions (+20 %)** at 3 vCPU / 4 GiB, tail latency ~70 % better at equal load; lz4 wins capacity at the high rung, zstd wins latency (740 ms vs 39.4 s p95). Not yet a platform default |
 | GPU, measured | Acceleration **does not** raise session capacity — 1.53 vs 1.58 cores of 6 at 30 sessions — because the runner never requests a frame. It pays **−26 % CPU per browser** under a forced render loop, at +14 % screenshot latency |
 | Worm lab | Complete on `trackc`, merged here, and **scaled to 0** — it is preserved history, not a live workload |
@@ -422,28 +422,23 @@ Grouped from `bd ready`; run `bd ready` for the live list.
 
 **Capacity and the control plane (what phases 8–13 opened)**
 
-15. **Put the kine DSN into `config/k3s/`.** The fix measured live on 2026-11-01
-    (`_synchronous=NORMAL&_busy_timeout=30000`: insert 64.6 → 2.06 ms, 823 Slow
-    SQL/hour → 0) exists only in
-    [`research/cpu-oversubscription/05-write-ceiling-and-fixes.md`](research/cpu-oversubscription/05-write-ceiling-and-fixes.md)
-    §8. A reinstall from this repository would lose it.
-16. **Repair the GPU device plugin's registration** (`apps/gpu-device-plugin/main.go:146-151`
+15. **Repair the GPU device plugin's registration** (`apps/gpu-device-plugin/main.go:146-151`
     registers once and then blocks on `select {}`), so `amd.com/render` survives a
     kubelet restart and the `hostPath /dev/dri` workaround can retire.
-17. **Decide whether acceleration becomes the default** in
+16. **Decide whether acceleration becomes the default** in
     `apps/browser-sandbox/entrypoint.sh` for capture-heavy work: −26 % CPU per
     browser under a render loop, at +14 % screenshot latency
     ([`13`](evolution/13-gpu-pools.md)).
-18. **Run the oversubscription ladder.** The cpu-oversubscription study designed it
+17. **Run the oversubscription ladder.** The cpu-oversubscription study designed it
     and never executed it; its own README status is *"Measurement added,
     experiments not yet run."*
-19. **Run the swap arms still open:** the disk-swap arm (§7.1 of the swap study) and
+18. **Run the swap arms still open:** the disk-swap arm (§7.1 of the swap study) and
     the two-layer hypothesis registered before its run (§5e). Then decide whether
     any zram ratio becomes a default, given the measured 5 → 6 sessions.
-20. **Build or retire the CPU/GPU pool split** ([`20`](research/session-lifecycle-elasticity/20-cpu-gpu-pool-split.md)).
+19. **Build or retire the CPU/GPU pool split** ([`20`](research/session-lifecycle-elasticity/20-cpu-gpu-pool-split.md)).
     The routing design is written; §0 of that note re-grounds it on device
     containment rather than capacity.
-21. **Store a slot id in the run DB.** `cdp-bridge.py` has no `sessionId`, so the
+20. **Store a slot id in the run DB.** `cdp-bridge.py` has no `sessionId`, so the
     wall binds slots to sessions *by time* above `--contexts-per-browser 1`.
 
 ---
@@ -466,7 +461,14 @@ Grouped from `bd ready`; run `bd ready` for the live list.
   compression ratio has been adopted as a default.
 - **The capacity ceiling is the control plane, not the workload.** kine commits to
   SQLite in 1–3 s under write pressure, so "600 sessions" was never a workload
-  limit; the fix for it lives in a note and not yet in `config/k3s/` (§4.15).
+  limit.
+- **Edge case — the kine DSN lives on the node, not in the tree.** The measured fix
+  (`_synchronous=NORMAL&_busy_timeout=30000`: insert 64.6 → 2.06 ms, 823 Slow
+  SQL/hour → 0, measured 2026-11-01) is recorded in
+  [`research/cpu-oversubscription/05-write-ceiling-and-fixes.md`](research/cpu-oversubscription/05-write-ceiling-and-fixes.md)
+  §8 and applied to the live host. `config/k3s/` carries no `datastore-endpoint`,
+  so rebuilding the node from this repository reintroduces the stall. Recorded as
+  an edge case on purpose, not as an open action.
 - **A session is a slot, not a pod.** One Chromium carries up to eight browser
   contexts, the measured slot ceiling is 168 contexts, and the cgroup cannot see
   inside a slot — per-slot CPU is the pod's number divided by contexts in use.
