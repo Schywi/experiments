@@ -1,3 +1,12 @@
+---
+title: 'A CDP client in Go, in the runtime'
+kind: analysis
+state: hypothesis
+phase: 8
+date: 2026-10-30
+tags: [session-lifecycle, cdp]
+---
+
 # Note 17 — A CDP client in Go, in the runtime
 
 | | |
@@ -6,7 +15,7 @@
 | Date | 2026-10-30 |
 | Phase | 8 — session lifecycle elasticity |
 | Code | proposed `internal/runtime/browser/`, `apps/browser-sandbox/entrypoint.sh`, `config/sandbox/templates/sandboxtemplate.yaml` |
-| Follows | [16 — browser contexts and slots](16-browser-contexts-and-slots.md) |
+| Follows | [16 — browser contexts and slots](16.1-browser-contexts-and-slots.md) |
 
 ---
 
@@ -24,7 +33,7 @@ Three things the bridge cannot give the runtime:
 2. **Events.** `Page.loadEventFired`, `Target.targetCrashed`, `Page.frameNavigated`. The runner
    currently sleeps for the hold duration; it cannot know that a page loaded or a renderer died.
 3. **Per-context metrics.** `Performance.getMetrics` per attached session is the only route to
-   per-session CPU (note 16 §4 left this open because the cgroup counter belongs to the pod).
+   per-session CPU ([note 16.1](16.1-browser-contexts-and-slots.md) §4 left this open because the cgroup counter belongs to the pod).
 
 None of that is UI work. It is browser-session semantics, which places it in the demand plane:
 `internal/runtime/browser`.
@@ -104,7 +113,7 @@ Sampled at hold start and hold end, differenced per session. This is **not** the
 in its own columns (`task_duration_ms`), and the cgroup figure stays the instance truth. Report both;
 never add them.
 
-## 6. Crash handling (the blast radius note 16 accepted)
+## 6. Crash handling (the blast radius [note 16.1](16.1-browser-contexts-and-slots.md) accepted)
 
 `Target.targetCrashed` with the affected `targetId`, or a socket close, means every context on that
 browser is gone. Action:

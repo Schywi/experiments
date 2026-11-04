@@ -1,3 +1,10 @@
+---
+title: 'Recipes: ordered chains with a handoff'
+kind: feature
+state: unknown
+tags: [assistant]
+---
+
 # Recipes: ordered chains with a handoff
 
 A flat task list cannot express "use the URL the last step produced". Recipes can. Three
@@ -90,3 +97,9 @@ LAN dashboard.
   ids, with the earlier facts intact.
 - A sentence with two independent asks still runs as a parallel task list, not a recipe.
 - PromQL, sandbox and guardrail tests stay green.
+
+---
+
+## Where this sits
+
+- Collection: [assistant](README.md)

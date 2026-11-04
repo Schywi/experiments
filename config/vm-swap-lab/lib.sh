@@ -9,7 +9,9 @@ set -euo pipefail
 VM_DIR="${VM_DIR:-$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)}"
 SSH_PORT="${SSH_PORT:-2222}"
 SSH_KEY="${SSH_KEY:-${VM_DIR}/id_ed25519}"
-SSH_USER="${SSH_USER:-ubuntu}"
+# Fedora Cloud Base's default user (Ubuntu images use `ubuntu`). The guest image
+# is Fedora because it is the distro whose kernel has CONFIG_ZRAM_MULTI_COMP=y.
+SSH_USER="${SSH_USER:-fedora}"
 VM_HOST="${VM_HOST:-127.0.0.1}"
 
 vm_ssh() {

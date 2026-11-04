@@ -1,3 +1,10 @@
+---
+title: 'E5 results — three VLMs on real Chromium screenshots'
+kind: experiment
+state: benchmarked
+tags: [benchmark]
+---
+
 # E5 results — three VLMs on real Chromium screenshots
 
 **Verdict: only Qwen3-VL-2B produced a usable answer, and only on one of seven
@@ -121,3 +128,9 @@ A caption-level 500M model and a 1.9B model with a weak chat template are both
 worse than useless for driving a browser. The 2B Qwen3-VL at least answers the
 question in the right shape; whether its 52 px miss and its candidate-list habit
 can be prompted away is the next thing to measure.
+
+---
+
+## Where this sits
+
+- Collection: [e5-vlm-grounding](README.md)

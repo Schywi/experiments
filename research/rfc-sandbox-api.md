@@ -1,3 +1,11 @@
+---
+title: 'RFC — `sandbox-console` HTTP API for tools'
+kind: rfc
+state: implemented
+date: 2026-10-25
+tags: [console]
+---
+
 # RFC — `sandbox-console` HTTP API for tools
 
 | | |
@@ -249,3 +257,9 @@ Every route the process serves, with what it takes and what it answers:
 For a name that no longer exists it answers `502 {"detail":"router: …"}` where the
 other six routes answer `404 {"detail":"no sandbox …"}`. A tool that guesses a
 name therefore sees a routing failure instead of a missing sandbox.
+
+---
+
+## Where this sits
+
+- Collection: [experiments](../README.md)

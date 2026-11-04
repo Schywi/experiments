@@ -1,3 +1,9 @@
+---
+title: 'Production hosting on GKE or GCE — what cannot work, and what must change'
+kind: analysis
+state: unknown
+---
+
 # Production hosting on GKE or GCE — what cannot work, and what must change
 
 > Status: **design note, not implemented.** Nothing in `config/` has been changed
@@ -149,3 +155,9 @@ shape.
 - A separate, gitignored VPS/Cloudflare-Tunnel plan exists under `docs/`; it
   covers a different host (DigitalOcean) and is deliberately not referenced as a
   source of truth here.
+
+---
+
+## Where this sits
+
+- Collection: [experiments](../README.md)

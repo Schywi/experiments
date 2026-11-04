@@ -1,3 +1,9 @@
+---
+title: 'CPU oversubscription — a study of what this cluster can actually pack'
+kind: index
+state: benchmarked
+---
+
 # CPU oversubscription — a study of what this cluster can actually pack
 
 | | |

@@ -1,3 +1,13 @@
+---
+title: 'GPU-enabled pool A/B: does acceleration raise session capacity'
+kind: experiment
+state: benchmarked
+phase: 8
+date: 2026-10-31
+branch: 'research/session-lifecycle-elasticity'
+tags: [session-lifecycle, gpu]
+---
+
 # Note 19 — GPU-enabled pool A/B: does acceleration raise session capacity
 
 | | |
@@ -7,7 +17,7 @@
 | Phase | 8 — session lifecycle elasticity |
 | Branch | `research/session-lifecycle-elasticity` |
 | Scope | Live A/B on the Fedora host cluster: the `browser-pool` warm pool with and without GPU-accelerated Chromium |
-| Related | [08](08-gpu-offload-feasibility.md), `config/sandbox/`, `apps/browser-sandbox/`, `apps/gpu-device-plugin/` |
+| Related | [08](08.2-gpu-offload-feasibility.md), `config/sandbox/`, `apps/browser-sandbox/`, `apps/gpu-device-plugin/` |
 
 Labels used throughout: **measured** (a run recorded it), **configured** (a file says it),
 **inferred** (arithmetic from measurements).
@@ -22,7 +32,7 @@ out of 6** at 30 concurrent sessions.
 
 The only case where the GPU moved a number is a forced render loop (40
 `Page.captureScreenshot` calls per session), which `session-lab` does not implement
-([08 §9.2](08-gpu-offload-feasibility.md) calls this the missing "drive phase"). There the
+([08 §9.2](08.2-gpu-offload-feasibility.md) calls this the missing "drive phase"). There the
 GPU cut CPU per browser **2.13 → 1.57 cores (−26%)** while screenshot latency rose
 **244 → 279 ms (+14%)**.
 
@@ -97,7 +107,7 @@ only browser work a run prices is the entrypoint's initial page load. Headless C
 does not issue BeginFrame without a client asking for one, so animated pages
 (WebGL aquarium, 2D canvas) left node CPU at 1.5–1.65 cores for 6–12 sessions. The
 console's real load — `Page.captureScreenshot` on a cadence — is exactly the missing
-driver ([08 §9.2](08-gpu-offload-feasibility.md)). No run in this A/B falsified the render
+driver ([08 §9.2](08.2-gpu-offload-feasibility.md)). No run in this A/B falsified the render
 loop number; none validated it through `session-lab` either.
 
 ## 5. Cleanup

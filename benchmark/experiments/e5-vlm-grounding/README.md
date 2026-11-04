@@ -1,3 +1,8 @@
+---
+title: 'E5 — VLM grounding on Chromium screenshots'
+kind: index
+---
+
 # E5 — VLM grounding on Chromium screenshots
 
 - **Status:** complete. See [`RESULTS.md`](RESULTS.md): Qwen3-VL-2B answered 1/7

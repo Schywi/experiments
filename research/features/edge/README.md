@@ -1,3 +1,8 @@
+---
+title: 'Edge cases'
+kind: index
+---
+
 # Edge cases
 
 Local-only? **No — tracked.** This directory documents the edge cases and failure

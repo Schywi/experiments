@@ -19,8 +19,13 @@
 #      generates. `verify-swap.sh` proves the drop-in was picked up by reading
 #      the node's /configz; it does not trust this file having been written.
 
+# Fedora, not Ubuntu: CONFIG_ZRAM_MULTI_COMP is opt-in per distro and Ubuntu
+# ships it OFF (measured: noble 6.8 and plucky 6.14 kernel annotations both say
+# 'amd64': 'n'), so no recompression pass can ever run there. Fedora 44's kernel
+# is built with it (=y, checked in /boot/config on the host) and exposes
+# recomp_algorithm / recompress / idle on /sys/block/zram0/.
 users:
-  - name: ubuntu
+  - name: fedora
     sudo: "ALL=(ALL) NOPASSWD:ALL"
     shell: /bin/bash
     groups: [sudo]
@@ -31,9 +36,13 @@ ssh_pwauth: false
 disable_root: true
 
 package_update: true
+# Fedora names the generator package `zram-generator` (Debian/Ubuntu call it
+# `systemd-zram-generator`). It is installed but not relied on: setup-swap.sh
+# drives the device directly, because the generator races the module load.
 packages:
-  - systemd-zram-generator
+  - zram-generator
   - curl
+  - util-linux
 
 write_files:
   - path: /usr/local/bin/setup-swap.sh
@@ -57,7 +66,8 @@ write_files:
           # start fails with "Failed to configure disk size into
           # /sys/block/zram0/disksize: Cannot allocate memory" — observed on a
           # fresh 3 GiB VM. Three explicit steps have no such ordering problem.
-          apt-get install -y --no-install-recommends "linux-modules-extra-$(uname -r)"
+          # Fedora carries zram in kernel-modules-core, which is installed; no
+          # extra package needed (Ubuntu needed linux-modules-extra).
           modprobe zram
           if [ -e /sys/block/zram0/disksize ] && [ "$(cat /sys/block/zram0/disksize)" != "0" ]; then
             swapoff /dev/zram0 2>/dev/null || true
@@ -160,8 +170,18 @@ write_files:
       fi
 
 runcmd:
+  # Fedora boots with SELinux enforcing and firewalld active; both get in the way
+  # of an airgapped single-node k3s. The k3s installer tries to `dnf install
+  # k3s-selinux` when it sees SELinux enforcing, which cannot work with no egress,
+  # so permissive is set before the installer runs (it then skips the rpm).
+  - [sh, -c, "sed -i 's/^SELINUX=.*/SELINUX=permissive/' /etc/selinux/config; setenforce 0 2>/dev/null || true"]
+  - [sh, -c, "systemctl disable --now firewalld 2>/dev/null || true"]
   # swap first, so the kubelet starts with the device it is meant to use
   - [sh, /usr/local/bin/setup-swap.sh]
   - [sh, /usr/local/bin/install-k3s.sh]
+  # Prove the guest can do recompression at all. Ubuntu could not, which silently
+  # turned every zram-multi rung into a duplicate of zram-multi-ctl; the arm now
+  # fails fast instead of measuring nothing for 35 minutes.
+  - [sh, -c, "test -e /sys/block/zram0/recomp_algorithm || { echo 'NO MULTI-COMP: this guest kernel lacks CONFIG_ZRAM_MULTI_COMP' > /var/tmp/no-multicomp; }"]
 
 final_message: "vm-swap-lab ready in $UPTIME seconds"

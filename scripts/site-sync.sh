@@ -24,4 +24,6 @@ cp -f "${repo_root}/site/landing.md" "${content}/index.md"
 find "${content}" -name '__pycache__' -type d -prune -exec rm -rf {} +
 find "${content}" -name '*.pyc' -delete
 
+python3 "${repo_root}/site/rewrite-links.py" "${content}"
+
 printf 'content tree: %s files\n' "$(find "${content}" -type f | wc -l)"

@@ -1,3 +1,12 @@
+---
+title: 'E3 pre-experiment cleanup — 2026-10-09'
+kind: experiment
+state: unknown
+branch: 'Commit'
+commits: [ebe3b17, 89f20f9]
+tags: [benchmark]
+---
+
 # E3 pre-experiment cleanup — 2026-10-09
 
 Scale unused experiment workloads to zero **and** set the desired replica count
@@ -48,3 +57,9 @@ the platform are not in scope.
 Revert the two commits above and let Argo sync, or scale back:
 `kubectl -n worm-lab scale deploy worm-controller worm-worker regression vector --replicas=1`
 and `kubectl -n assistant scale deploy assistant-laya --replicas=1`.
+
+---
+
+## Where this sits
+
+- Collection: [e3-amd-gpu](README.md)

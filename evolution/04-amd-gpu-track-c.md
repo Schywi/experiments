@@ -1,3 +1,11 @@
+---
+title: 'Phase 4 — AMD GPU, Track C (2026-10-06 → 2026-10-18)'
+kind: narrative
+phase: 4
+commits: [5668f1a, 4b6dbea, 81c398d, 9b5554e, a07bced, ab05883]
+tags: [gpu]
+---
+
 # Phase 4 — AMD GPU, Track C (2026-10-06 → 2026-10-18)
 
 **Branch:** `native-k3s-gpu-models` (plus `trackc` for the Vulkan smoke test) ·

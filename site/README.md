@@ -12,13 +12,18 @@ Published at <https://schywi.github.io/experiments/>.
 ```bash
 cd site
 npm ci
-npm run serve        # assembles content/, builds, serves on :8080
+npm run serve        # serves on :8080
 ```
 
-`npm run serve` and `npm run build` both run `scripts/site-sync.sh` first, which
-mirrors the four documentation trees into `site/content/`. That directory is
-gitignored: it is a build artefact, and editing it is pointless because the next
-sync overwrites it. Edit the notes where they live.
+`npm run build` and `npm run serve` both run `bootstrap.sh` and then
+`scripts/site-sync.sh`:
+
+- `bootstrap.sh` vendors the pinned Quartz release (`v4.5.2`) into `site/quartz/`.
+  The framework tree is **not committed**: Quartz ships a 15 MB
+  `quartz/util/emojimap.json` that has no business in this repository's history.
+- `scripts/site-sync.sh` mirrors the four documentation trees into `site/content/`.
+  That directory is gitignored too: it is a build artefact, and editing it is
+  pointless because the next sync overwrites it. Edit the notes where they live.
 
 ## What is configured
 

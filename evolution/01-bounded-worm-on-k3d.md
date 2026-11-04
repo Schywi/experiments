@@ -1,3 +1,19 @@
+---
+title: 'Phase 1 — Bounded Worm replication on k3d (2026-09-05 → 2026-09-07)'
+kind: narrative
+phase: 1
+commits:
+  - 4ba7b97
+  - ed6d9d5
+  - 8c60385
+  - b8ee85b
+  - 2eb5a08
+  - 183dad1
+  - bf0e523
+  - 592d7f5
+  - bb93f8e
+---
+
 # Phase 1 — Bounded Worm replication on k3d (2026-09-05 → 2026-09-07)
 
 **Branch:** `main` · 86 commits · tip `4ba7b97 docs(experiments-8g7): describe

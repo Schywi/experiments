@@ -1,3 +1,10 @@
+---
+title: '03 — The Gemini design, reviewed against this cluster'
+kind: analysis
+state: unknown
+tags: [cpu]
+---
+
 # 03 — The Gemini design, reviewed against this cluster
 
 The paper proposes a five-plane architecture: token-bucket ingress, predictive-headroom scheduler,
@@ -53,3 +60,9 @@ t4  longer boots mean more boots overlap → the paper's positive feedback loop
 `--boot-concurrency` breaks the loop at t2 with a counter, which is all a single-node scheduler
 needs. A token bucket over initialization *energy* becomes worthwhile only if the measured spike is
 large enough that counting boots is too coarse — and that is a measurement, not an argument.
+
+---
+
+## Where this sits
+
+- Collection: [cpu-oversubscription](README.md)

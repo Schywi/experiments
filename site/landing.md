@@ -23,7 +23,7 @@ tap a node to open the note.
 - State, phases and open work: [ROADMAP.md](ROADMAP.md)
 - What runs where, addresses and namespaces: [README.md](README.md)
 - The session-lifecycle study, 20 notes: [research/session-lifecycle-elasticity/](research/session-lifecycle-elasticity/)
-- The browser console and what it draws: [research/session-lifecycle-elasticity/16-session-wall-ui.md](research/session-lifecycle-elasticity/16-session-wall-ui.md)
+- The browser console and what it draws: [research/session-lifecycle-elasticity/16.2-session-wall-ui.md](research/session-lifecycle-elasticity/16.2-session-wall-ui.md)
 
 ## How to read a claim here
 

@@ -1,3 +1,12 @@
+---
+title: 'The autoscaler, deployed and observed'
+kind: experiment
+state: benchmarked
+phase: 8
+date: 2026-10-29
+tags: [session-lifecycle, autoscaling]
+---
+
 # Note 10 — The autoscaler, deployed and observed
 
 | | |
@@ -8,7 +17,7 @@
 | Chart | `config/session-lab/` |
 | Image | `127.0.0.1:5000/session-lab-autoscaler:local`, built in-cluster by `config/registry/kaniko-build.sh` |
 | Runs | verification run `20261029T171417Z` |
-| Related | [08 — requirement status](08-requirement-status.md), [09 — three runs](09-results-three-runs.md) |
+| Related | [08 — requirement status](08.1-requirement-status.md), [09 — three runs](09-results-three-runs.md) |
 
 ---
 
@@ -68,7 +77,7 @@ During the run the k3s API server stopped answering for about 45 seconds. Both c
 
 The node stayed `Ready`, `kubectl get --raw=/readyz` answered `ok` afterwards, and k3s was still
 active — memory at the time was 10 of 15 GiB used with 3 GiB of swap. This is the same boundary the
-host-run autoscaler met in note 09, now reproduced from inside the cluster. The pool reached 22
+host-run autoscaler met in [note 09](09-results-three-runs.md), now reproduced from inside the cluster. The pool reached 22
 replicas and node memory fell to 34.1% available before the outage.
 
 **Consequence that had to be fixed:** the run's cleanup failed during the outage, so sixteen claims

@@ -1,3 +1,13 @@
+---
+title: 'Audit: planned vs. actually built'
+kind: experiment
+state: validated
+date: 2026-10-29
+branch: 'research/session-lifecycle-elasticity'
+commits: [d60284c]
+tags: [session-lifecycle]
+---
+
 # Note 06 — Audit: planned vs. actually built
 
 | | |

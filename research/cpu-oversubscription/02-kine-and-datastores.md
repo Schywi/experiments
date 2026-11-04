@@ -1,3 +1,10 @@
+---
+title: '02 — kine, and whether MySQL would help'
+kind: analysis
+state: unknown
+tags: [cpu, control-plane]
+---
+
 # 02 — kine, and whether MySQL would help
 
 ## What kine is here
@@ -86,3 +93,9 @@ Decide with data, in this order:
 considering MySQL. If both land and `kine_sql_time_seconds` p99 stays above ~500 ms on a node that
 is not swapping, MySQL or external etcd becomes a defensible next step — and by then the numbers to
 justify it will exist.
+
+---
+
+## Where this sits
+
+- Collection: [cpu-oversubscription](README.md)

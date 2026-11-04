@@ -193,10 +193,10 @@ echo "== building session-lab for the guest =="
 )
 scp -F /dev/null -i "${SSH_KEY}" -P "${SSH_PORT}" -o StrictHostKeyChecking=no \
   -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR \
-  "${out_dir}/session-lab" "${SSH_USER}@${VM_HOST}:/home/ubuntu/session-lab.new"
-vm_ssh 'mv -f /home/ubuntu/session-lab.new /home/ubuntu/session-lab && chmod 0755 /home/ubuntu/session-lab'
-vm_ssh 'mkdir -p /home/ubuntu/.kube && sudo cp /etc/rancher/k3s/k3s.yaml /home/ubuntu/.kube/config \
-  && sudo chown ubuntu:ubuntu /home/ubuntu/.kube/config && chmod 600 /home/ubuntu/.kube/config && mkdir -p /home/ubuntu/runs'
+  "${out_dir}/session-lab" "${SSH_USER}@${VM_HOST}:/home/${SSH_USER}/session-lab.new"
+vm_ssh "mv -f /home/${SSH_USER}/session-lab.new /home/${SSH_USER}/session-lab && chmod 0755 /home/${SSH_USER}/session-lab"
+vm_ssh "mkdir -p /home/${SSH_USER}/.kube && sudo cp /etc/rancher/k3s/k3s.yaml /home/${SSH_USER}/.kube/config \
+  && sudo chown ${SSH_USER}:${SSH_USER} /home/${SSH_USER}/.kube/config && chmod 600 /home/${SSH_USER}/.kube/config && mkdir -p /home/${SSH_USER}/runs"
 
 # wait_pool polls until the pool reports n ready sandboxes, or the budget expires.
 wait_pool() {
@@ -295,11 +295,11 @@ print(n * {'s':1,'m':60,'h':3600}[unit])
   fi
 
   local ran=0
-  if vm_ssh "cd /home/ubuntu && ./session-lab --namespace ${namespace} --pool ${pool} \
+  if vm_ssh "cd /home/${SSH_USER} && ./session-lab --namespace ${namespace} --pool ${pool} \
       --policy destroy --duration ${WINDOW} --rate ${rate} --hold ${HOLD} \
       --pool-replicas ${n} --sample-seconds ${SAMPLE_SECONDS} \
-      --kubeconfig /home/ubuntu/.kube/config \
-      --out /home/ubuntu/runs --run-id ${run_id}" >/dev/null 2>&1; then
+      --kubeconfig /home/${SSH_USER}/.kube/config \
+      --out /home/${SSH_USER}/runs --run-id ${run_id}" >/dev/null 2>&1; then
     ran=1
   fi
   busy1="$(host_busy_jiffies)"
@@ -312,7 +312,7 @@ print(n * {'s':1,'m':60,'h':3600}[unit])
 
   scp -F /dev/null -i "${SSH_KEY}" -P "${SSH_PORT}" -o StrictHostKeyChecking=no \
     -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR \
-    "${SSH_USER}@${VM_HOST}:/home/ubuntu/runs/${run_id}.json" "${out_dir}/${run_id}.json" >/dev/null 2>&1 || {
+    "${SSH_USER}@${VM_HOST}:/home/${SSH_USER}/runs/${run_id}.json" "${out_dir}/${run_id}.json" >/dev/null 2>&1 || {
     row "${CLASS}" "${n}" "${rep}" "no" 0 0 0 0 0 "no report produced"
     return 1
   }
@@ -403,6 +403,37 @@ PY
 }
 
 printf 'class\treplicas\trep\theld\tsuccess\tfailed\tqueue_p95_ms\tswap_peak_mib\trefaults\tcpu_core_s\tzram_ratio\tdev_used_pct\trecomp_s\trecomp_cpu_s\thost_cpu_s\tnote\n'
+
+# A recompression arm on a guest that cannot recompress is not a slow arm, it is a
+# duplicate of the control arm. Measured on Ubuntu 24.04: six rungs of
+# zram-multi ran byte-identical to zram-multi-ctl and the only trace was a reason
+# string per row. Refuse up front instead — 3 seconds, not 35 minutes.
+if [[ -n "${RECOMP_ALGO}" ]]; then
+  probe="$(vm_ssh 'if [ -e /sys/block/zram0/recomp_algorithm ]; then
+      echo "have:$(sed s/[][]//g /sys/block/zram0/comp_algorithm)";
+    else echo "missing"; fi' || true)"
+  case "${probe}" in
+    missing)
+      echo "guest kernel has no /sys/block/zram0/recomp_algorithm: CONFIG_ZRAM_MULTI_COMP is off." >&2
+      echo "Recompression cannot run, so this arm would duplicate the control arm. Stopping." >&2
+      echo "Ubuntu ships it off (noble 6.8, plucky 6.14 annotations: amd64 'n'); Fedora 44 has it =y." >&2
+      row "${CLASS}" "-" "-" "no" 0 0 0 0 0 "guest has no CONFIG_ZRAM_MULTI_COMP; arm not measurable"
+      exit 1
+      ;;
+    have:*)
+      if ! echo "${probe#have:}" | tr ' ' '\n' | grep -qx "${RECOMP_ALGO}"; then
+        echo "guest has multi-comp but not ${RECOMP_ALGO}: ${probe#have:}" >&2
+        row "${CLASS}" "-" "-" "no" 0 0 0 0 0 "secondary algo ${RECOMP_ALGO} not compiled in"
+        exit 1
+      fi
+      echo "recompression available: ${RECOMP_ALGO} (secondary) on this guest"
+      ;;
+    *)
+      echo "could not probe zram multi-comp support; continuing" >&2
+      ;;
+  esac
+fi
+
 for n in ${LADDER}; do
   for rep in $(seq 1 "${REPEATS}"); do
     # A rung that genuinely cannot hold is not repeated: the ceiling is a property

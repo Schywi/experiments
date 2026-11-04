@@ -1,3 +1,13 @@
+---
+title: 'What the sandbox platform already does, and what a session-elasticity test would need'
+kind: analysis
+state: hypothesis
+phase: 8
+date: 2026-10-29
+commits: [d816e0f, 218d60a]
+tags: [session-lifecycle]
+---
+
 # Note 03 — What the sandbox platform already does, and what a session-elasticity test would need
 
 | | |
@@ -20,7 +30,7 @@ upstream documentation and are not measurements of this cluster:
 |---|---|---|
 | the per-pool refill ceiling in §3 | upstream `docs/configuration.md`, `docs/performance-tuning.md` | documented claim, unverified here |
 | the burst adoption rate in §3 | same | documented claim, unverified here |
-| any browser-per-host density | fork research and Phase 7's note | unverified; note 04 §2 keeps it out of the runner's inputs |
+| any browser-per-host density | fork research and Phase 7's note | unverified; [note 04](04-deliverable.md) §2 keeps it out of the runner's inputs |
 
 ---
 
@@ -163,11 +173,11 @@ density of pods left running, with swap-in on idle→active as a latency cost.
    claim-create→Ready split by cause; the pool-dry windows in `sustained.go` are the only proxy.
 3. **Reuse path.** Not modelled. A separate phase that keeps one sandbox and issues N sequential
    rounds against it would measure reset cost against warm and cold acquisition, and it is the
-   question that needs tracing (§5 of note 01).
+   question that needs tracing (§5 of [note 01](01-instrumentation-cpu-memory.md)).
 4. **Elasticity assertion.** Excess demand held above capacity, then an assertion on the replica
    trajectory, the scale-out lead time against queue wait, and no thrash on drain — on top of a
    metric that exposes waiting demand, which does not exist yet.
-5. **Per-session CPU and memory.** The gap note 01 closes: ~50 lines in the harness plus one
+5. **Per-session CPU and memory.** The gap [note 01](01-instrumentation-cpu-memory.md) closes: ~50 lines in the harness plus one
    node-exporter collector flag.
 
 ## 7. Where this lands in this repository

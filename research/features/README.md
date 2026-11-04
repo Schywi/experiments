@@ -1,3 +1,8 @@
+---
+title: 'Features'
+kind: index
+---
+
 # Features
 
 Local-only notes (`docs/` is gitignored) describing what the assistant can do

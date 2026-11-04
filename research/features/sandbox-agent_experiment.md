@@ -1,3 +1,10 @@
+---
+title: 'Feature (experiment): an agent that drives a browser sandbox'
+kind: feature
+state: research
+tags: [assistant]
+---
+
 # Feature (experiment): an agent that drives a browser sandbox
 
 > Status: **proposed, nothing implemented.** No line of this exists in code yet.
@@ -189,3 +196,11 @@ in the repo. The audit log stays one JSONL file with a new `agent` field.
 2. Session length: 120 s, 300 s, or whatever the failure data says.
 3. Whether Agent B is worth its cost, given a 1.5B CPU model at the other end.
    Agent A alone answers every reliability question in the title.
+
+---
+
+## Where this sits
+
+- Feature index: [Features](README.md)
+- The console it drives: [RFC — sandbox-console](../rfc-sandbox-console.md)
+- The lock's concurrency sibling: [LLM concurrency limit](concurrency.md)

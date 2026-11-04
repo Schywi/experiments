@@ -1,3 +1,10 @@
+---
+title: 'Evidence provenance, deep links, and cartography — investigation + plan'
+kind: design
+state: unknown
+tags: [provenance, topology]
+---
+
 # Evidence provenance, deep links, and cartography — investigation + plan
 
 Design + implementation plan. **No code changed by this document.** Grounded
@@ -281,3 +288,9 @@ graph renderer.
 7. **Smallest version:** Part 7 steps 1–6, and Part 8's `get_topology`.
 
 Prerequisite to all of it: **Part 0** — real DNS + Cilium LB, `/etc/hosts` gone.
+
+---
+
+## Where this sits
+
+- Collection: [experiments](../README.md)

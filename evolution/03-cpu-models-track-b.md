@@ -1,3 +1,20 @@
+---
+title: 'Phase 3 — CPU models inside the cluster, Track B (2026-10-06 → 2026-10-10)'
+kind: narrative
+phase: 3
+commits:
+  - a958eed
+  - e71aecd
+  - 3baa2bd
+  - a914679
+  - b92a5c7
+  - 9e977c8
+  - b616cc2
+  - 160a211
+  - 87c4dd0
+  - ebe3b17
+---
+
 # Phase 3 — CPU models inside the cluster, Track B (2026-10-06 → 2026-10-10)
 
 **Branch:** `native-k3s-gpu-models` · anchors `a958eed` (Laya), `e71aecd`

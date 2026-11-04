@@ -1,3 +1,11 @@
+---
+title: 'RFC — Instrumentation coverage matrix'
+kind: feature
+state: hypothesis
+date: 2026-10-28
+tags: [assistant]
+---
+
 # RFC — Instrumentation coverage matrix
 
 | | |

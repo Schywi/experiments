@@ -1,3 +1,10 @@
+---
+title: 'Link contract'
+kind: feature
+state: unknown
+tags: [assistant]
+---
+
 # Link contract
 
 A link is built server-side in `apps/assistant/provenance.py` from a fact, never
@@ -35,3 +42,9 @@ client owns that navigation.
 
 `reproduce` stays separate from `links`: `reproduce` is the copyable command,
 PromQL or Cypher.
+
+---
+
+## Where this sits
+
+- Collection: [assistant](README.md)

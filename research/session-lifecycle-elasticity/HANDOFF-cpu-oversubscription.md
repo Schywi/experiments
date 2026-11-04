@@ -1,3 +1,12 @@
+---
+title: 'Handoff — session-lab, for the CPU-oversubscription investigation'
+kind: handoff
+state: unknown
+branch: 'research/session-lifecycle-elasticity'
+commits: [30df98e]
+tags: [session-lifecycle, cpu]
+---
+
 # Handoff — session-lab, for the CPU-oversubscription investigation
 
 | | |
@@ -58,7 +67,7 @@ SESSION_LAB_INTEGRATION=1 RIOT_SESSIONS=300 RIOT_HOLD=75s RIOT_RATE=0.5 \
 | | value | source |
 |---|---|---|
 | Browser CPU request | **100m** per pod | `config/sandbox/values.yaml` |
-| Browser CPU limit | **none** (policy, note 12) | same file, commented field |
+| Browser CPU limit | **none** (policy, [note 12](12-cpu-requests-not-limits.md)) | same file, commented field |
 | Browser memory | 256Mi request, 768Mi limit | same |
 | Node | 6 cores / 16 GiB, k3s single node | `kubectl describe node fedora` |
 | Slots per pod | 1 (infra) or 8 (session) | `--contexts-per-browser` |
@@ -97,7 +106,7 @@ is bursty, which is precisely the case oversubscription is supposed to exploit.
 |---|---|---|
 | Scheduler (CPU requests) | ~21 browsers = **168 contexts**; 27 if nothing else ran | `FailedScheduling … Insufficient cpu` in `20261031T024806Z` at 21 instances |
 | Node memory | 16 GiB; 21 browsers ≈ 7.3 GiB plus system | `min available 17.9%`, swap 4.1 GiB |
-| Control plane (kine/SQLite) | **~2 sessions/s** of write churn | apiserver `connection refused`; see note 18 §4 |
+| Control plane (kine/SQLite) | **~2 sessions/s** of write churn | apiserver `connection refused`; see [note 18](18-capacity-elasticity-and-kine.md) §4 |
 | Pool scaling | 5 s tick, claim-count driven, **blind to CPU** | `experiments-wnj` |
 
 That last row is the leverage for this study: **the pool grows because sessions are queued, never
@@ -152,7 +161,7 @@ What *is* missing is the scaling signal (`experiments-wnj`) and kine visibility
   `not tested` when the workload never exceeded what the platform served — that is a result, not a
   missing line.
 - **Session ≠ slot ≠ pod ≠ claim.** "instances 21, sessions/instance max 37" is a *total per
-  browser over the run*, not concurrency (ceiling was 8). Note 18 §1 has the table; issue
+  browser over the run*, not concurrency (ceiling was 8). [Note 18](18-capacity-elasticity-and-kine.md) §1 has the table; issue
   `experiments-ujf` is the naming fix.
 
 ## 6. Bugs found the hard way — do not reintroduce
@@ -172,13 +181,13 @@ What *is* missing is the scaling signal (`experiments-wnj`) and kine visibility
 - `apps/session-lab/test/` — riot pages live here, test-only; the runtime never sees a URL list.
 - Grafana folder/provider and the VictoriaMetrics scrape config are mid-change
   (`experiments-9b0`); coordinate before editing.
-- No CPU **limits** — the policy and its evidence are in note 12. Requests are fair game; limits are
+- No CPU **limits** — the policy and its evidence are in [note 12](12-cpu-requests-not-limits.md). Requests are fair game; limits are
   not.
 
 ## 8. Reading list, in order
 
 1. `18-capacity-elasticity-and-kine.md` — the ceilings, the 24 h arithmetic, why kine binds.
-2. `16-browser-contexts-and-slots.md` — slots, contexts, and what sharing costs.
+2. `16.1-browser-contexts-and-slots.md` — slots, contexts, and what sharing costs.
 3. `12-cpu-requests-not-limits.md` — why there is no CPU limit, with the 248/360 throttling data.
 4. `11-verification.md` — what was verified live, and what is still unknown.
 5. `17-cdp-client-in-go.md` — the measurement transport, if you need per-context numbers.

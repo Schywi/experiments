@@ -1,3 +1,12 @@
+---
+title: 'The deliverable: a sandbox session scheduler and experiment runner'
+kind: analysis
+state: hypothesis
+phase: 8
+date: 2026-10-29
+tags: [session-lifecycle]
+---
+
 # Note 04 — The deliverable: a sandbox session scheduler and experiment runner
 
 | | |

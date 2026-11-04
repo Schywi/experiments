@@ -1,3 +1,13 @@
+---
+title: 'CPU/GPU pool split, per-session routing'
+kind: analysis
+state: hypothesis
+phase: 8
+date: 2026-10-31
+branch: 'research/session-lifecycle-elasticity'
+tags: [session-lifecycle, gpu]
+---
+
 # Note 20 — CPU/GPU pool split, per-session routing
 
 | | |

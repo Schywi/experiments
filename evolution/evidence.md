@@ -1,3 +1,82 @@
+---
+title: 'Commit evidence index'
+kind: narrative
+commits:
+  - 4ba7b97
+  - 1af4174
+  - c0ecfc6
+  - 866f3b1
+  - bc644ad
+  - d0d3a4e
+  - b973374
+  - ed6d9d5
+  - b8ee85b
+  - 2eb5a08
+  - 183dad1
+  - 8c60385
+  - bf0e523
+  - 592d7f5
+  - bb93f8e
+  - a2a7a41
+  - 4368ef9
+  - cee5c95
+  - 4042e67
+  - a5d75fb
+  - dbcc855
+  - a8cd95d
+  - fc3e35b
+  - aafcf31
+  - 1ed3b42
+  - 66df612
+  - 954fbc9
+  - a958eed
+  - e71aecd
+  - 3baa2bd
+  - a914679
+  - b92a5c7
+  - b9b4cc5
+  - 9e977c8
+  - b616cc2
+  - 160a211
+  - 87c4dd0
+  - 5668f1a
+  - 4b6dbea
+  - c252241
+  - 0b8a527
+  - 81c398d
+  - a07bced
+  - 9b5554e
+  - ab05883
+  - aaf6f81
+  - 8060efd
+  - ddb9519
+  - 74af8bf
+  - ee52e12
+  - 2b9e126
+  - 9f12797
+  - ba3629c
+  - db846fa
+  - 6d867c7
+  - 70ee10b
+  - 0f921e1
+  - 5586cc0
+  - 8be6c07
+  - b945699
+  - b6a6581
+  - e415607
+  - 49a6436
+  - e6a4852
+  - 12b59ae
+  - d4768ea
+  - 4fbb852
+  - 84d01b4
+  - 5d3d24a
+  - b1073c2
+  - 30174f6
+  - ef3c128
+  - 9b449fe
+---
+
 # Commit evidence index
 
 Every phase claim resolves to a commit below. `git show <sha>` is the argument;
@@ -139,3 +218,9 @@ reader of an old message can find its way to the current commit:
 | `30174f6` | `9b5554e` | record E3 base commit hash (tag `e3-amd-gpu`) |
 | `ef3c128` | `ab05883` | E3 GPU single-pod contention probe |
 | `9b449fe` | `e6a4852` | the trackc merge |
+
+---
+
+## Where this sits
+
+- Collection: [evolution](README.md)

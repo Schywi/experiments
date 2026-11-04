@@ -1,3 +1,10 @@
+---
+title: 'Native k3s + GPU + CPU models: plan and recorded decisions'
+kind: design
+state: unknown
+tags: [gpu]
+---
+
 # Native k3s + GPU + CPU models: plan and recorded decisions
 
 > Tracked design note (committed to the repo). Machine-specific runbooks live in
@@ -197,3 +204,9 @@ gfx803 doesn't support.
 
 This keeps every track independently verifiable and prevents the GPU question
 from stalling the models.
+
+---
+
+## Where this sits
+
+- Collection: [experiments](../README.md)

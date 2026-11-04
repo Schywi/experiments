@@ -11,3 +11,4 @@ kubeconfig
 runs/
 cache/
 serial.log*
+base.img.url

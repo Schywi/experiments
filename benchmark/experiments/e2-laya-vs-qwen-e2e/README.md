@@ -1,3 +1,9 @@
+---
+title: 'Experiment E2 — does Laya planning reduce end-to-end latency vs Qwen planning?'
+kind: index
+commits: [0f921e109218ac1cc32592049117f126586357ae]
+---
+
 # Experiment E2 — does Laya planning reduce end-to-end latency vs Qwen planning?
 
 - **Status:** complete

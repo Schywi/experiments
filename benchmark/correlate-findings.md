@@ -1,3 +1,10 @@
+---
+title: 'Correlate latency — investigation and the smallest experiment'
+kind: analysis
+state: unknown
+tags: [benchmark]
+---
+
 # Correlate latency — investigation and the smallest experiment
 
 Frozen 2026-10-08. Read alongside `benchmark/baseline/` and
@@ -100,3 +107,9 @@ or a smaller/faster model — all deferred).
 The Laya planner remains **isolated**: it lives behind `PLANNER_KIND=laya` in the
 separate `assistant-laya` Deployment. The production assistant sets no
 `PLANNER_KIND` and is unchanged. Nothing here integrates Laya into production.
+
+---
+
+## Where this sits
+
+- Collection: [benchmark](README.md)

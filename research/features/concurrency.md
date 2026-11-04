@@ -1,3 +1,10 @@
+---
+title: 'LLM concurrency limit + bounded FIFO queue'
+kind: feature
+state: implemented
+tags: [assistant]
+---
+
 # LLM concurrency limit + bounded FIFO queue
 
 Bounds how many LLM-bound requests the assistant will work on at once, and
@@ -87,3 +94,11 @@ curl -s localhost:18080/metrics | grep assistant_concurrency_rejected_total
 - Not addressed here: the `/chat` tool call still runs on the event loop, and
   `/chat` vs `/investigate` share one limit (no reserved slot for chat). Both are
   candidate follow-ups, not implemented.
+
+---
+
+## Where this sits
+
+- Feature index: [Features](README.md)
+- The claim model this bounds: [Agent driving a browser sandbox](sandbox-agent_experiment.md)
+- The slots a session occupies: [note 15](../session-lifecycle-elasticity/15-capacity-plane-and-demand-plane.md)

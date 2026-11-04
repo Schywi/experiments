@@ -1,3 +1,10 @@
+---
+title: '06 — What a lightweight riot run actually does'
+kind: analysis
+state: unknown
+tags: [cpu]
+---
+
 # 06 — What a lightweight riot run actually does
 
 The path a splash-only run (`RIOT_HEAVY=0`) takes through the code on this branch, step by step. This
@@ -110,3 +117,9 @@ says so in `first boundary`. The browser path is never reached.
 | browser memory request / limit | 128Mi / 768Mi | same block |
 | autoscaler range | 2 .. **120** | `config/session-lab/values.yaml:36-37` |
 | boot concurrency | flag; published as an annotation | `--boot-concurrency`, `kube.go:624` |
+
+---
+
+## Where this sits
+
+- Collection: [cpu-oversubscription](README.md)

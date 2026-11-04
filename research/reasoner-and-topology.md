@@ -1,3 +1,10 @@
+---
+title: 'Reasoning model, topology tool, and Cilium observability — investigation'
+kind: analysis
+state: unknown
+tags: [topology]
+---
+
 # Reasoning model, topology tool, and Cilium observability — investigation
 
 Two architectural hypotheses, evaluated **independently**, plus a factual check on
@@ -237,3 +244,9 @@ PromQL** (fixed catalog → safe but narrow); **Hubble UI** is human-only; and
 
 Keep H1 and H2 independent: H2 changes what evidence exists; H1 changes who
 reasons over it. Evaluate separately.
+
+---
+
+## Where this sits
+
+- Collection: [experiments](../README.md)

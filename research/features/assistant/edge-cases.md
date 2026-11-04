@@ -1,3 +1,10 @@
+---
+title: 'Edge cases: sandbox URLs'
+kind: feature
+state: unknown
+tags: [assistant]
+---
+
 # Edge cases: sandbox URLs
 
 The assistant does not open URLs of its own choosing. The sandbox tools exist so a human can point a
@@ -57,3 +64,9 @@ The agent was forbidden from opening URLs on its own initiative. A URL reaches t
 the question contains one, or when it comes from `provenance` (`http://192.168.0.245/…` for Grafana,
 `http://192.168.0.241/?namespace=…` for Cilium). The assistant renders what the LAN accepts, and the
 console's scheme check is the last line of it.
+
+---
+
+## Where this sits
+
+- Collection: [assistant](README.md)

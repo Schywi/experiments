@@ -1,3 +1,10 @@
+---
+title: 'E2 results — does Laya planning reduce end-to-end latency vs Qwen planning?'
+kind: experiment
+state: benchmarked
+tags: [benchmark]
+---
+
 # E2 results — does Laya planning reduce end-to-end latency vs Qwen planning?
 
 **Answer: No.** With both models isolated (Guaranteed QoS, prod paused),
@@ -60,3 +67,9 @@ the clean planner comparison.
 
 - `baseline/prod.json`, `baseline/qwen-plan.json`, `baseline/laya-plan.json`
   (per-question: planner, plan/tool/correlate/elapsed ms, Qwen in/out tokens, answer).
+
+---
+
+## Where this sits
+
+- Collection: [e2-laya-vs-qwen-e2e](README.md)

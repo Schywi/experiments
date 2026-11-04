@@ -1,3 +1,8 @@
+---
+title: 'Assistant features'
+kind: index
+---
+
 # Assistant features
 
 | Doc | What |

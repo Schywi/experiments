@@ -1,3 +1,10 @@
+---
+title: 'Sandbox specialist (thin client over the console API)'
+kind: feature
+state: unknown
+tags: [assistant, console]
+---
+
 # Sandbox specialist (thin client over the console API)
 
 The assistant does not implement sandbox behaviour. The console owns routing,
@@ -47,3 +54,9 @@ reviewed place that decides what may be created.
 If the console's JSON surface is absent (`404`) or unreachable, the tool raises and
 the pipeline records `ok: false` with the error as evidence. No fabricated
 inventory, no invented screenshot.
+
+---
+
+## Where this sits
+
+- Collection: [assistant](README.md)

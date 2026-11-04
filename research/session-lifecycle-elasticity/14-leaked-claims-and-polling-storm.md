@@ -1,3 +1,12 @@
+---
+title: 'Leaked claims, the 100ms polling storm, and claim ordering'
+kind: analysis
+state: research
+phase: 8
+date: 2026-10-29
+tags: [session-lifecycle, claims]
+---
+
 # Note 14 — Leaked claims, the 100ms polling storm, and claim ordering
 
 | | |
@@ -53,7 +62,7 @@ A `SandboxClaim` requests a sandbox from a pool (`spec.warmPoolRef.name`). A cla
 
 - **Phantom demand**: The `agent-sandbox-controller` treats all active `SandboxClaim` objects as legitimate pending demand.
 - **Resource starvation**: The controller attempts to fulfill stranded claims by provisioning `Sandbox` objects and child `Pod` instances, consuming node CPU shares and memory requests.
-- **Autoscaler pollution**: In Note 10, 16 leaked claims held the WarmPool autoscaler at 22 replicas indefinitely with zero actual workload traffic.
+- **Autoscaler pollution**: In [Note 10](10-autoscaler-deployed.md), 16 leaked claims held the WarmPool autoscaler at 22 replicas indefinitely with zero actual workload traffic.
 
 ---
 

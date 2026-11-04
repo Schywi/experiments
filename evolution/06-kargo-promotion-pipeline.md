@@ -1,3 +1,32 @@
+---
+title: 'Phase 6 — promotion with Kargo, and a planner that reads the whole sentence (2026-10-24 → )'
+kind: narrative
+phase: 6
+commits:
+  - 2404f70
+  - 48f5775
+  - 459c980
+  - 4c645039bc3a43178be4138cc2ae0ce2d160a0bb
+  - 5c5d204
+  - ced5f89
+  - 4ca2dd5
+  - 67b1c9e
+  - b7abb74
+  - f10c458
+  - e58ee40
+  - 5cbeab4
+  - 5c17fa8
+  - 86bcb03
+  - 1e2d90e
+  - a561374
+  - 436563f
+  - 445ef0f
+  - bf8546d
+  - 6ba9142
+  - 4c0ba7d
+  - 6dd3442
+---
+
 # Phase 6 — promotion with Kargo, and a planner that reads the whole sentence (2026-10-24 → )
 
 **Branch:** `feat/kargo`, forked from `cluster-evolution` at `2404f70` · **tracked

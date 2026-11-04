@@ -1,3 +1,9 @@
+---
+title: 'Assistant response pipeline v2 — structured facts → dual response → streaming'
+kind: analysis
+state: unknown
+---
+
 # Assistant response pipeline v2 — structured facts → dual response → streaming
 
 > Status: design note (tracked). Supersedes the single-shot `/chat` and the
@@ -223,3 +229,9 @@ from" data. The UI can turn a fact into:
 - **Auto-speak default:** off (annoying) vs on when a `signal` is emitted.
 - **Stream transport:** SSE (simplest, one-way) vs WebSocket (needed only if the
   read-only terminal lands).
+
+---
+
+## Where this sits
+
+- Collection: [experiments](../README.md)

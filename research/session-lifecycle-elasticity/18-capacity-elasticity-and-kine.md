@@ -1,3 +1,12 @@
+---
+title: 'Capacity, elasticity, and why kine is the ceiling'
+kind: analysis
+state: research
+phase: 8
+commits: [ae04cf4]
+tags: [session-lifecycle, control-plane]
+---
+
 # Note 18 — Capacity, elasticity, and why kine is the ceiling
 
 | | |
@@ -5,7 +14,7 @@
 | Status | Analysis with live evidence, 2026-10-31 |
 | Phase | 8 — session lifecycle elasticity |
 | Evidence | 600-session run `20261031T024806Z`, k3s journal, apiserver `/metrics`, node allocation |
-| Follows | [16 — browser contexts and slots](16-browser-contexts-and-slots.md), [17 — a CDP client in Go](17-cdp-client-in-go.md) |
+| Follows | [16 — browser contexts and slots](16.1-browser-contexts-and-slots.md), [17 — a CDP client in Go](17-cdp-client-in-go.md) |
 | Tracked as | `experiments-0fo` kine metrics, `experiments-9b0` dashboard, `experiments-ujf` vocabulary, `experiments-wnj` elasticity, `experiments-9kl` control-plane writes, `experiments-c4h` capacity ladder, `experiments-kvx` memory gauge |
 
 ---
@@ -79,7 +88,7 @@ sessions/s = concurrent slots / mean hold
 
 | Layer | Elastic? | Why |
 |---|---|---|
-| Browser CPU | **Yes** — bursty by nature | no CPU limit (note 12), so a session that needs a core gets one while the node has it; a splash idles at ~1 m |
+| Browser CPU | **Yes** — bursty by nature | no CPU limit ([note 12](12-cpu-requests-not-limits.md)), so a session that needs a core gets one while the node has it; a splash idles at ~1 m |
 | Node capacity | **No** | fixed 6 cores; when requests run out the scheduler refuses, and there is no preemption victim to evict |
 | Pool size | **Partially** | scales on claim count every 5 s, so it is demand-driven — but *blind to pressure*: a browser pinned at one core and one idling at 1 m look identical to it |
 | Session admission | **Partially** | class queue + `--admit` bound; no CPU-aware admission |

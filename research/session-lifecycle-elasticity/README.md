@@ -1,3 +1,13 @@
+---
+title: 'Session lifecycle elasticity — Phase 8 design notes'
+kind: index
+state: hypothesis
+phase: 8
+date: 2026-10-29
+branch: 'research/session-lifecycle-elasticity'
+commits: [078d1b9, d816e0f, dd9ba54]
+---
+
 # Session lifecycle elasticity — Phase 8 design notes
 
 | | |
@@ -23,7 +33,8 @@
 | [05 — The first run](05-first-run.md) | What did the runner actually measure, and what did it get wrong? | A two-session smoke test with its numbers, the three defects execution found, and the throttling that makes its hold latency an artifact |
 | [06 — Audit](06-audit.md) | Planned vs. built, area by area | Nine areas with implemented / live / verified / gap columns, and the fix order: metrics endpoint, scrape job, template limits, dashboard, overload run, suspend test |
 | [07 — Overload and suspend runs](07-overload-and-suspend.md) | Where does the platform stop? | 60 sessions at offered concurrency 60: 42 success, 17 scheduler refusals, queue wait p95 134 s, node memory down to 20.9%; plus the suspend run with two resume cycles |
-| [08 — Requirement status](08-requirement-status.md) | What is implemented, deployed, configured, verified? | Eight requirements with the four columns kept separate, and the unsupported claims corrected |
+| [08.1 — Requirement status](08.1-requirement-status.md) | What is implemented, deployed, configured, verified? | Eight requirements with the four columns kept separate, and the unsupported claims corrected |
+| [08.2 — GPU offload feasibility](08.2-gpu-offload-feasibility.md) | Can the RX 570 reduce session CPU cost, and is KubeVirt passthrough the way? | A verdict from the evidence base, the GPU audit, the offload map and option comparison, a four-phase experiment matrix, and the acceptance criteria each phase must meet |
 | [09 — Results: three runs](09-results-three-runs.md) | What changes with lifecycle policy and with an autoscaler? | One workload, three runs: reuse resets in 35 ms, destroy pays 374 ms + cold start, autoscaling cuts queue wait 2× and reaches its 40-replica ceiling, where the API server becomes the boundary |
 | [10 — Autoscaler deployed](10-autoscaler-deployed.md) | Is elasticity a workload or a shell script? | The chart, RBAC, in-cluster image build and label-based scrape; live scaling 2 → 22 → 2 with 84.9 s scale-out, and the API outage that followed |
 | [11 — Verification](11-verification.md) | What is actually running, and what is not? | Five areas labelled implemented/deployed/configured/verified with commands, two defects found by comparing image digests, the claim-cleanup paths that fail, and the observability layer that is exposed but never scraped |
@@ -31,15 +42,15 @@
 | [13 — Client-go throughput, APF and Chromium density limits](13-client-go-apf-and-density-limits.md) | How do client-go limits, HTTP/2 connections, APF, and Chromium density interact? | The three throughput layers, upstream agent-sandbox QPS=-1 and connection sharding, 559 MiB Chromium footprint, and the four capacity cliffs |
 | [14 — Leaked claims, the 100ms polling storm, and claim ordering](14-leaked-claims-and-polling-storm.md) | Why do claims leak, how does 100ms polling throttle client-go, and how do old/new claims race? | The polling storm math (10 req/s per session), non-FIFO workqueue ordering race, reuse vs destroy, and upstream TTL gaps |
 | [15 — Capacity plane and demand plane](15-capacity-plane-and-demand-plane.md) | Where does Kubernetes stop and where does our runtime start? | Admission classes (normal/batch/bulk) with no reservation, one browser context per session instead of one claim, the accepted crash blast radius, and the internal/runtime vs internal/infra package split |
-| [16 — Browser contexts and slots](16-browser-contexts-and-slots.md) | How does one Chromium carry eight sessions, and what are we now load-testing? | The slot allocator, contexts via CDP, the two layers (`infra` = 1 pod per session, `session` = 8 contexts per pod), and the CPU-division caveat |
+| [16.1 — Browser contexts and slots](16.1-browser-contexts-and-slots.md) | How does one Chromium carry eight sessions, and what are we now load-testing? | The slot allocator, contexts via CDP, the two layers (`infra` = 1 pod per session, `session` = 8 contexts per pod), and the CPU-division caveat |
+| [16.2 — The session wall](16.2-session-wall-ui.md) | How does the console draw a run, now that a session is a slot? | Four zooms of one object — skyline, bucket/instance/slot glyphs, eight tracks per browser, one slot card — the `sessionId` gap in `cdp-bridge.py`, the read-only run SQLite, and the six slices |
 | [17 — A CDP client in Go](17-cdp-client-in-go.md) | Why does the runtime need to speak CDP itself instead of calling the Python bridge? | Sessions, events and per-context metrics the HTTP shim cannot provide; package layout in `runtime/browser`, the raw-TCP forwarder, crash handling, and the transport switch |
 | [18 — Capacity, elasticity, kine](18-capacity-elasticity-and-kine.md) | Is 600 sessions a limit, are we elastic, and why does the control plane fall over? | The four levels (claim/pod/slot/session), the slot ceiling at 168 contexts, a pool that cannot see CPU pressure, and kine's 1–3 s SQLite commits with the metrics that expose them |
 | [Handoff — CPU oversubscription](HANDOFF-cpu-oversubscription.md) | What does the next agent need to run a CPU density study? | The measured per-session CPU, the current ceilings, the six bugs that must not come back, and a five-step ladder that needs no code change |
 
-| [16 — The session wall](16-session-wall-ui.md) | How does the console draw a run, now that a session is a slot? | Four zooms of one object — skyline, bucket/instance/slot glyphs, eight tracks per browser, one slot card — the `sessionId` gap in `cdp-bridge.py`, the read-only run SQLite, and the six slices |
 
 Read 04 for what is being built and under which rules, 03 for the baseline, 02 for the experiment
-shape, 01 for the instrument, 16 for the surface that shows it.
+shape, 01 for the instrument, 16.2 for the surface that shows it.
 
 ## The rule about numbers
 

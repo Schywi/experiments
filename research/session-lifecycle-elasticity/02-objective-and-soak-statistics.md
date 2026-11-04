@@ -1,3 +1,13 @@
+---
+title: 'What the run is for, and what a 10k-session soak can claim'
+kind: analysis
+state: hypothesis
+phase: 8
+date: 2026-10-29
+commits: [d816e0f]
+tags: [session-lifecycle, claims]
+---
+
 # Note 02 — What the run is for, and what a 10k-session soak can claim
 
 | | |
@@ -18,7 +28,7 @@ elsewhere, and neither is a measurement of this cluster:
 
 | Quantity | Status |
 |---|---|
-| the concurrency-to-host conversion in §2 | divides by a browser-per-host density taken from the fork's research; unverified, and note 04 §2 keeps it out of the runner's inputs |
+| the concurrency-to-host conversion in §2 | divides by a browser-per-host density taken from the fork's research; unverified, and [note 04](04-deliverable.md) §2 keeps it out of the runner's inputs |
 | the `120 ms → 480 ms` line in §3 | an illustration of a claim shape, not a result |
 
 ---
@@ -98,7 +108,7 @@ The distinctions in the scenario are API-level, so kernel tracing cannot see the
 |---|---|---|
 | warm adoption vs cold start | controller label `launch_type` (`internal/metrics/metrics.go:60-140`) | no — both are a pod starting |
 | claim waiting because the pool is dry | `warmCandidatesPendingError` (`extensions/controllers/sandboxclaim_controller.go:88-95`), requeue at `:362` and `:466-490` | no syscall corresponds to it |
-| agent 1 holds instance B | no lock exists; `SandboxClaim`↔`Sandbox` is 1:1 and permanent (`extensions/api/v1beta1/sandboxwarmpool_types.go:55-61`) | partially — see §1 of note 01 |
+| agent 1 holds instance B | no lock exists; `SandboxClaim`↔`Sandbox` is 1:1 and permanent (`extensions/api/v1beta1/sandboxwarmpool_types.go:55-61`) | partially — see §1 of [note 01](01-instrumentation-cpu-memory.md) |
 | session expiry at 30 s / 10 min | `spec.shutdownTime` → `expired` label (`api/v1beta1/sandbox_types.go:314-347`) | no |
 | the pool grew | HPA status | no |
 
@@ -114,7 +124,7 @@ Signals that are load-bearing, and where to get each without a BPF program:
 | Which container died, and why | `oom:mark_victim`, kubelet events | optional |
 
 The single change with the widest effect for the least code is replacing the 0.3 vCPU assumption
-with measured per-session CPU — the gap that note 01 closes. Per-connection and per-syscall data
+with measured per-session CPU — the gap that [note 01](01-instrumentation-cpu-memory.md) closes. Per-connection and per-syscall data
 must not become a Prometheus label (`AGENTS.md` forbids unbounded cardinality); the harness writes
 JSONL and joins offline.
 
@@ -141,7 +151,7 @@ Missing, and each is a hole in the scenario:
 3. **Outcome taxonomy.** `SandboxRecord.Error` is free text (`test/stress/tracker.go:151`) — not
    countable, not chartable.
 4. **Reuse accounting.** No `launch_type: reuse`, no per-sandbox session counter, because the
-   primitive does not exist (§5 of note 03).
+   primitive does not exist (§5 of [note 03](03-what-exists-today.md)).
 5. **Scale-out lead time.** Nothing joins HPA replica transitions to `readyReplicas` reaching
    target.
 
@@ -169,7 +179,7 @@ samples long-and-narrow for DuckDB (`test/stress/promscrape.go:44-52`), and the 
 2. **Session row.** `{session_id, bucket, template, pool, arrival_ts, claim_created, ready_ts
    (warm|cold), hold_start, hold_end, delete_ts, gone_ts, node, pod_uid, cpu_core_seconds,
    cpu_pressure_integral, swap_in_bytes, oom, outcome_enum}` with the CPU and memory integrals
-   from note 01 §6.
+   from [note 01](01-instrumentation-cpu-memory.md) §6.
 3. **Outcome enum** (normalizes `Error`): `ok`, `fail_pool_dry_coldstart`, `fail_queue_timeout`,
    `fail_schedule`, `fail_image_pull`, `fail_ready_timeout`, `fail_expired_before_ready`,
    `fail_oom`, `fail_router_502`, `fail_delete_stuck`, `lost_unknown` — ten fixed values, countable

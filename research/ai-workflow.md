@@ -1,3 +1,9 @@
+---
+title: 'AI workflow — local infrastructure assistant ("Jarvis")'
+kind: analysis
+state: unknown
+---
+
 # AI workflow — local infrastructure assistant ("Jarvis")
 
 Repo-visible map of how the local assistant is **built, shipped, and run** on the
@@ -82,3 +88,9 @@ RBAC + audit; M3 `get_pod_logs` + `get_events`.
 - `config/registry/README.md`, `config/k3s/README.md`, `apps/models/README.md`,
   `apps/assistant/README.md`, `apps/gpu-device-plugin/README.md`,
   `config/gpu/README.md`
+
+---
+
+## Where this sits
+
+- Collection: [experiments](../README.md)

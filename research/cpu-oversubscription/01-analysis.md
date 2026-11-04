@@ -1,3 +1,11 @@
+---
+title: '01 — Our implementation, traced'
+kind: analysis
+state: unknown
+commits: [30df98e]
+tags: [cpu]
+---
+
 # 01 — Our implementation, traced
 
 Everything here was read from the code on `research/session-lifecycle-elasticity`; file paths are
@@ -161,3 +169,9 @@ Three facts worth carrying forward:
 
 Reporting gap fixed with this: a dead browser now settles its sessions as `lost_unknown`, not
 `reset_failed`, so the outcome names the cause.
+
+---
+
+## Where this sits
+
+- Collection: [cpu-oversubscription](README.md)

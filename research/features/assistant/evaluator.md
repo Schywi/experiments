@@ -1,3 +1,10 @@
+---
+title: 'Evaluator: read the whole sentence before any tool runs'
+kind: feature
+state: unknown
+tags: [assistant]
+---
+
 # Evaluator: read the whole sentence before any tool runs
 
 ## The defect
@@ -113,3 +120,9 @@ gating (`ok == true` for Grafana, id present for sandbox), `propose → confirm`
 - A reply that is not JSON yields `tasks: []` and falls back to the current single-plan path; the
   assistant still answers.
 - PromQL tests, sandbox tests and guardrail tests stay green.
+
+---
+
+## Where this sits
+
+- Collection: [assistant](README.md)

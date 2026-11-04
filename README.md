@@ -212,6 +212,8 @@ config/
   cartography/ grafana/ victoriametrics/ vector/   platform services
   gpu/                   Vulkan smoke image and pods
   registry/ sealed-secrets/ metallb/ helm/ dns/ ci/
+blog/                    long-form write-ups
+site/                    Quartz renderer that publishes the four trees above
 scripts/                 host helpers
 Tiltfile*  start.sh      k3d entrypoints
 docs/  cv/               gitignored, local only
@@ -222,6 +224,11 @@ docs/  cv/               gitignored, local only
 `ROADMAP.md` for the phases and open work, `evolution/` for the reasoning and
 the commit that produced each layer, `research/` for design notes, `AGENTS.md`
 for the rules agents have to follow.
+
+The same notes are published as a site with an Obsidian-style graph — click a
+node to open the note: <https://schywi.github.io/experiments/>. It is built from
+`research/`, `evolution/`, `benchmark/` and `blog/` by `site/`; see
+[`site/README.md`](site/README.md).
 
 This is a public repository. No credentials, kubeconfigs, certificates or
 `.env` files belong in it.

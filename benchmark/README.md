@@ -1,3 +1,8 @@
+---
+title: 'Benchmark — frozen baseline'
+kind: index
+---
+
 # Benchmark — frozen baseline
 
 Measurements for the local assistant's two-call pipeline (`plan -> fan-out ->

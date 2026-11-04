@@ -76,8 +76,8 @@ echo "  kubelet reports memorySwap.swapBehavior=${behavior}"
 # read /sys/fs/cgroup as the unprivileged user, so both are checked here rather
 # than discovered as a table full of zeroes after the run.
 echo "== guest access for session-lab =="
-vm_ssh 'mkdir -p /home/ubuntu/.kube && sudo cp /etc/rancher/k3s/k3s.yaml /home/ubuntu/.kube/config \
-  && sudo chown ubuntu:ubuntu /home/ubuntu/.kube/config && chmod 600 /home/ubuntu/.kube/config'
+vm_ssh "mkdir -p /home/${SSH_USER}/.kube && sudo cp /etc/rancher/k3s/k3s.yaml /home/${SSH_USER}/.kube/config \
+  && sudo chown ${SSH_USER}:${SSH_USER} /home/${SSH_USER}/.kube/config && chmod 600 /home/${SSH_USER}/.kube/config"
 
 echo "== warm pool =="
 set_pool_replicas() {
@@ -160,8 +160,8 @@ echo "== building session-lab for the guest =="
 # going) is executing the old binary — scp straight onto it fails with
 # "Text file busy".
 scp -F /dev/null -i "${SSH_KEY}" -P "${SSH_PORT}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR \
-  "${out_dir}/session-lab" "${SSH_USER}@${VM_HOST}:/home/ubuntu/session-lab.new"
-vm_ssh 'mv -f /home/ubuntu/session-lab.new /home/ubuntu/session-lab && chmod 0755 /home/ubuntu/session-lab'
+  "${out_dir}/session-lab" "${SSH_USER}@${VM_HOST}:/home/${SSH_USER}/session-lab.new"
+vm_ssh "mv -f /home/${SSH_USER}/session-lab.new /home/${SSH_USER}/session-lab && chmod 0755 /home/${SSH_USER}/session-lab"
 
 # Run ids carry a timestamp: two invocations, or a run left over from earlier,
 # must never share a SQLite file. Nothing is deleted in the guest — a run that
@@ -192,23 +192,23 @@ run_one() {
   local loop_pid=$!
   trap 'kill -TERM "${loop_pid}" 2>/dev/null || true' EXIT
 
-  vm_ssh "mkdir -p /home/ubuntu/runs"
-  vm_ssh "cd /home/ubuntu && ./session-lab \
+  vm_ssh "mkdir -p /home/${SSH_USER}/runs"
+  vm_ssh "cd /home/${SSH_USER} && ./session-lab \
     --namespace ${namespace} --pool ${pool} \
     --policy destroy \
     --duration ${DURATION} --rate ${RATE} --hold ${HOLD} \
     --pool-replicas ${REPLICAS} --sample-seconds ${SAMPLE_SECONDS} \
-    --kubeconfig /home/ubuntu/.kube/config \
-    --out /home/ubuntu/runs --run-id ${run_id}"
+    --kubeconfig /home/${SSH_USER}/.kube/config \
+    --out /home/${SSH_USER}/runs --run-id ${run_id}"
 
   kill -TERM "${loop_pid}" 2>/dev/null || true
   wait "${loop_pid}" 2>/dev/null || true
   trap - EXIT
 
   scp -F /dev/null -i "${SSH_KEY}" -P "${SSH_PORT}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR \
-    "${SSH_USER}@${VM_HOST}:/home/ubuntu/runs/${run_id}.json" "${out_dir}/${run_id}.json"
+    "${SSH_USER}@${VM_HOST}:/home/${SSH_USER}/runs/${run_id}.json" "${out_dir}/${run_id}.json"
   scp -F /dev/null -i "${SSH_KEY}" -P "${SSH_PORT}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR \
-    "${SSH_USER}@${VM_HOST}:/home/ubuntu/runs/${run_id}.db" "${out_dir}/${run_id}.db"
+    "${SSH_USER}@${VM_HOST}:/home/${SSH_USER}/runs/${run_id}.db" "${out_dir}/${run_id}.db"
 }
 
 off_id="swap-off-${stamp}"

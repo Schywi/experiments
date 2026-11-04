@@ -1,3 +1,8 @@
+---
+title: 'Swap as capacity for Chromium sandbox sessions'
+kind: index
+---
+
 # Swap as capacity for Chromium sandbox sessions
 
 Findings from the swap experiment run in a disposable k3s VM
@@ -331,6 +336,16 @@ generations are quoted against each other.
 sets how many distinct pages fit behind it; CPU sets how fast they can come back.
 The crossover sits somewhere between 6 and 7 concurrent browsers per 4 vCPU here.
 
+Captures from the ratio run:
+
+![Compression ratio benchmark](assets/zram-ratio-benchmark.png)
+
+*The benchmark capture behind the table above.*
+
+![Compression algorithms compared](assets/zram-ratio-algorithms.png)
+
+*The algorithm comparison capture from the same run.*
+
 ---
 
 ## 5e. The two-layer hypothesis (registered before running)
@@ -581,3 +596,11 @@ Artefacts: `runs/<run-id>.json` (report), `runs/<run-id>.db` (per-session SQLite
 | `config/vm-swap-lab/{up,down,install-sandbox,run-ab,swap-limit,verify-swap,capacity}.sh` | the harness that produced all of the above |
 | `config/vm-swap-lab/README.md` | operational detail: kubelet drop-in, probe, zram, pressure ladder |
 | KEP-2400 | the documented position on swap and scheduling |
+
+---
+
+## Where this sits
+
+- Collection: [Research](../README.md)
+- The sibling CPU study: [CPU oversubscription](../cpu-oversubscription/README.md)
+- Where these numbers get used: [note 15](../session-lifecycle-elasticity/15-capacity-plane-and-demand-plane.md)

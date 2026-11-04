@@ -1,3 +1,12 @@
+---
+title: 'Client-go throughput, APF and Chromium density limits'
+kind: analysis
+state: research
+phase: 8
+date: 2026-10-29
+tags: [session-lifecycle]
+---
+
 # Note 13 — Client-go throughput, APF and Chromium density limits
 
 | | |
@@ -92,7 +101,7 @@ Measurements from `agent-sandbox/research/experiments/03-browser-density.md` and
 1. **Scheduler CPU request exhaustion**:
    With CPU requests at 100m–500m per pod, requests exhaust 6 vCPU allocatable capacity while node physical memory is still >50% available. `02-capacity-6vcpu-100k.md` recorded `FailedScheduling 1 Insufficient cpu` at 5,970m / 6,000m.
 2. **Control plane saturation**:
-   Bursts of claim creations and pool reconciliations overwhelm local `k3s` apiserver. Recorded in Note 09 and Note 10 as `dial tcp 127.0.0.1:6443: connect: connection refused` and `publish settings: unexpected EOF` at 22–40 replicas.
+   Bursts of claim creations and pool reconciliations overwhelm local `k3s` apiserver. Recorded in [Note 09](09-results-three-runs.md) and [Note 10](10-autoscaler-deployed.md) as `dial tcp 127.0.0.1:6443: connect: connection refused` and `publish settings: unexpected EOF` at 22–40 replicas.
 3. **Memory compression and swap cost**:
    Anonymous pages exhaust RAM, forcing zram compression. CPU spent on page compression directly competes with SwiftShader browser rendering.
 4. **Responsiveness violation**:
@@ -109,7 +118,7 @@ cfg.QPS = 200
 cfg.Burst = 400
 ```
 
-This raises the token bucket from the default `5.0 / 10`, but retains a single HTTP/2 connection. During autoscaler ramp tests (Note 10), 16 claims were stranded when the apiserver crashed, leading to cascading failures.
+This raises the token bucket from the default `5.0 / 10`, but retains a single HTTP/2 connection. During autoscaler ramp tests ([Note 10](10-autoscaler-deployed.md)), 16 claims were stranded when the apiserver crashed, leading to cascading failures.
 
 ---
 
@@ -147,4 +156,4 @@ To achieve sustainable high-throughput sandbox leasing without control-plane out
 3. **Dedicated priority levels**:
    Define explicit `FlowSchema` and `PriorityLevelConfiguration` objects for sandbox leasing controllers to isolate claim processing from background telemetry and node heartbeats.
 4. **Decouple CPU limits from requests**:
-   Apply Note 12 (`requests: 100m`, no CPU limit) to eliminate artificial CFS throttling during Chromium tab initialization.
+   Apply [Note 12](12-cpu-requests-not-limits.md) (`requests: 100m`, no CPU limit) to eliminate artificial CFS throttling during Chromium tab initialization.

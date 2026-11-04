@@ -13,6 +13,8 @@ tags:
   - runwasi
   - vector
   - gitops
+kind: narrative
+
 ---
 
 # Local Tilt rollout for the bounded Worm experiment
@@ -144,3 +146,9 @@ limit. Vector batches no more than 1,200 in-memory events; workers emit ten
 events per batch and retry any outbound request at most five times.
 
 Decision: use Tilt plus local k3d image import for the active experiment, keep Wasmtime as a manual node gate, and preserve Argo CD as an internal-only stable GitOps reconciler.
+
+---
+
+## Where this sits
+
+- Collection: [experiments](../README.md)

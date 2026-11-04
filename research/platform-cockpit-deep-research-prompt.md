@@ -1,3 +1,9 @@
+---
+title: 'Deep Research Prompt: A Pareto Platform Cockpit for Kubernetes'
+kind: analysis
+state: unknown
+---
+
 # Deep Research Prompt: A Pareto Platform Cockpit for Kubernetes
 
 You are researching this as a builder and platform engineer, not as a vendor
@@ -140,3 +146,9 @@ Produce:
 
 End with one direct decision sentence: what a small platform team should build
 or adopt first, and what it should deliberately not build.
+
+---
+
+## Where this sits
+
+- Collection: [experiments](../README.md)

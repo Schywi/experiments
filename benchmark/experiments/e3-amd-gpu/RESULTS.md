@@ -1,3 +1,10 @@
+---
+title: 'E3 results — AMD RX 570 (Vulkan) vs CPU for Qwen2.5‑1.5B inference'
+kind: experiment
+state: benchmarked
+tags: [benchmark, gpu]
+---
+
 # E3 results — AMD RX 570 (Vulkan) vs CPU for Qwen2.5‑1.5B inference
 
 **Verdict: the GPU works via Vulkan (RADV) and is ~6× faster at generation than
@@ -94,3 +101,9 @@ kubectl delete namespace gpu            # optional; removes the DaemonSet ns
 ```
 The device plugin was deployed with `helm` (not Argo), so `helm uninstall` fully
 reverts the GPU scheduling resource. Production models were never touched.
+
+---
+
+## Where this sits
+
+- Collection: [e3-amd-gpu](README.md)

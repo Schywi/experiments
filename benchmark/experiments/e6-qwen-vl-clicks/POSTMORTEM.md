@@ -1,3 +1,10 @@
+---
+title: 'E6 postmortem — Qwen3-VL-2B driving a real Chromium, aborted'
+kind: experiment
+state: unknown
+tags: [benchmark]
+---
+
 # E6 postmortem — Qwen3-VL-2B driving a real Chromium, aborted
 
 - **Status:** aborted 2026-10-28. No further development planned.
@@ -149,3 +156,9 @@ teardown trap.
 
 - `../e5-vlm-grounding/RESULTS.md` — the frozen baseline this reused.
 - `../e5-vlm-grounding/` — same frames, same seven tasks, same Qwen3-VL build.
+
+---
+
+## Where this sits
+
+- Collection: [e6-qwen-vl-clicks](README.md)

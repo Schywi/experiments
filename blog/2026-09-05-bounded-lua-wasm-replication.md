@@ -14,6 +14,8 @@ tags:
   - elixir
   - distributed-systems
   - mlops
+kind: narrative
+
 ---
 
 # A bounded Lua/Wasm replicator for k3d
@@ -112,3 +114,9 @@ Replication intents remain off that route. They are control-plane messages and g
 ## First build boundary
 
 Build only these four deployables: worker, Go controller, Vector, and Elixir. Use a single Vector and a single Elixir replica in the one-node cluster. The controller cap, per-pod memory limit, and namespace quota are mandatory before the worker can request replicas.
+
+---
+
+## Where this sits
+
+- Collection: [experiments](../README.md)

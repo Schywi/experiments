@@ -39,3 +39,12 @@ handoff/
 
 # Local scratch
 .scratch-quartz/
+
+# Quartz site: build artefact, assembled by scripts/site-sync.sh
+site/content/
+site/public/
+node_modules/
+
+# Quartz framework tree: fetched from the pinned release by site/bootstrap.sh
+site/quartz/
+site/.upstream/

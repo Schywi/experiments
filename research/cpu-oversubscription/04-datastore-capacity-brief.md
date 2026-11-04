@@ -1,3 +1,10 @@
+---
+title: '04 — Datastore capacity: research brief and prompt'
+kind: analysis
+state: unknown
+tags: [cpu, control-plane]
+---
+
 # 04 — Datastore capacity: research brief and prompt
 
 | | |
@@ -159,3 +166,9 @@ rm -f /var/tmp/fsync-probe
 SESSION_LAB_INTEGRATION=1 RIOT_SESSIONS=600 RIOT_HOLD=75s RIOT_RATE=2 RIOT_HEAVY=0 \
   go test -tags integration -count=1 -timeout 2400s ./test/ -run TestRiotLive -v
 ```
+
+---
+
+## Where this sits
+
+- Collection: [cpu-oversubscription](README.md)

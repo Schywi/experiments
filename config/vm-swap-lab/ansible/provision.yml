@@ -1,7 +1,7 @@
 ---
 # Three arms, one variable: how memory is backed.
 #
-#   1 vCPU · 2048 MiB · 6 GiB disk per VM · 512 MiB backing (25 % of RAM)
+#   Fedora Cloud guest · 512 MiB swap backing (128 MiB for the zram arms)
 #
 # Why 2048 MiB: k3s+kubelet+containerd measure ~1000 MiB on this image, so
 # anything less leaves no room for even one 300 MiB sandbox. 2048 leaves ~1050.
@@ -90,7 +90,11 @@
         swap_mode: zram
         class: swap-on
         zram_algo: lzo-rle
-        zram_mb: 512
+        # 128 MiB, not 512: the measured device occupancy at rungs 7-8 was 1-20 %
+        # (4 MiB stored at rung 7, 88 MiB at rung 8), and recompression can only
+        # densify pages that are actually in zram. At 512 MiB there was nothing
+        # to recompress, which is why the two-layer test had no signal.
+        zram_mb: 128
         swap_mb: 512
         recomp_algo: ""
       # The hypothesis arm: lzo-rle primary (cheap on the fault path) + zstd
@@ -99,7 +103,7 @@
         swap_mode: zram
         class: swap-on
         zram_algo: lzo-rle
-        zram_mb: 512
+        zram_mb: 128
         swap_mb: 512
         recomp_algo: zstd
 

@@ -1,3 +1,10 @@
+---
+title: 'Plan — real links, LLM queries, chat/investigate split'
+kind: feature
+state: unknown
+tags: [assistant]
+---
+
 # Plan — real links, LLM queries, chat/investigate split
 
 Scope, in order:
@@ -22,3 +29,9 @@ Assumptions:
   no usable name exists, the link points at that UI's overview.
 - Hosts come from env, never literals in code.
 - Removing the bundles costs one plan LLM call per investigate question.
+
+---
+
+## Where this sits
+
+- Collection: [assistant](README.md)

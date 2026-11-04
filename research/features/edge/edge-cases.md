@@ -1,3 +1,10 @@
+---
+title: 'Edge-case catalogue'
+kind: feature
+state: unknown
+tags: [assistant]
+---
+
 # Edge-case catalogue
 
 Each entry: **symptom → cause → evidence → impact → status/repro.** Grounded

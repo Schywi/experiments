@@ -12,9 +12,10 @@
     "url": "https://github.com/jackyzha0/quartz.git"
   },
   "scripts": {
+    "setup": "bash bootstrap.sh",
     "sync": "bash ../scripts/site-sync.sh",
-    "build": "bash ../scripts/site-sync.sh && ./quartz/bootstrap-cli.mjs build",
-    "serve": "bash ../scripts/site-sync.sh && ./quartz/bootstrap-cli.mjs build --serve -p 8080",
+    "build": "bash bootstrap.sh && bash ../scripts/site-sync.sh && ./quartz/bootstrap-cli.mjs build",
+    "serve": "bash bootstrap.sh && bash ../scripts/site-sync.sh && ./quartz/bootstrap-cli.mjs build --serve --port 8080",
     "check": "tsc --noEmit"
   },
   "engines": {

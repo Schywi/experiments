@@ -1,3 +1,10 @@
+---
+title: 'Questions that must produce a given result'
+kind: feature
+state: unknown
+tags: [assistant]
+---
+
 # Questions that must produce a given result
 
 Run against the GPU assistant (`assistant-e4-gpu`). Inspect `metrics.planner`,
@@ -38,3 +45,9 @@ print("planner:",m.get("planner"));
 | `open a sandbox` | `propose_action` → `create_sandbox` returns a token; executes only after `POST /actions/confirm` |
 | `destroy the sandbox <id>` | `propose_action` → `destroy_sandbox`; executes only after confirm |
 | any of the above with the console `/api` absent | `ok:false` with `console API unavailable (404)` — no fabricated result |
+
+---
+
+## Where this sits
+
+- Collection: [assistant](README.md)

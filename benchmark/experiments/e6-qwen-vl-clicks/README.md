@@ -1,3 +1,8 @@
+---
+title: 'E6 — Qwen3-VL-2B drives a real Chromium and clicks'
+kind: index
+---
+
 # E6 — Qwen3-VL-2B drives a real Chromium and clicks
 
 - **Status:** **aborted 2026-10-28** — see [`POSTMORTEM.md`](POSTMORTEM.md). The

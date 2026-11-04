@@ -1,3 +1,11 @@
+---
+title: 'Security edge cases'
+kind: feature
+state: unknown
+commits: [e415607]
+tags: [assistant]
+---
+
 # Security edge cases
 
 Security-relevant exposures and gaps found in the assistant. Threat model here is
@@ -100,3 +108,9 @@ step, which it already has).
 Every endpoint is unauthenticated, including `/actions/*`, `/metrics`, and
 `/plan` (which triggers LLM calls). Acceptable for a private LAN lab; any wider
 exposure needs auth in front (see S1-4).
+
+---
+
+## Where this sits
+
+- Collection: [edge](README.md)

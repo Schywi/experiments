@@ -1,3 +1,19 @@
+---
+title: 'Evolution'
+kind: index
+commits:
+  - 4ba7b97
+  - a2a7a41
+  - cee5c95
+  - a958eed
+  - 3baa2bd
+  - 5668f1a
+  - ab05883
+  - aaf6f81
+  - b6a6581
+  - e6a4852
+---
+
 # Evolution
 
 This directory is the **narrative of the repository**, one document per phase,

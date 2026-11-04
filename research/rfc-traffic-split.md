@@ -1,3 +1,10 @@
+---
+title: 'RFC — Canary and traffic splitting for agent-sandbox (experimental)'
+kind: rfc
+state: hypothesis
+date: 2026-10-24
+---
+
 # RFC — Canary and traffic splitting for agent-sandbox (experimental)
 
 | | |
@@ -205,3 +212,9 @@ duration of the experiment. That is the honest price and it is small.
 
 Nothing here is required for the demo. This RFC exists so the console's §11 decision is based on
 what the cluster can actually do, instead of a claim that the primitive does not exist.
+
+---
+
+## Where this sits
+
+- Collection: [experiments](../README.md)

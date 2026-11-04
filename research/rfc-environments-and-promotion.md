@@ -1,3 +1,10 @@
+---
+title: 'RFC — Environments, immutable artifacts, and promotion'
+kind: rfc
+state: hypothesis
+date: 2026-10-24
+---
+
 # RFC — Environments, immutable artifacts, and promotion
 
 | | |
@@ -218,3 +225,9 @@ torn down.
 4. **What gates prod?** Today: `pytest` and `validate.sh`. The E2 planner benchmark is the honest
    gate for a model-backed service, and it needs a fixed baseline commit to compare against —
    `benchmark/` already records one per run.
+
+---
+
+## Where this sits
+
+- Collection: [experiments](../README.md)

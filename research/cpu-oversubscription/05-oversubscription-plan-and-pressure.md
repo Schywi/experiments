@@ -1,3 +1,11 @@
+---
+title: '05 — Oversubscription plan, pressure, and the three real gaps'
+kind: design
+state: unknown
+commits: [77cc684, c757981, 8caec1c, 3a4069e]
+tags: [cpu]
+---
+
 # 05 — Oversubscription plan, pressure, and the three real gaps
 
 Verified against the code on this branch, 2026-10-31. Line numbers are current.
@@ -153,3 +161,9 @@ A boot peak depends on the workload being rendered and on `contexts-per-browser`
 both and `BootPeakCores` filters on both. Deriving `k_max` from rows produced by a different workload
 would let the number drift toward whatever the last experiment happened to be. No matching rows means
 no derivation: the flag stands.
+
+---
+
+## Where this sits
+
+- Collection: [cpu-oversubscription](README.md)

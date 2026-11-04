@@ -1,3 +1,10 @@
+---
+title: '05 — Raising the write ceiling: what stalls, and what to change'
+kind: experiment
+state: benchmarked
+tags: [cpu]
+---
+
 # 05 — Raising the write ceiling: what stalls, and what to change
 
 | | |
@@ -351,4 +358,4 @@ The figure worth trusting for the ceiling arithmetic is the one whose sum reconc
 
 ### Why the GPU path changes the ceiling
 
-`sessions/s = free_cores ÷ core_seconds_per_session`. Only the denominator is available to us, and page rendering is most of it. Note 08 records that the shipped image runs Chromium with `--disable-gpu` and Vulkan disabled (`apps/browser-sandbox/entrypoint.sh:46,50`), so today every pixel is CPU work; a GPU-backed run lowers core-seconds per session and raises the ceiling linearly. A measured GPU number belongs in a run record with the same URL mix before the ceiling is restated here — splash, single SPA and full SPA differ by 3.7× (1.26 / 2.01 / 4.67 core-seconds), so a GPU figure from a different mix is not comparable.
+`sessions/s = free_cores ÷ core_seconds_per_session`. Only the denominator is available to us, and page rendering is most of it. [Note 08.2](../session-lifecycle-elasticity/08.2-gpu-offload-feasibility.md) records that the shipped image runs Chromium with `--disable-gpu` and Vulkan disabled (`apps/browser-sandbox/entrypoint.sh:46,50`), so today every pixel is CPU work; a GPU-backed run lowers core-seconds per session and raises the ceiling linearly. A measured GPU number belongs in a run record with the same URL mix before the ceiling is restated here — splash, single SPA and full SPA differ by 3.7× (1.26 / 2.01 / 4.67 core-seconds), so a GPU figure from a different mix is not comparable.

@@ -1,3 +1,10 @@
+---
+title: 'Assistant test-question matrix'
+kind: feature
+state: implemented
+tags: [assistant]
+---
+
 # Assistant test-question matrix
 
 Questions to exercise `/investigate` (pipeline) and `/chat` (single-shot), what
@@ -67,3 +74,9 @@ link.
   speech = reply`, no `facts`, so no links at all.
 - **A6 — optional probes vs guarantees.** Nothing in the tool set reports probe
   results, so "isolation is secure" can never be asserted from evidence.
+
+---
+
+## Where this sits
+
+- Collection: [features](README.md)

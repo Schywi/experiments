@@ -1,3 +1,10 @@
+---
+title: 'Feature: Evidence provenance & deep links'
+kind: feature
+state: implemented
+tags: [assistant, provenance]
+---
+
 # Feature: Evidence provenance & deep links
 
 > Status: **implemented and applied** on the cluster (branch
@@ -143,3 +150,11 @@ Expected: `query_prometheus` facts carry `reproduce.promql` and
 - No flow-level Hubble link (by design — see Deep-link rules).
 - Reference `localhost`/`home.arpa` hosts require the LAN resolver; without it,
   fall back to the `kubectl`/`hubble` copyable commands, which always work.
+
+---
+
+## Where this sits
+
+- Feature index: [Features](README.md)
+- The investigation behind it: [Evidence provenance, deep links, and cartography](../evidence-provenance.md)
+- The answers this applies to: [Assistant response pipeline v2](../assistant-response-pipeline.md)

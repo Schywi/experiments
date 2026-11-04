@@ -1,3 +1,10 @@
+---
+title: 'Message structure (ASCII)'
+kind: feature
+state: unknown
+tags: [assistant]
+---
+
 # Message structure (ASCII)
 
 The shapes the assistant actually returns, grounded against the live service.
@@ -81,3 +88,9 @@ POST /plan?kind=qwen|laya   {"message":"are there dropped packets?"}
 ```
 `planner` is label-qualified so the chosen plan is scoreable; the `?kind=` override
 affects **only** `/plan` (see edge-cases.md → E6).
+
+---
+
+## Where this sits
+
+- Collection: [edge](README.md)

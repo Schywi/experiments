@@ -1,3 +1,12 @@
+---
+title: 'Three runs on one workload: fixed pool, destroy/rebuild, and autoscaling'
+kind: experiment
+state: benchmarked
+phase: 8
+date: 2026-10-29
+tags: [session-lifecycle, autoscaling]
+---
+
 # Note 09 — Three runs on one workload: fixed pool, destroy/rebuild, and autoscaling
 
 | | |
@@ -7,7 +16,7 @@
 | Phase | 8 — session lifecycle elasticity |
 | Runs | `20261029T161101Z` reuse/fixed pool, `20261029T165409Z` destroy/fixed pool, `20261029T170145Z` reuse/autoscaled |
 | Code | `apps/session-lab` (runner), `apps/session-lab/cmd/pool-autoscaler` (scaler) |
-| Related | [08 — requirement status](08-requirement-status.md) |
+| Related | [08 — requirement status](08.1-requirement-status.md) |
 
 ---
 
@@ -48,7 +57,7 @@ Three numbers, all from runs, all for the same browse-shaped session:
 |---|---|---|
 | Reuse: reset between sessions | **35–39 ms p50**, 531–625 ms p95 | `…161101Z`, `…170145Z` |
 | Destroy/rebuild: delete then acquire a fresh instance | **374 ms p50, 7.07 s p95** for the delete, plus a cold start inside the acquire column | `…165409Z` |
-| Suspend/resume: patch to Ready again | **2853 ms p50** over 5 cycles | note 07 |
+| Suspend/resume: patch to Ready again | **2853 ms p50** over 5 cycles | [note 07](07-overload-and-suspend.md) |
 
 Reuse is two orders of magnitude cheaper than either alternative at the same offered load. Destroy
 is not free in the other direction: because each instance is deleted after one session, sixty

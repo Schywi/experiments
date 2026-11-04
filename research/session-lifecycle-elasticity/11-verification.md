@@ -1,3 +1,13 @@
+---
+title: 'Verification of the running system'
+kind: experiment
+state: validated
+date: 2026-10-29
+branch: 'research/session-lifecycle-elasticity'
+commits: [b77308c, 7fb2eb6, 4cce81b]
+tags: [session-lifecycle]
+---
+
 # Note 11 — Verification of the running system
 
 | | |
@@ -41,7 +51,7 @@ cluster-scoped grant. **Deployed and configured.**
 (`adapter.ClaimStats`), excluding claims whose Ready condition is False with reason `PodFailed`,
 `Failed`, `TemplateNotFound` or `WarmPoolNotFound` (`internal/adapter/kube.go:191-206`). Stale
 claims therefore do count until they carry a failure reason — and an *orphaned but Ready* claim
-counts as full demand. That is exactly what happened after the API outage in note 10: sixteen
+counts as full demand. That is exactly what happened after the API outage in [note 10](10-autoscaler-deployed.md): sixteen
 Ready orphaned claims held the pool at 22 with no traffic, and the manual delete dropped it to 2 in
 seconds. **Verified as a behaviour; the consequence was a defect, fixed only for the runner's own
 cleanup (see §2), not for a foreign orphan.**

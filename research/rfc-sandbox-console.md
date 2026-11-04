@@ -1,3 +1,11 @@
+---
+title: 'RFC — `sandbox-console`: a Pareto pane to inspect, drive and demo agent-sandbox'
+kind: rfc
+state: hypothesis
+date: 2026-10-24
+tags: [console]
+---
+
 # RFC — `sandbox-console`: a Pareto pane to inspect, drive and demo agent-sandbox
 
 | | |
@@ -374,3 +382,9 @@ Build four things. Link three. Build nothing else.
 | 110 pods, 6 vCPU, 15.5 GiB | `kubectl get node fedora -o jsonpath='{.status.allocatable}'` |
 | 8 of 11 LB addresses in use | `kubectl get svc -A -o wide` |
 | default-deny is template-only | `research/experiments/01-k3s-sandbox-demo.md` §H4 caveat |
+
+---
+
+## Where this sits
+
+- Collection: [experiments](../README.md)

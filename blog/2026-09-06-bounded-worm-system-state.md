@@ -14,6 +14,8 @@ tags:
   - vector
   - elixir
   - argocd
+kind: narrative
+
 ---
 
 # Bounded Worm system: architecture and implementation state
@@ -111,3 +113,9 @@ would show only the executor rather than individual worms. Per-worm network
 visibility is the more important property for this experiment.
 
 Decision: build bounded Lua/Wasm workers as individual Pods, with Go controlling replication, Vector carrying samples, and Elixir calculating regression.
+
+---
+
+## Where this sits
+
+- Collection: [experiments](../README.md)

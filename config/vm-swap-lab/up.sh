@@ -13,7 +13,12 @@ set -euo pipefail
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
-BASE_IMAGE_URL="${BASE_IMAGE_URL:-https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-amd64.img}"
+# Fedora Cloud Base 44, not Ubuntu: the guest must have a kernel built with
+# CONFIG_ZRAM_MULTI_COMP, and Ubuntu ships it disabled in every release checked
+# (noble 6.8 and plucky 6.14 annotations: amd64 'n'). Fedora 44 enables it, so
+# recomp_algorithm / recompress / idle exist and the two-layer test is possible.
+# Filename is pinned; bump it with the release.
+BASE_IMAGE_URL="${BASE_IMAGE_URL:-https://download.fedoraproject.org/pub/fedora/linux/releases/44/Cloud/x86_64/images/Fedora-Cloud-Base-Generic-44-1.7.x86_64.qcow2}"
 MEM_MB="${MEM_MB:-3072}"
 # One vCPU per VM by default: the arms are meant to be a fleet of small boxes,
 # not one big one. Note that at 1 vCPU the CPU wall lands at ~3-4 concurrent
@@ -82,10 +87,20 @@ warning: /dev/kvm is not available in this shell.
 EOF
 fi
 
+# The cached base image is keyed to the URL that produced it. Without this, the
+# 593 MB Ubuntu image already on disk would be reused after the switch to Fedora
+# and the guest would silently stay Ubuntu — the exact kernel that cannot do
+# recompression.
+image_stamp="${base_image}.url"
+if [[ -f "${base_image}" && -f "${image_stamp}" && "$(cat "${image_stamp}")" != "${BASE_IMAGE_URL}" ]]; then
+  echo "base image is from a different URL; discarding it"
+  rm -f "${base_image}"
+fi
 if [[ ! -f "${base_image}" ]]; then
   echo "downloading ${BASE_IMAGE_URL}"
   curl -fL --retry 3 -o "${base_image}.part" "${BASE_IMAGE_URL}"
   mv "${base_image}.part" "${base_image}"
+  printf '%s\n' "${BASE_IMAGE_URL}" > "${image_stamp}"
 fi
 
 if [[ ! -f "${ssh_key}" ]]; then
@@ -173,7 +188,7 @@ echo "waiting for ssh (serial log: ${serial_log})"
 for _ in $(seq 1 120); do
   if ssh -i "${ssh_key}" -p "${SSH_PORT}" -o StrictHostKeyChecking=no \
     -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o ConnectTimeout=5 \
-    "ubuntu@127.0.0.1" true 2>/dev/null; then
+    "${SSH_USER}@127.0.0.1" true 2>/dev/null; then
     break
   fi
   sleep 5

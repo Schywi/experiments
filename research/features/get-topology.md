@@ -1,3 +1,10 @@
+---
+title: 'Feature (proposed): `get_topology` / `get_topology_snapshot`'
+kind: feature
+state: hypothesis
+tags: [assistant, topology]
+---
+
 # Feature (proposed): `get_topology` / `get_topology_snapshot`
 
 > Status: **implemented** (branch `native-k3s-gpu-models`). Both `get_topology`
@@ -95,3 +102,9 @@ Build **one** bounded `get_topology` from the **Kubernetes API** first (live
 structure). Keep Cilium/Hubble as the network layer (already partly wired). Treat
 the Cartography snapshot as a **separate, later** tool — and only if it earns its
 keep against the live API.
+
+---
+
+## Where this sits
+
+- Collection: [features](README.md)

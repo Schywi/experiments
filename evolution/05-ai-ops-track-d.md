@@ -1,3 +1,28 @@
+---
+title: 'Phase 5 — AI operations assistant, Track D (2026-10-06 → 2026-10-12)'
+kind: narrative
+phase: 5
+commits:
+  - aaf6f81
+  - 8060efd
+  - ddb9519
+  - 74af8bf
+  - db846fa
+  - 70ee10b
+  - 8be6c07
+  - 5586cc0
+  - fccf051
+  - 9f12797
+  - ee52e12
+  - 2b9e126
+  - e6a4852
+  - 0f921e1
+  - b945699
+  - b6a6581
+  - e415607
+  - 49a6436
+---
+
 # Phase 5 — AI operations assistant, Track D (2026-10-06 → 2026-10-12)
 
 **Branch:** M1–M3 on `trackc` (`aaf6f81`, `8060efd`, `ddb9519`), M5–M10 on

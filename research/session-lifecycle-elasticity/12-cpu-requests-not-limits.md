@@ -1,3 +1,11 @@
+---
+title: 'CPU: requests yes, limits no'
+kind: experiment
+state: validated
+date: 2026-10-29
+tags: [session-lifecycle]
+---
+
 # Note 12 — CPU: requests yes, limits no
 
 | | |
@@ -118,3 +126,9 @@ either the chart was not re-synced or another object sets it.
 - `config/sandbox/values.yaml` — comment above the `resources` block.
 - `apps/session-lab/README.md` — the report prints requests and limits together with the throttle
   count, which is the signal that a limit is biting.
+
+---
+
+## Where this sits
+
+- Collection: [session-lifecycle-elasticity](README.md)

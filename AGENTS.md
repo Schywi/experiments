@@ -69,6 +69,9 @@ The top level stays intentionally small and its meaning is fixed:
   per-phase narrative and commit evidence.
 - `/benchmark` — measured experiments with recorded baseline commits.
 - `/blog` — long-form write-ups.
+- `/site` — the renderer that publishes the four documentation trees above to
+  GitHub Pages (Quartz). It owns configuration only; the notes stay where they
+  are and `scripts/site-sync.sh` assembles a build tree from them.
 - `/scripts` — host-side helpers.
 - `/docs` and `/cv` — **gitignored**, machine-specific and personal material.
 - `ROADMAP.md`, `README.md`, `Tiltfile*` and `start.sh` at the root.
