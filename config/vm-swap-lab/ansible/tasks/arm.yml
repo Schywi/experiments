@@ -34,10 +34,15 @@
       changed_when: true
       failed_when: boot.rc != 0
 
-    - name: "{{ arm_cfg.name }}: swap + kubelet verification"
+    # First thing after boot: is this the guest we think it is? For a recompression
+    # arm, REQUIRE_MULTICOMP makes this fail in seconds when the kernel cannot do
+    # it, instead of spending a boot + sandbox install + kubelet restart first.
+    - name: "{{ arm_cfg.name }}: guest facts and swap verification"
       ansible.builtin.command:
         cmd: ./verify-swap.sh
         chdir: "{{ lab_dir }}"
+      environment:
+        REQUIRE_MULTICOMP: "{{ '1' if arm_cfg.recomp_algo | default('') else '0' }}"
       register: verified
       changed_when: false
       failed_when: false

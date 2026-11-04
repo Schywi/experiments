@@ -49,6 +49,19 @@ packages:
   - util-linux
 
 write_files:
+  # Fedora does not load these at boot; k3s needs both (overlayfs for the snapshotter,
+  # br_netfilter so bridged pod traffic is seen by iptables/nftables).
+  - path: /etc/modules-load.d/k3s.conf
+    permissions: "0644"
+    content: |
+      overlay
+      br_netfilter
+  - path: /etc/sysctl.d/90-k3s.conf
+    permissions: "0644"
+    content: |
+      net.bridge.bridge-nf-call-iptables = 1
+      net.bridge.bridge-nf-call-ip6tables = 1
+      net.ipv4.ip_forward = 1
   - path: /usr/local/bin/setup-swap.sh
     permissions: "0755"
     content: |
@@ -98,10 +111,12 @@ write_files:
           echo "swap: zram ${zram_mb}M ${zram_algo} on ${dev}" >/var/tmp/swap-mode
           ;;
         disk)
-          fallocate -l "${swap_mb}M" /swapfile
+          rm -f /swapfile
+          fallocate -l "${swap_mb}M" /swapfile 2>/dev/null || \
+            dd if=/dev/zero of=/swapfile bs=1M count="${swap_mb}" status=none
           chmod 600 /swapfile
           mkswap /swapfile >/dev/null
-          swapon /swapfile
+          swapon /swapfile || { echo "swapon /swapfile failed" >&2; exit 1; }
           grep -q '^/swapfile' /etc/fstab || echo '/swapfile none swap sw 0 0' >>/etc/fstab
           echo "swap: disk ${swap_mb}M (no zram)" >/var/tmp/swap-mode
           ;;
@@ -171,7 +186,11 @@ write_files:
 
       INSTALL_K3S_SKIP_DOWNLOAD="${skip}" \
       INSTALL_K3S_CHANNEL=stable \
-      INSTALL_K3S_EXEC='--kubelet-arg=fail-swap-on=false --write-kubeconfig-mode=0644' \
+      # --selinux=false is explicit on purpose: leaving it to auto-detection makes
+      # k3s enable SELinux labelling on a Fedora guest, which expects the
+      # k3s-selinux rpm. That rpm cannot be fetched airgapped, so the lab turns the
+      # integration off rather than half-enabling it.
+      INSTALL_K3S_EXEC='--kubelet-arg=fail-swap-on=false --write-kubeconfig-mode=0644 --selinux=false' \
         /tmp/install-k3s.sh
 
       # Drop the browser bundle once containerd has it. Everything in
@@ -194,6 +213,8 @@ runcmd:
   # so permissive is set before the installer runs (it then skips the rpm).
   - [sh, -c, "sed -i 's/^SELINUX=.*/SELINUX=permissive/' /etc/selinux/config; setenforce 0 2>/dev/null || true"]
   - [sh, -c, "systemctl disable --now firewalld 2>/dev/null || true"]
+  # modules-load.d/sysctl.d only take effect at boot; load them now for this boot.
+  - [sh, -c, "modprobe overlay 2>/dev/null || true; modprobe br_netfilter 2>/dev/null || true; sysctl --system >/dev/null 2>&1 || true"]
   # swap first, so the kubelet starts with the device it is meant to use
   - [sh, /usr/local/bin/setup-swap.sh]
   - [sh, /usr/local/bin/install-k3s.sh]

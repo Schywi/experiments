@@ -26,6 +26,37 @@ expected="${1:-}"
 namespace="${NAMESPACE:-sandbox-demo}"
 json="${script_dir}/serial.log.configz.json"
 
+# Guest facts first. Every regression in this lab so far was a wrong guest
+# assumption (Ubuntu image reused, zram module missing, user in a group Fedora
+# does not have), and each one only surfaced minutes later as "pool did not fill"
+# or a table full of failures. Printing the distro, kernel and zram capabilities
+# here means the first verification after boot answers "is this the machine I
+# think it is" in eight seconds.
+echo "== guest =="
+vm_ssh '. /etc/os-release 2>/dev/null && echo "distro: ${PRETTY_NAME:-unknown}"
+        echo "kernel: $(uname -r)"
+        if [ -e /sys/block/zram0/recomp_algorithm ]; then
+          echo "multi-comp: yes  (recomp_algorithm present)"
+        else
+          echo "multi-comp: NO   (no recomp_algorithm: CONFIG_ZRAM_MULTI_COMP is off)"
+        fi
+        [ -e /sys/block/zram0/comp_algorithm ] && echo "primary algorithms: $(cat /sys/block/zram0/comp_algorithm)"'
+
+# REQUIRE_MULTICOMP=1 makes a recompression arm fail here, at boot, instead of
+# after install + kubelet + a ladder that would only prove the arm duplicates the
+# control.
+if [[ "${REQUIRE_MULTICOMP:-0}" == "1" ]]; then
+  if ! vm_ssh 'test -e /sys/block/zram0/recomp_algorithm'; then
+    echo >&2
+    echo "FAIL: this arm needs zram recompression but the guest has no" >&2
+    echo "      /sys/block/zram0/recomp_algorithm (CONFIG_ZRAM_MULTI_COMP is off)." >&2
+    echo "      Ubuntu ships it off in every release checked (noble 6.8, plucky 6.14:" >&2
+    echo "      amd64 'n'). Fedora 44 builds it in ('=y'). Fix the image, not the arm." >&2
+    exit 1
+  fi
+fi
+
+echo
 echo "== swap backing =="
 vm_ssh 'cat /var/tmp/swap-mode 2>/dev/null || echo "swap: (not recorded)"; echo; swapon --show 2>/dev/null || true; echo; cat /proc/swaps; if command -v zramctl >/dev/null && [ -e /dev/zram0 ]; then echo; zramctl /dev/zram0; awk "{print \"  achieved ratio: \" \$2/\$3 \" : 1 (data/compr)\"}" <(zramctl --noheadings --bytes --output DATA,COMPR /dev/zram0) 2>/dev/null || true; fi'
 

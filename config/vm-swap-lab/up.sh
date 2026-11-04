@@ -196,15 +196,32 @@ qemu-system-x86_64 \
   -display none -serial file:"${serial_log}" \
   -pidfile "${pid_file}" -daemonize
 
-echo "waiting for ssh (serial log: ${serial_log})"
+echo "waiting for ssh as ${SSH_USER} (serial log: ${serial_log})"
+ssh_up=0
 for _ in $(seq 1 120); do
   if ssh -i "${ssh_key}" -p "${SSH_PORT}" -o StrictHostKeyChecking=no \
     -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o ConnectTimeout=5 \
     "${SSH_USER}@127.0.0.1" true 2>/dev/null; then
+    ssh_up=1
     break
   fi
   sleep 5
 done
+
+# Never fall through to "waiting for k3s" if ssh never answered: that produced
+# "node did not become Ready within 300s" for faults that have nothing to do with
+# k3s — a wrong SSH user, a cloud-init user that failed to be created, or an image
+# that is not the one we think.
+if [[ "${ssh_up}" -ne 1 ]]; then
+  echo "ssh to ${SSH_USER}@127.0.0.1:${SSH_PORT} never succeeded (10 min)" >&2
+  echo "likely causes, in order:" >&2
+  echo "  * the guest user is not ${SSH_USER} (Fedora cloud images use fedora, Ubuntu ubuntu)" >&2
+  echo "  * cloud-init failed to create the user (wrong sudo group, bad seed)" >&2
+  echo "  * the cached base image is not the one in BASE_IMAGE_URL" >&2
+  echo "last lines of the serial console:" >&2
+  tail -25 "${serial_log}" >&2 2>/dev/null || true
+  exit 1
+fi
 
 echo "waiting for k3s"
 # 180 × 5 s = 15 min. The guest has to import the airgap image bundle (~250 MB)
