@@ -1,0 +1,400 @@
+{
+  "run_id": "cap-swap-on-7-r2-20261104T191521Z",
+  "config": {
+    "run_id": "cap-swap-on-7-r2-20261104T191521Z",
+    "sessions": 21,
+    "rate": 0.35,
+    "fixed_arrival": false,
+    "mix": [
+      {
+        "label": "20s",
+        "hold_ns": 20000000000,
+        "count": 21
+      }
+    ],
+    "policy": "destroy",
+    "class": "normal",
+    "namespace": "sandbox-demo",
+    "pool": "browser-pool",
+    "template": "",
+    "pool_replicas": 7,
+    "workers": 0,
+    "contexts_per_browser": 1,
+    "cdp_transport": "http",
+    "cdp_port": 9224,
+    "overload_factor": 1,
+    "arrival_window_ns": 60000000000,
+    "sample_seconds": 2,
+    "out_dir": "/home/ubuntu/runs",
+    "dry_run": false
+  },
+  "started_ns": 1793819865392365298,
+  "ended_ns": 1793819940944343679,
+  "planned_sessions": 21,
+  "stored_sessions": 21,
+  "outcomes": {
+    "success": 21
+  },
+  "arrival_rate": 0.35,
+  "offered_concurrency": 7,
+  "concurrency": {
+    "mean": 5.759812220535508,
+    "peak": 11
+  },
+  "queue_wait_ms": {
+    "count": 21,
+    "p50": 369.699913,
+    "p95": 973.873686,
+    "p99": 973.873686,
+    "max": 1170.934323
+  },
+  "acquire_ms": {
+    "count": 21,
+    "p50": 514.156905,
+    "p95": 1098.384367,
+    "p99": 1098.384367,
+    "max": 1203.89751
+  },
+  "hold_ms": {
+    "count": 21,
+    "p50": 20055.502914,
+    "p95": 20125.911073,
+    "p99": 20125.911073,
+    "max": 20432.887217
+  },
+  "reset_ms": {
+    "count": 0,
+    "p50": 0,
+    "p95": 0,
+    "p99": 0,
+    "max": 0
+  },
+  "release_ms": {
+    "count": 21,
+    "p50": 38.660627,
+    "p95": 542.26641,
+    "p99": 542.26641,
+    "max": 762.116933
+  },
+  "resume_ms": {
+    "count": 0,
+    "p50": 0,
+    "p95": 0,
+    "p99": 0,
+    "max": 0
+  },
+  "launch_types": {
+    "warm": 21
+  },
+  "buckets": {
+    "20s": {
+      "sessions": 21,
+      "ok": 21,
+      "failed": 0,
+      "queue_p50_ms": 0,
+      "hold_p50_ms": 0
+    }
+  },
+  "resources": {
+    "sessions_with_samples": 21,
+    "cpu_core_seconds_total": 112.73573099999999,
+    "cpu_core_seconds_p50": 4.95939,
+    "cpu_core_seconds_max": 7.364321,
+    "mem_peak_p50_mib": 224.40234375,
+    "mem_peak_max_mib": 298.8828125,
+    "mem_working_set_peak_max_mib": 257.3359375,
+    "throttled_sessions": 0,
+    "oom_kills": 0,
+    "refault_sessions": 21,
+    "swap_peak_p50_mib": 45.7109375,
+    "swap_peak_max_mib": 63.99609375
+  },
+  "instances": {
+    "total": 21,
+    "max_sessions_per_instance": 1,
+    "mean_sessions_per_instance": 1,
+    "rebuild_p50_ms": 0,
+    "boot_cpu_peak_p50": 0,
+    "boot_cpu_peak_max": 0
+  },
+  "host_memory": {
+    "samples": 37,
+    "total_mib": 3915.17578125,
+    "min_available_mib": 165.359375,
+    "min_at_ns": 1793819894082493585,
+    "min_ratio_pct": 4.22354919010062,
+    "swap_used_mib": 511.99609375
+  },
+  "template_limits": {
+    "container": "browser",
+    "cpu_request_milli": 100,
+    "cpu_limit_milli": 0,
+    "mem_request_mib": 256,
+    "mem_limit_mib": 768
+  },
+  "autoscaler": {
+    "hpa_count": 0,
+    "keda_crd_present": false
+  },
+  "replicas": [
+    {
+      "at_ns": 1793819865415820795,
+      "desired": 7,
+      "ready": 7,
+      "note": "preflight"
+    },
+    {
+      "at_ns": 1793819865487434035,
+      "desired": 7,
+      "ready": 7,
+      "note": "resize"
+    },
+    {
+      "at_ns": 1793819867780748991,
+      "desired": 7,
+      "ready": 6
+    },
+    {
+      "at_ns": 1793819869777404307,
+      "desired": 7,
+      "ready": 7
+    },
+    {
+      "at_ns": 1793819871778202922,
+      "desired": 7,
+      "ready": 7
+    },
+    {
+      "at_ns": 1793819873779498054,
+      "desired": 7,
+      "ready": 7
+    },
+    {
+      "at_ns": 1793819875780035609,
+      "desired": 7,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793819877803642413,
+      "desired": 7,
+      "ready": 6
+    },
+    {
+      "at_ns": 1793819879793772459,
+      "desired": 7,
+      "ready": 4
+    },
+    {
+      "at_ns": 1793819881827669922,
+      "desired": 7,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793819883859824299,
+      "desired": 7,
+      "ready": 3
+    },
+    {
+      "at_ns": 1793819886083045174,
+      "desired": 7,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793819887868852801,
+      "desired": 7,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793819889873210269,
+      "desired": 7,
+      "ready": 4
+    },
+    {
+      "at_ns": 1793819892090105908,
+      "desired": 7,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793819894081980009,
+      "desired": 7,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793819895880965177,
+      "desired": 7,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793819897784455269,
+      "desired": 7,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793819899811287001,
+      "desired": 7,
+      "ready": 4
+    },
+    {
+      "at_ns": 1793819901783790948,
+      "desired": 7,
+      "ready": 4
+    },
+    {
+      "at_ns": 1793819903779661419,
+      "desired": 7,
+      "ready": 3
+    },
+    {
+      "at_ns": 1793819905791405944,
+      "desired": 7,
+      "ready": 3
+    },
+    {
+      "at_ns": 1793819907817842545,
+      "desired": 7,
+      "ready": 3
+    },
+    {
+      "at_ns": 1793819909824062623,
+      "desired": 7,
+      "ready": 3
+    },
+    {
+      "at_ns": 1793819911802943125,
+      "desired": 7,
+      "ready": 1
+    },
+    {
+      "at_ns": 1793819914384114047,
+      "desired": 7,
+      "ready": 1
+    },
+    {
+      "at_ns": 1793819916063514087,
+      "desired": 7,
+      "ready": 2
+    },
+    {
+      "at_ns": 1793819917782593397,
+      "desired": 7,
+      "ready": 2
+    },
+    {
+      "at_ns": 1793819919862339222,
+      "desired": 7,
+      "ready": 2
+    },
+    {
+      "at_ns": 1793819921779328762,
+      "desired": 7,
+      "ready": 2
+    },
+    {
+      "at_ns": 1793819924673266717,
+      "desired": 7,
+      "ready": 2
+    },
+    {
+      "at_ns": 1793819925777802561,
+      "desired": 7,
+      "ready": 2
+    },
+    {
+      "at_ns": 1793819929924380693,
+      "desired": 7,
+      "ready": 2
+    },
+    {
+      "at_ns": 1793819931778134712,
+      "desired": 7,
+      "ready": 2
+    },
+    {
+      "at_ns": 1793819933777281719,
+      "desired": 7,
+      "ready": 2
+    },
+    {
+      "at_ns": 1793819935777879070,
+      "desired": 7,
+      "ready": 3
+    },
+    {
+      "at_ns": 1793819937783274230,
+      "desired": 7,
+      "ready": 3
+    },
+    {
+      "at_ns": 1793819939782258682,
+      "desired": 7,
+      "ready": 6
+    }
+  ],
+  "elasticity": "not tested: the workload did not exceed what the platform served",
+  "next": "raise --overload-factor and repeat until the platform refuses, which is where the boundary is",
+  "arrival_window_s": 51.613980323,
+  "admission_ms": {
+    "count": 21,
+    "p50": 0.003257,
+    "p95": 0.008824,
+    "p99": 0.008824,
+    "max": 0.009699
+  },
+  "per_session": {
+    "task_ms": {
+      "count": 0,
+      "p50": 0,
+      "p95": 0,
+      "p99": 0,
+      "max": 0
+    },
+    "script_ms": {
+      "count": 0,
+      "p50": 0,
+      "p95": 0,
+      "p99": 0,
+      "max": 0
+    },
+    "js_heap_mib": {
+      "count": 0,
+      "p50": 0,
+      "p95": 0,
+      "p99": 0,
+      "max": 0
+    },
+    "cpu_core_seconds": {
+      "count": 21,
+      "p50": 4.95939,
+      "p95": 6.899416,
+      "p99": 6.899416,
+      "max": 7.364321
+    },
+    "mem_mib": {
+      "count": 21,
+      "p50": 224.40234375,
+      "p95": 262.375,
+      "p99": 262.375,
+      "max": 298.8828125
+    }
+  },
+  "node_cpu": {
+    "total_cores": 4,
+    "peak_cores": 1.7987124276285857,
+    "mean_cores": 1.6810326190038212,
+    "samples": 37
+  },
+  "shared_sessions": 0,
+  "peak_waiting_sessions": 2,
+  "peak_in_flight_sessions": 11,
+  "cleanup_failures": 0,
+  "acquire_by_launch_type": {
+    "warm": {
+      "count": 21,
+      "p50": 514.156905,
+      "p95": 1098.384367,
+      "p99": 1098.384367,
+      "max": 1203.89751
+    }
+  },
+  "active_at_cutoff": 0
+}

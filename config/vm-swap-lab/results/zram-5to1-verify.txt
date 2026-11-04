@@ -1,0 +1,28 @@
+== swap backing ==
+swap: zram 512M zstd on /dev/zram0
+
+NAME       TYPE      SIZE USED PRIO
+/dev/zram0 partition 512M 768K   -2
+
+Filename				Type		Size		Used		Priority
+/dev/zram0                              partition	524284		768		-2
+
+NAME       ALGORITHM DISKSIZE DATA COMPR TOTAL STREAMS MOUNTPOINT
+/dev/zram0 zstd          512M  88K 12.6K  316K       4 [SWAP]
+
+== kubelet running config (/configz) ==
+failSwapOn=False memorySwap.swapBehavior=LimitedSwap
+
+== pod cgroups (browser containers are the scopes with a memory limit) ==
+  kubepods-burstable-podeab30f3e_e880_414e_84bc_e67c89d72d04.slice pod swap.max=max
+    container mem.max=max swap.max=max
+    container mem.max=805306368 swap.max=0
+  kubepods-burstable-pod00ae17d6_ac2b_4fed_949f_1efbaf2e2f3b.slice pod swap.max=max
+    container mem.max=max swap.max=max
+    container mem.max=805306368 swap.max=0
+  kubepods-burstable-poda09fb797_0894_40fc_8757_7ff797efe7c2.slice pod swap.max=max
+    container mem.max=max swap.max=max
+    container mem.max=805306368 swap.max=0
+  kubepods-burstable-podc9a53f96_5f34_49d3_8cc6_1a3cb0010db2.slice pod swap.max=max
+    container mem.max=805306368 swap.max=0
+    container mem.max=max swap.max=max

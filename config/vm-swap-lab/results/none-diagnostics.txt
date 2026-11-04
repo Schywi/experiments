@@ -1,0 +1,15 @@
+== arm ==
+none
+
+== swap mode recorded in the guest ==
+swap: none
+
+== node / resources ==
+4
+               total        used        free      shared  buff/cache   available
+Mem:            3915        3914          86         246         321           0
+Swap:              0           0           0
+Filename				Type		Size		Used		Priority
+
+== node conditions ==
+Unable to connect to the server: net/http: TLS handshake timeout

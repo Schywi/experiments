@@ -1,0 +1,22 @@
+== swap backing ==
+swap: none
+
+
+Filename				Type		Size		Used		Priority
+
+== kubelet running config (/configz) ==
+failSwapOn=False memorySwap.swapBehavior=LimitedSwap
+
+== pod cgroups (browser containers are the scopes with a memory limit) ==
+  kubepods-burstable-pod6dc590d4_7931_4742_951e_816f53e1f0f4.slice pod swap.max=max
+    container mem.max=805306368 swap.max=0
+    container mem.max=max swap.max=max
+  kubepods-burstable-podb52a7e15_b3b9_4bf3_a940_f713370e6f52.slice pod swap.max=max
+    container mem.max=max swap.max=max
+    container mem.max=805306368 swap.max=0
+  kubepods-burstable-pod4aadeebd_9a9d_4007_a858_bbb39a83afd0.slice pod swap.max=max
+    container mem.max=max swap.max=max
+    container mem.max=805306368 swap.max=0
+  kubepods-burstable-pod620ac2f8_b317_45ec_ac57_f66ceee08c21.slice pod swap.max=max
+    container mem.max=max swap.max=max
+    container mem.max=805306368 swap.max=0

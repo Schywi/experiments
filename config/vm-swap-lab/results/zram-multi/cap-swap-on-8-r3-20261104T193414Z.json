@@ -1,0 +1,441 @@
+{
+  "run_id": "cap-swap-on-8-r3-20261104T193414Z",
+  "config": {
+    "run_id": "cap-swap-on-8-r3-20261104T193414Z",
+    "sessions": 24,
+    "rate": 0.4,
+    "fixed_arrival": false,
+    "mix": [
+      {
+        "label": "20s",
+        "hold_ns": 20000000000,
+        "count": 24
+      }
+    ],
+    "policy": "destroy",
+    "class": "normal",
+    "namespace": "sandbox-demo",
+    "pool": "browser-pool",
+    "template": "",
+    "pool_replicas": 8,
+    "workers": 0,
+    "contexts_per_browser": 1,
+    "cdp_transport": "http",
+    "cdp_port": 9224,
+    "overload_factor": 1,
+    "arrival_window_ns": 60000000000,
+    "sample_seconds": 2,
+    "out_dir": "/home/ubuntu/runs",
+    "dry_run": false
+  },
+  "started_ns": 1793821623698162665,
+  "ended_ns": 1793821809505832354,
+  "planned_sessions": 24,
+  "stored_sessions": 24,
+  "outcomes": {
+    "acquisition_failed": 16,
+    "destroy_failed": 1,
+    "success": 7
+  },
+  "arrival_rate": 0.4,
+  "offered_concurrency": 8,
+  "concurrency": {
+    "mean": 1.0260820360029155,
+    "peak": 7
+  },
+  "queue_wait_ms": {
+    "count": 8,
+    "p50": 85.640762,
+    "p95": 504.617615,
+    "p99": 504.617615,
+    "max": 118843.905007
+  },
+  "acquire_ms": {
+    "count": 8,
+    "p50": 107.410416,
+    "p95": 555.850196,
+    "p99": 555.850196,
+    "max": 119916.233352
+  },
+  "hold_ms": {
+    "count": 8,
+    "p50": 20065.863137,
+    "p95": 20094.341648,
+    "p99": 20094.341648,
+    "max": 20216.134732
+  },
+  "reset_ms": {
+    "count": 0,
+    "p50": 0,
+    "p95": 0,
+    "p99": 0,
+    "max": 0
+  },
+  "release_ms": {
+    "count": 7,
+    "p50": 63026.026323,
+    "p95": 67847.980843,
+    "p99": 67847.980843,
+    "max": 70705.974267
+  },
+  "resume_ms": {
+    "count": 0,
+    "p50": 0,
+    "p95": 0,
+    "p99": 0,
+    "max": 0
+  },
+  "launch_types": {
+    "warm": 8
+  },
+  "buckets": {
+    "20s": {
+      "sessions": 24,
+      "ok": 7,
+      "failed": 17,
+      "queue_p50_ms": 0,
+      "hold_p50_ms": 0
+    }
+  },
+  "resources": {
+    "sessions_with_samples": 8,
+    "cpu_core_seconds_total": 104.894859,
+    "cpu_core_seconds_p50": 10.433073,
+    "cpu_core_seconds_max": 20.964277,
+    "mem_peak_p50_mib": 202.875,
+    "mem_peak_max_mib": 257.7734375,
+    "mem_working_set_peak_max_mib": 238.7734375,
+    "throttled_sessions": 0,
+    "oom_kills": 0,
+    "refault_sessions": 8,
+    "swap_peak_p50_mib": 63.6640625,
+    "swap_peak_max_mib": 64
+  },
+  "instances": {
+    "total": 8,
+    "max_sessions_per_instance": 1,
+    "mean_sessions_per_instance": 0.875,
+    "rebuild_p50_ms": 0,
+    "boot_cpu_peak_p50": 0,
+    "boot_cpu_peak_max": 0
+  },
+  "host_memory": {
+    "samples": 45,
+    "total_mib": 3915.17578125,
+    "min_available_mib": 32.4453125,
+    "min_at_ns": 1793821726420583552,
+    "min_ratio_pct": 0.828706405862604,
+    "swap_used_mib": 511.9921875
+  },
+  "template_limits": {
+    "container": "browser",
+    "cpu_request_milli": 100,
+    "cpu_limit_milli": 0,
+    "mem_request_mib": 256,
+    "mem_limit_mib": 768
+  },
+  "autoscaler": {
+    "hpa_count": 0,
+    "keda_crd_present": false
+  },
+  "replicas": [
+    {
+      "at_ns": 1793821623730245786,
+      "desired": 8,
+      "ready": 8,
+      "note": "preflight"
+    },
+    {
+      "at_ns": 1793821623811021671,
+      "desired": 8,
+      "ready": 8,
+      "note": "resize"
+    },
+    {
+      "at_ns": 1793821626324737689,
+      "desired": 8,
+      "ready": 7
+    },
+    {
+      "at_ns": 1793821628324054645,
+      "desired": 8,
+      "ready": 7
+    },
+    {
+      "at_ns": 1793821630323525606,
+      "desired": 8,
+      "ready": 8
+    },
+    {
+      "at_ns": 1793821632321859057,
+      "desired": 8,
+      "ready": 8
+    },
+    {
+      "at_ns": 1793821634324235903,
+      "desired": 8,
+      "ready": 8
+    },
+    {
+      "at_ns": 1793821636325003809,
+      "desired": 8,
+      "ready": 8
+    },
+    {
+      "at_ns": 1793821638325308549,
+      "desired": 8,
+      "ready": 8
+    },
+    {
+      "at_ns": 1793821640326188672,
+      "desired": 8,
+      "ready": 6
+    },
+    {
+      "at_ns": 1793821642604462672,
+      "desired": 8,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793821644977382768,
+      "desired": 8,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793821717386375966,
+      "desired": 8,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793821723118265369,
+      "desired": 8,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793821726419487375,
+      "desired": 8,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793821727050453933,
+      "desired": 8,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793821728378729547,
+      "desired": 8,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793821730343280538,
+      "desired": 8,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793821732322947164,
+      "desired": 8,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793821734324972899,
+      "desired": 8,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793821736324407633,
+      "desired": 8,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793821738324255988,
+      "desired": 8,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793821740321976127,
+      "desired": 8,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793821742322829524,
+      "desired": 8,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793821744322483607,
+      "desired": 8,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793821746324722068,
+      "desired": 8,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793821748322372770,
+      "desired": 8,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793821750325682170,
+      "desired": 8,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793821752329337193,
+      "desired": 8,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793821754325776264,
+      "desired": 8,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793821756321332226,
+      "desired": 8,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793821758323955290,
+      "desired": 8,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793821760321844514,
+      "desired": 8,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793821762321038048,
+      "desired": 8,
+      "ready": 4
+    },
+    {
+      "at_ns": 1793821764323607480,
+      "desired": 8,
+      "ready": 4
+    },
+    {
+      "at_ns": 1793821766324588745,
+      "desired": 8,
+      "ready": 8
+    },
+    {
+      "at_ns": 1793821768339802487,
+      "desired": 8,
+      "ready": 8
+    },
+    {
+      "at_ns": 1793821770561275011,
+      "desired": 8,
+      "ready": 8
+    },
+    {
+      "at_ns": 1793821772321778468,
+      "desired": 8,
+      "ready": 8
+    },
+    {
+      "at_ns": 1793821774414934624,
+      "desired": 8,
+      "ready": 8
+    },
+    {
+      "at_ns": 1793821777624845530,
+      "desired": 8,
+      "ready": 8
+    },
+    {
+      "at_ns": 1793821780640766208,
+      "desired": 8,
+      "ready": 8
+    },
+    {
+      "at_ns": 1793821783094331063,
+      "desired": 8,
+      "ready": 8
+    },
+    {
+      "at_ns": 1793821786276567694,
+      "desired": 8,
+      "ready": 8
+    },
+    {
+      "at_ns": 1793821787970608170,
+      "desired": 8,
+      "ready": 8
+    }
+  ],
+  "first_boundary": "destroy_failed at session 1: release: delete claim sandbox-demo/lab-cap-swap-on-8-r3-20261104t193414z-1: sandboxclaims.extensions.agents.x-k8s.io \"lab-cap-swap-on-8-r3-20261104t193414z-1\" not found",
+  "boundary_evidence": [
+    "bucket 20s, instance lab-cap-swap-on-8-r3-20261104t193414z-1"
+  ],
+  "elasticity": "exceeded: see first_boundary",
+  "next": "repeat with a lower arrival rate to confirm the boundary is repeatable, then re-run at this rate after changing the constraint above",
+  "arrival_window_s": 39.413059402,
+  "admission_ms": {
+    "count": 8,
+    "p50": 0.002854,
+    "p95": 0.006931,
+    "p99": 0.006931,
+    "max": 0.009932
+  },
+  "per_session": {
+    "task_ms": {
+      "count": 0,
+      "p50": 0,
+      "p95": 0,
+      "p99": 0,
+      "max": 0
+    },
+    "script_ms": {
+      "count": 0,
+      "p50": 0,
+      "p95": 0,
+      "p99": 0,
+      "max": 0
+    },
+    "js_heap_mib": {
+      "count": 0,
+      "p50": 0,
+      "p95": 0,
+      "p99": 0,
+      "max": 0
+    },
+    "cpu_core_seconds": {
+      "count": 8,
+      "p50": 10.433073,
+      "p95": 20.475833,
+      "p99": 20.475833,
+      "max": 20.964277
+    },
+    "mem_mib": {
+      "count": 8,
+      "p50": 202.875,
+      "p95": 254.91796875,
+      "p99": 254.91796875,
+      "max": 257.7734375
+    }
+  },
+  "node_cpu": {
+    "total_cores": 4,
+    "peak_cores": 2.279867941556142,
+    "mean_cores": 2.233852115128653,
+    "samples": 45
+  },
+  "shared_sessions": 0,
+  "peak_waiting_sessions": 17,
+  "peak_in_flight_sessions": 24,
+  "cleanup_failures": 1,
+  "acquire_by_launch_type": {
+    "warm": {
+      "count": 8,
+      "p50": 107.410416,
+      "p95": 555.850196,
+      "p99": 555.850196,
+      "max": 119916.233352
+    }
+  },
+  "active_at_cutoff": 0
+}

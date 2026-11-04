@@ -36,6 +36,13 @@ buildah-built image reaches k3s **without `sudo`**: the node pulls the image
 instead of importing it, because every containerd import path is root-owned.
 See `config/registry/README.md`.
 
+`config/vm-swap-lab/` is the one place here that installs k3s outside Docker: a
+throwaway QEMU VM with its own kubelet, used to measure `memorySwap.swapBehavior`
+against the Chromium sandbox without restarting the live node's kubelet (which
+would kill the `restartPolicy: Never` sandbox pods). It is invoked by hand,
+changes nothing in the k3d or native-k3s profiles, and `down.sh` deletes the VM.
+See `config/vm-swap-lab/README.md`.
+
 The scripts expect Docker, k3d, Helm, and kubectl. For the normal workflow,
 run the repository entrypoint:
 

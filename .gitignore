@@ -36,3 +36,6 @@ commit_message.sh
 
 # Handoff notes for a specialised agent; never published.
 handoff/
+
+# Local scratch
+.scratch-quartz/

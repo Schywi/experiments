@@ -1,0 +1,75 @@
+# One browser sandbox class, one warm pool. Nothing else.
+#
+# The resource shape is the one the repo already uses for this workload
+# (config/sandbox/values.yaml): request 256Mi, limit 768Mi. That makes the pod
+# Burstable, which is what kubelet's LimitedSwap hands a swap allowance to; a
+# Guaranteed pod (request == limit) would get NoSwap no matter what the kubelet
+# is set to. Do not "tidy" these two numbers into a single value.
+#
+# The image is upstream's published Chromium sandbox: it serves the DevTools
+# endpoint on 9222 and the probe below waits for it, which is the same
+# "Chrome ready" signal examples/gke-swap measures.
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: sandbox-demo
+---
+apiVersion: extensions.agents.x-k8s.io/v1beta1
+kind: SandboxTemplate
+metadata:
+  name: browser-tpl
+  namespace: sandbox-demo
+spec:
+  podTemplate:
+    metadata:
+      labels:
+        app: browser-sandbox
+    spec:
+      restartPolicy: Never
+      terminationGracePeriodSeconds: 1
+      containers:
+        - name: browser
+          image: us-central1-docker.pkg.dev/k8s-staging-images/agent-sandbox/chrome-sandbox:latest-main
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: cdp
+              containerPort: 9222
+          # Chromium binds DevTools to 127.0.0.1 and ignores
+          # --remote-debugging-address: this image ends up listening on
+          # 127.0.0.1:9222 with VNC on 0.0.0.0:5901. A httpGet probe runs from
+          # the kubelet against the *pod IP*, so it is refused forever and the
+          # warm pool never fills. The probe therefore runs inside the container
+          # against loopback, which is also a real CDP check: the image carries
+          # wget and no curl.
+          readinessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - wget -q -O- http://127.0.0.1:9222/json/version >/dev/null
+            periodSeconds: 2
+            # Not the default 1s: under swap pressure an exec probe spends its
+            # whole budget scheduling the shell, so a healthy browser is reported
+            # unready and "startup latency" measures the timeout instead.
+            timeoutSeconds: 3
+            # 150 × 2s = 5 minutes. On one vCPU a cold Chromium start takes
+            # minutes, and a shorter budget turns "still starting" into
+            # "no capacity".
+            failureThreshold: 150
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 768Mi
+---
+apiVersion: extensions.agents.x-k8s.io/v1beta1
+kind: SandboxWarmPool
+metadata:
+  name: browser-pool
+  namespace: sandbox-demo
+spec:
+  replicas: 4
+  sandboxTemplateRef:
+    name: browser-tpl

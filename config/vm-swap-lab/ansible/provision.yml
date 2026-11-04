@@ -1,0 +1,256 @@
+---
+# Three arms, one variable: how memory is backed.
+#
+#   1 vCPU · 2048 MiB · 6 GiB disk per VM · 512 MiB backing (25 % of RAM)
+#
+# Why 2048 MiB: k3s+kubelet+containerd measure ~1000 MiB on this image, so
+# anything less leaves no room for even one 300 MiB sandbox. 2048 leaves ~1050.
+# Why 512 MiB backing: a quarter of RAM is enough for an arm to cross the memory
+# wall without the backing itself hiding it.
+# Why 1 vCPU: as asked. Note what that means — one browser costs 0.26 core and
+# 232-300 MiB, so the arms differ in *how* they fail, not much in how many
+# sessions they hold. The latency columns are the substance here; the capacity
+# column is reported with that caveat attached.
+#
+# Usage:
+#   ansible-playbook provision.yml                    # all arms, sequential
+#   ansible-playbook provision.yml -e arm=zram        # one arm
+#   ansible-playbook provision.yml --tags provision   # boot+install only
+#   ansible-playbook provision.yml -e keep_vm=true    # leave the last VM up
+#   ./arms-report.sh                                  # latency/capacity table
+#
+# Ansible is assumed present; nothing here installs it.
+- name: session capacity arms
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    lab_dir: "{{ playbook_dir }}/.."
+    results_dir: "{{ lab_dir }}/results"
+    # 4 GiB and 12 GiB, not the 2048/6 first approved: measured, k3s+kubelet+
+    # containerd use ~1006 MiB, so at 2048 the pool could not fill at all
+    # (MemAvailable 73 MiB before a single session ran), and a 6 GiB root was
+    # evicted on ephemeral-storage the moment the k3s images landed
+    # (available 33 MiB → kubelet evicted the browsers). Both numbers come from
+    # the diagnostics of the failed arms, not from a sizing guideline.
+    # 4 vCPU: the host has 6 and only one VM runs at a time. More cores push the CPU
+    # wall (≈ vCPU / 0.26 cores per session) above the memory wall, which is the only
+    # wall swap can move — at 3 vCPU the two walls sat at ~11 and ~10 and the
+    # experiment kept measuring the one it cannot influence.
+    vm_cpus: 4
+    vm_mem_mb: 4096
+    vm_disk_gb: 12
+    # The harder run: start at the rung that actually broke last time (6) instead of
+    # spending three rungs re-proving 3-5, and hold longer so more pages get
+    # displaced before they are touched again. 8 is the ceiling the claim watch
+    # tolerates; above it the harness fails and it looks like a capacity boundary.
+    # Rungs 7 and 8 only: rung 6 held on every rep of both arms in the last two
+    # runs, so re-running it costs ~9 minutes per arm to re-prove known ground.
+    ladder: "7 8"
+    # Shorter window and hold shrink each run from ~2.7 to ~1.8 minutes without
+    # changing the offered concurrency: capacity.sh computes rate = rung / hold,
+    # so N replicas still see exactly N concurrent sessions.
+    hold: 20s
+    window: 60s
+    # One sample per rung cannot tell "held" from "got lucky": rung 6 of the
+    # no-swap arm measured 12 failed -> 27 failed -> 0 failed across three runs of
+    # identical configuration. Every rung is now repeated, and the report prints
+    # held k/N plus the spread instead of a single point.
+    repeats: 3
+    # Must match SANDBOX_VERSION in install-sandbox.sh and fetch-sandbox.sh; the
+    # preflight stat below checks that the cached file for this version exists.
+    sandbox_version: v1.0.7
+    sample_seconds: 2
+    # Explicit per-pod allowance: kubelet's own LimitedSwap number measured
+    # 133.9 MiB on a 4 GiB box and 0 MiB on a 2 GiB one, so it cannot be the
+    # experiment variable. 64 MiB per pod across a 4-pod rung = 256 MiB.
+    swap_per_pod: 67108864
+    # Surfaces the wait that capacity.sh already had as a hidden default.
+    ready_timeout: 300
+    # Two-layer compression knobs, passed to capacity.sh. Empty recomp_algo = no
+    # recompression pass (single-algorithm arms).
+    recomp_when: before
+    recomp_type: both
+    keep_vm: false
+    arm_name: ""
+
+    # One class per arm: `none` has no device, so its ladder runs swap-off; the
+    # zram arms run swap-on. The zram arms differ only in algorithm, and
+    # zram-multi adds a recompression pass to test the two-layer hypothesis:
+    # cheap primary on the fault path + dense secondary applied to stored pages.
+    # Only the two-layer arms run in this pass. The others are commented, not
+    # deleted: re-enable one and it works exactly as before.
+    # The control arm is the whole point — same primary as zram-multi, no
+    # recompression pass. Without it, any difference between zram-multi and
+    # zram-2to1/zram-5to1 is confounded with the primary algorithm, so the
+    # recompression effect itself cannot be attributed.
+    arms:
+      - name: zram-multi-ctl
+        swap_mode: zram
+        class: swap-on
+        zram_algo: lzo-rle
+        zram_mb: 512
+        swap_mb: 512
+        recomp_algo: ""
+      # The hypothesis arm: lzo-rle primary (cheap on the fault path) + zstd
+      # recompression of stored pages (density), pass run between rungs.
+      - name: zram-multi
+        swap_mode: zram
+        class: swap-on
+        zram_algo: lzo-rle
+        zram_mb: 512
+        swap_mb: 512
+        recomp_algo: zstd
+
+    #  - name: none
+    #    swap_mode: none
+    #    class: swap-off
+    #    zram_algo: lz4
+    #    zram_mb: 512
+    #    swap_mb: 512
+    #    recomp_algo: ""
+    #  - name: zram-2to1
+    #    swap_mode: zram
+    #    class: swap-on
+    #    zram_algo: lz4
+    #    zram_mb: 512
+    #    swap_mb: 512
+    #    recomp_algo: ""
+    #  - name: zram-5to1
+    #    swap_mode: zram
+    #    class: swap-on
+    #    zram_algo: zstd
+    #    zram_mb: 512
+    #    swap_mb: 512
+    #    recomp_algo: ""
+
+  tasks:
+    - name: results directory
+      ansible.builtin.file:
+        path: "{{ results_dir }}"
+        state: directory
+        mode: "0755"
+
+    # Remove arm directories left over from earlier plays. Without this, arms that
+    # are no longer in the list (none, disk, zram-2to1, …) keep their old reports
+    # and silently merge into the next table — measured at a different hold, with
+    # different session counts, under a different generation of the harness.
+    - name: drop results from arms this play does not run
+      ansible.builtin.shell:
+        cmd: |
+          set -eu
+          keep=" {{ arms | map(attribute='name') | join(' ') }} "
+          for d in "{{ results_dir }}"/*/; do
+            [ -d "$d" ] || continue
+            name="$(basename "$d")"
+            case "$keep" in
+              *" $name "*) : ;;
+              *) rm -rf "$d"; echo "dropped stale arm: $name" ;;
+            esac
+          done
+      register: pruned
+      changed_when: "'dropped' in pruned.stdout"
+
+    - name: pruning summary
+      ansible.builtin.debug:
+        msg: "{{ pruned.stdout_lines | default(['(nothing stale)']) }}"
+
+    # Fetched once, on the host, so no VM needs egress. A guest that could not
+    # reach update.k3s.io produced no k3s at all and the failure surfaced as
+    # "node did not become Ready within 300s" — a network fault wearing a
+    # resource problem's clothes.
+    - name: cache the k3s artifacts (binary, airgap images, installer)
+      ansible.builtin.command:
+        cmd: ./fetch-k3s.sh
+        chdir: "{{ lab_dir }}"
+      register: fetched
+      changed_when: "'fetching' in fetched.stdout"
+      when: k3s_cache | default(true)
+
+    # The workload image is part of the airgap too: without it the pool sits in
+    # ErrImagePull forever, because the guest has no egress.
+    - name: cache the browser image
+      ansible.builtin.command:
+        cmd: ./fetch-images.sh
+        chdir: "{{ lab_dir }}"
+      register: images
+      changed_when: "'fetching' in images.stdout"
+      when: k3s_cache | default(true)
+
+    # The agent-sandbox manifest was the one artifact still fetched from the
+    # internet at install time. On 2026-11-04 a ~90 s DNS outage on the host
+    # (`curl (6) Could not resolve host: github.com`) killed both arms two minutes
+    # in, and the play still finished with failed=0. Cached here, before any VM
+    # boots, for the same reason the k3s artifacts are.
+    - name: cache the agent-sandbox manifest
+      ansible.builtin.command:
+        cmd: ./fetch-sandbox.sh
+        chdir: "{{ lab_dir }}"
+      register: sandbox_manifest
+      changed_when: "'fetching' in sandbox_manifest.stdout"
+      when: k3s_cache | default(true)
+
+    # Fail in one second, on the host, rather than two minutes into the first arm
+    # with a DNS error. Everything the guests need must already be in cache/.
+    - name: every artifact is cached before a VM boots
+      ansible.builtin.stat:
+        path: "{{ lab_dir }}/cache/{{ item }}"
+      loop:
+        - k3s
+        - k3s-airgap-images-amd64.tar.zst
+        - install.sh
+        - chrome-sandbox.tar
+        - sandbox-{{ sandbox_version }}.yaml
+      register: cached
+      failed_when: not cached.stat.exists
+
+    - name: artifacts
+      ansible.builtin.debug:
+        msg: "{{ (fetched.stdout_lines | default([])) + (images.stdout_lines | default([])) }}"
+
+    - name: each arm
+      ansible.builtin.include_tasks: tasks/arm.yml
+      loop: "{{ arms }}"
+      loop_control:
+        loop_var: arm_cfg
+      when: arm_name == "" or arm_name == arm_cfg.name
+
+    - name: table
+      ansible.builtin.command:
+        cmd: ./arms-report.sh
+        chdir: "{{ lab_dir }}"
+      register: table
+      changed_when: false
+      # A missing table is a result, not a broken play: it means no rung held and
+      # no report was written. The per-arm tasks already reported why.
+      failed_when: false
+      when: "'provision' not in ansible_run_tags"
+
+    - name: print
+      ansible.builtin.debug:
+        msg: "{{ table.stdout_lines | default(['(provision only)']) }}"
+
+    # The rescue blocks keep the play going so one arm cannot cancel the rest, but
+    # they used to swallow the outcome: on 2026-11-04 both arms died on a DNS error
+    # before measuring anything and the recap still said failed=0. A run that
+    # measured nothing must not look like a success.
+    - name: arms that failed
+      ansible.builtin.debug:
+        msg: "NO MEASUREMENT: {{ failed_arms | default([]) | join(', ') }} — see results/<arm>-FAILED.txt"
+      when: failed_arms | default([]) | length > 0
+
+    # `failed_arms` only exists when a rescue ran, so every reference must carry a
+    # default — the first version did not, and the guard itself crashed the play on
+    # the first run where both arms SUCCEEDED.
+    - name: refuse to report success when an arm produced no data
+      ansible.builtin.assert:
+        that:
+          - failed_arms | default([]) | length == 0
+        fail_msg: >-
+          {{ failed_arms | default([]) | length }} of {{ arms | length }} arm(s)
+          failed before measuring anything: {{ failed_arms | default([]) | join(', ') }}.
+          The VM was torn down and the reason is in results/<arm>-FAILED.txt.
+          This play is marked failed on purpose.
+        quiet: true
+      when: "'provision' not in ansible_run_tags"

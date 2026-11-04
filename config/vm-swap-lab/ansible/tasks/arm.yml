@@ -1,0 +1,199 @@
+---
+# One arm: boot with its swap backing, install agent-sandbox, run one class of the
+# ladder, keep the reports, tear down.
+#
+# The arm is a block with rescue + always. Before that, a failure in boot,
+# verification, install or the kubelet step aborted the include, so diagnostics
+# and teardown never ran: the VM leaked and the reason died with it. That
+# happened three times in a row.
+#
+# Every step calls the script that already does the job, with the arm's settings
+# in the environment.
+
+- name: "{{ arm_cfg.name }}: run"
+  block:
+    - name: "{{ arm_cfg.name }}: stop any running VM"
+      ansible.builtin.command:
+        cmd: ./down.sh
+        chdir: "{{ lab_dir }}"
+      changed_when: true
+
+    - name: "{{ arm_cfg.name }}: boot {{ vm_cpus }} vCPU / {{ vm_mem_mb }} MiB / {{ vm_disk_gb }} GiB, swap={{ arm_cfg.swap_mode }}"
+      ansible.builtin.command:
+        cmd: ./up.sh
+        chdir: "{{ lab_dir }}"
+      environment:
+        CPUS: "{{ vm_cpus }}"
+        MEM_MB: "{{ vm_mem_mb }}"
+        DISK_GB: "{{ vm_disk_gb }}"
+        SWAP_MODE: "{{ arm_cfg.swap_mode }}"
+        ZRAM_ALGO: "{{ arm_cfg.zram_algo }}"
+        ZRAM_MB: "{{ arm_cfg.zram_mb }}"
+        SWAP_MB: "{{ arm_cfg.swap_mb }}"
+      register: boot
+      changed_when: true
+      failed_when: boot.rc != 0
+
+    - name: "{{ arm_cfg.name }}: swap + kubelet verification"
+      ansible.builtin.command:
+        cmd: ./verify-swap.sh
+        chdir: "{{ lab_dir }}"
+      register: verified
+      changed_when: false
+      failed_when: false
+
+    - name: "{{ arm_cfg.name }}: record the boot-time verification"
+      ansible.builtin.copy:
+        dest: "{{ results_dir }}/{{ arm_cfg.name }}-verify-boot.txt"
+        content: "{{ verified.stdout }}\n{{ verified.stderr }}"
+        mode: "0644"
+
+    - name: "{{ arm_cfg.name }}: refuse to measure if the swap backing is wrong"
+      ansible.builtin.assert:
+        that: verified.rc == 0
+        fail_msg: |
+          swap verification failed for {{ arm_cfg.name }}:
+          {{ verified.stdout }}
+          {{ verified.stderr }}
+        quiet: true
+
+    - name: "{{ arm_cfg.name }}: install agent-sandbox and the warm pool"
+      ansible.builtin.command:
+        cmd: ./install-sandbox.sh
+        chdir: "{{ lab_dir }}"
+      register: installed
+      changed_when: true
+
+    # The kubelet must be in LimitedSwap before anything is measured. Before this
+    # task existed, capacity.sh inherited whatever run-ab.sh had left behind — it
+    # was NoSwap in all three arms, so memory.swap.max was never set and the arms
+    # measured nothing while reporting a perfectly healthy "swap configured".
+    - name: "{{ arm_cfg.name }}: set kubelet memorySwap.swapBehavior=LimitedSwap"
+      ansible.builtin.command:
+        cmd: ./set-kubelet-swap.sh
+        chdir: "{{ lab_dir }}"
+      register: kubelet_swap
+      changed_when: true
+      failed_when: "'LimitedSwap' not in kubelet_swap.stdout"
+
+    - name: "{{ arm_cfg.name }}: re-verify after the kubelet restart"
+      ansible.builtin.command:
+        cmd: ./verify-swap.sh
+        chdir: "{{ lab_dir }}"
+      register: verified_after
+      changed_when: false
+      failed_when: false
+
+    - name: "{{ arm_cfg.name }}: refuse to measure unless swap is really in force"
+      ansible.builtin.assert:
+        that:
+          - verified_after.rc == 0
+          - "'LimitedSwap' in verified_after.stdout"
+        fail_msg: |
+          {{ arm_cfg.name }}: the kubelet is not in LimitedSwap, so per-pod swap cannot
+          be exercised. Nothing was measured.
+          {{ verified_after.stdout }}
+        quiet: true
+
+    - name: "{{ arm_cfg.name }}: record the post-restart verification"
+      ansible.builtin.copy:
+        dest: "{{ results_dir }}/{{ arm_cfg.name }}-verify.txt"
+        content: "{{ verified_after.stdout }}\n{{ verified_after.stderr }}"
+        mode: "0644"
+
+    # One class per arm: an arm whose VM has no swap device has nothing to grant,
+    # so a second ladder there would spend minutes proving nothing. capacity.sh
+    # enforces the class on the pods that serve the run and verifies it first.
+    - name: "{{ arm_cfg.name }}: capacity ladder (class={{ arm_cfg.class }})"
+      ansible.builtin.command:
+        cmd: ./capacity.sh
+        chdir: "{{ lab_dir }}"
+      environment:
+        CLASS: "{{ arm_cfg.class }}"
+        LADDER: "{{ ladder }}"
+        HOLD: "{{ hold }}"
+        WINDOW: "{{ window }}"
+        SAMPLE_SECONDS: "{{ sample_seconds }}"
+        READY_TIMEOUT: "{{ ready_timeout }}"
+        SWAP_ALLOWANCE: "{{ swap_per_pod }}"
+        RECOMP_ALGO: "{{ arm_cfg.recomp_algo | default('') }}"
+        RECOMP_WHEN: "{{ recomp_when }}"
+        RECOMP_TYPE: "{{ recomp_type }}"
+        # Without this the ladder silently ran one rep per rung: capacity.sh
+        # defaults REPEATS=1 and the play's `repeats: 3` never reached it.
+        REPEATS: "{{ repeats }}"
+      register: ladder_out
+      changed_when: true
+      when: "'provision' not in ansible_run_tags"
+
+    - name: "{{ arm_cfg.name }}: ladder output"
+      ansible.builtin.debug:
+        msg: "{{ ladder_out.stdout_lines | default(['(provision only)']) }}"
+
+  rescue:
+    - name: "{{ arm_cfg.name }}: record the failure"
+      ansible.builtin.copy:
+        dest: "{{ results_dir }}/{{ arm_cfg.name }}-FAILED.txt"
+        content: |
+          arm: {{ arm_cfg.name }}
+          swap_mode: {{ arm_cfg.swap_mode }}  class: {{ arm_cfg.class }}
+          task: {{ ansible_failed_task.name | default('unknown') }}
+          message: {{ ansible_failed_result.msg | default('(no msg)') }}
+          stdout: {{ ansible_failed_result.stdout | default('') }}
+          stderr: {{ ansible_failed_result.stderr | default('') }}
+        mode: "0644"
+
+    - name: "{{ arm_cfg.name }}: note the failure and continue"
+      ansible.builtin.debug:
+        msg: "{{ arm_cfg.name }} failed; diagnostics and teardown still run, then the next arm continues"
+
+    # Rescuing keeps the remaining arms alive; recording the name here is what lets
+    # the play fail honestly at the end instead of printing a green recap over an
+    # empty table (2026-11-04: both arms died on DNS, recap said failed=0).
+    - name: "{{ arm_cfg.name }}: record that this arm produced no measurement"
+      ansible.builtin.set_fact:
+        failed_arms: "{{ (failed_arms | default([])) + [arm_cfg.name] }}"
+
+  always:
+    - name: "{{ arm_cfg.name }}: keep the reports before teardown"
+      ansible.builtin.shell:
+        cmd: |
+          mkdir -p "{{ results_dir }}/{{ arm_cfg.name }}"
+          # Clear this arm's previous artifacts: results/ persists across plays and
+          # a stale row silently merges into the next report (_see_ the run where
+          # `disk` and `zram` from an older generation appeared next to today's
+          # arms, under a different hold).
+          rm -f "{{ results_dir }}/{{ arm_cfg.name }}"/cap-*.json
+          rm -f "{{ results_dir }}/{{ arm_cfg.name }}"/cap-*.db
+          cp {{ lab_dir }}/runs/cap-*.json "{{ results_dir }}/{{ arm_cfg.name }}/" 2>/dev/null || true
+          cp {{ lab_dir }}/runs/cap-*.db "{{ results_dir }}/{{ arm_cfg.name }}/" 2>/dev/null || true
+          ls -1 "{{ results_dir }}/{{ arm_cfg.name }}" | wc -l
+      register: saved
+      changed_when: true
+
+    # A failed rung leaves the reason inside the VM, and teardown deletes the VM.
+    # Capture it first: pod state, events and swap/kubelet facts are what turn
+    # "0/3" into an explainable result.
+    - name: "{{ arm_cfg.name }}: capture guest diagnostics before teardown"
+      ansible.builtin.command:
+        cmd: "./collect-diagnostics.sh {{ results_dir }}/{{ arm_cfg.name }}-diagnostics.txt {{ arm_cfg.name }}"
+        chdir: "{{ lab_dir }}"
+      register: diag
+      changed_when: false
+      failed_when: false
+
+    - name: "{{ arm_cfg.name }}: diagnostics summary"
+      ansible.builtin.debug:
+        msg: >-
+          {{ diag.stdout_lines | default([])
+             | list
+             | union(['rc=' ~ (diag.rc | default('?'))])
+             | union(['file: ' ~ results_dir ~ '/' ~ arm_cfg.name ~ '-diagnostics.txt'])
+             | union(diag.stderr_lines | default([])) | unique | list }}
+
+    - name: "{{ arm_cfg.name }}: teardown"
+      ansible.builtin.command:
+        cmd: ./down.sh
+        chdir: "{{ lab_dir }}"
+      when: not (keep_vm | bool)
+      changed_when: true

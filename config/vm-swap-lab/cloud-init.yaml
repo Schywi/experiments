@@ -1,0 +1,167 @@
+#cloud-config
+# Disposable k3s node for the swap experiment (see README.md in this directory).
+#
+# The swap backing is a parameter, because it is the experiment's axis:
+#   SWAP_MODE=none | zram | disk
+#     zram  → /dev/zram0, ZRAM_MB, algorithm ZRAM_ALGO (lz4 ≈2:1, lzo-rle ≈2.5:1,
+#             zstd ≈5:1 measured). Compression trades CPU for capacity, so the
+#             ratio is a variable, not a setting.
+#     disk  → swap file of SWAP_MB on the root disk: real capacity, ms latency,
+#             no compression CPU.
+# The three placeholders below are substituted by up.sh.
+#
+# Two facts decide the order:
+#   1. swap must exist before k3s starts, so the kubelet meets a swap device on
+#      its first boot instead of discovering one later.
+#   2. `memorySwap` is a KubeletConfiguration field with no kubelet flag, so it
+#      arrives as a drop-in file. k3s merges
+#      /var/lib/rancher/k3s/agent/etc/kubelet.conf.d/*.conf into the config it
+#      generates. `verify-swap.sh` proves the drop-in was picked up by reading
+#      the node's /configz; it does not trust this file having been written.
+
+users:
+  - name: ubuntu
+    sudo: "ALL=(ALL) NOPASSWD:ALL"
+    shell: /bin/bash
+    groups: [sudo]
+    ssh_authorized_keys:
+      - __SSH_PUBLIC_KEY__
+
+ssh_pwauth: false
+disable_root: true
+
+package_update: true
+packages:
+  - systemd-zram-generator
+  - curl
+
+write_files:
+  - path: /usr/local/bin/setup-swap.sh
+    permissions: "0755"
+    content: |
+      #!/bin/sh
+      # Configure the swap backing this VM was booted for. Deliberately explicit:
+      # the size is a fixed number of MiB, not ram/2. A large zram removes RAM
+      # from the pods it is supposed to help — 1.5 GiB of zram on a 3 GiB node
+      # made the node worse.
+      set -e
+      mode="__SWAP_MODE__"
+      zram_mb="__ZRAM_MB__"
+      zram_algo="__ZRAM_ALGO__"
+      swap_mb="__SWAP_MB__"
+
+      case "${mode}" in
+        zram)
+          # Drive the device directly instead of through systemd-zram-generator.
+          # The generator's unit races the module load at boot and its second
+          # start fails with "Failed to configure disk size into
+          # /sys/block/zram0/disksize: Cannot allocate memory" — observed on a
+          # fresh 3 GiB VM. Three explicit steps have no such ordering problem.
+          apt-get install -y --no-install-recommends "linux-modules-extra-$(uname -r)"
+          modprobe zram
+          if [ -e /sys/block/zram0/disksize ] && [ "$(cat /sys/block/zram0/disksize)" != "0" ]; then
+            swapoff /dev/zram0 2>/dev/null || true
+            echo 1 >/sys/block/zram0/reset || true
+          fi
+          dev="$(zramctl --find --size "${zram_mb}M" --algorithm "${zram_algo}")"
+          [ -n "${dev}" ] || { echo "zramctl could not create a device" >&2; exit 1; }
+          mkswap "${dev}" >/dev/null
+          swapon "${dev}"
+          echo "swap: zram ${zram_mb}M ${zram_algo} on ${dev}" >/var/tmp/swap-mode
+          ;;
+        disk)
+          fallocate -l "${swap_mb}M" /swapfile
+          chmod 600 /swapfile
+          mkswap /swapfile >/dev/null
+          swapon /swapfile
+          grep -q '^/swapfile' /etc/fstab || echo '/swapfile none swap sw 0 0' >>/etc/fstab
+          echo "swap: disk ${swap_mb}M (no zram)" >/var/tmp/swap-mode
+          ;;
+        none)
+          echo "swap: none" >/var/tmp/swap-mode
+          ;;
+        *)
+          echo "unknown SWAP_MODE '${mode}'" >&2
+          exit 1
+          ;;
+      esac
+      cat /proc/swaps
+
+  - path: /var/lib/rancher/k3s/agent/etc/kubelet.conf.d/90-swap.conf
+    permissions: "0644"
+    content: |
+      apiVersion: kubelet.config.k8s.io/v1beta1
+      kind: KubeletConfiguration
+      failSwapOn: false
+      memorySwap:
+        swapBehavior: NoSwap
+
+  - path: /usr/local/bin/install-k3s.sh
+    permissions: "0755"
+    content: |
+      #!/bin/sh
+      # Install k3s from the host's cache instead of the internet.
+      #
+      # The previous one-liner (`curl -sfL https://get.k3s.io | sh`) failed with
+      # "Failed to connect to update.k3s.io port 443 after 224659 ms", leaving no
+      # k3s, no node, and an up.sh timeout that read like a resource problem. Here
+      # the binary and the airgap image bundle come from the host over QEMU's
+      # user-net address (10.0.2.2), and INSTALL_K3S_SKIP_DOWNLOAD stops the
+      # installer reaching out at all. An empty base falls back to the network so
+      # the lab still works before `fetch-k3s.sh` has run once.
+      set -e
+      base="__K3S_BASE_URL__"
+
+      if [ -n "${base}" ]; then
+        echo "k3s artifacts from ${base}"
+        curl -fsSL --retry 8 --retry-all-errors --connect-timeout 10 \
+          -o /usr/local/bin/k3s "${base}/k3s"
+        chmod 0755 /usr/local/bin/k3s
+        mkdir -p /var/lib/rancher/k3s/agent/images
+        curl -fsSL --retry 8 --retry-all-errors --connect-timeout 10 \
+          -o /var/lib/rancher/k3s/agent/images/k3s-airgap-images-amd64.tar.zst \
+          "${base}/k3s-airgap-images-amd64.tar.zst"
+        # The workload image must be here too: airgapping k3s alone left the arms
+        # in ErrImagePull, because pulling chrome-sandbox still needed egress.
+        # Anything in this directory is imported by k3s at start-up.
+        if curl -fsSL --retry 3 --retry-all-errors --connect-timeout 10 \
+             -o /var/lib/rancher/k3s/agent/images/chrome-sandbox.tar \
+             "${base}/chrome-sandbox.tar"; then
+          echo "workload image cached for import"
+        else
+          echo "warning: no chrome-sandbox.tar on the host; the pool will need egress" >&2
+        fi
+        curl -fsSL --retry 8 --retry-all-errors --connect-timeout 10 \
+          -o /tmp/install-k3s.sh "${base}/install.sh"
+        skip=true
+      else
+        echo "no artifact base given: downloading from the network (slow, may fail)"
+        curl -fsSL --retry 8 --retry-all-errors -o /tmp/install-k3s.sh https://get.k3s.io
+        skip=false
+      fi
+      chmod 0755 /tmp/install-k3s.sh
+
+      INSTALL_K3S_SKIP_DOWNLOAD="${skip}" \
+      INSTALL_K3S_CHANNEL=stable \
+      INSTALL_K3S_EXEC='--kubelet-arg=fail-swap-on=false --write-kubeconfig-mode=0644' \
+        /tmp/install-k3s.sh
+
+      # Drop the browser bundle once containerd has it. Everything in
+      # agent/images is re-imported on every k3s start, and 332 MB of re-import
+      # made `systemctl restart k3s` outlast systemd's start window — the command
+      # returned non-zero while k3s came up fine, which looked like a failure.
+      if [ -f /var/lib/rancher/k3s/agent/images/chrome-sandbox.tar ]; then
+        for _ in $(seq 1 60); do
+          k3s kubectl get --raw /readyz >/dev/null 2>&1 && break
+          sleep 5
+        done
+        rm -f /var/lib/rancher/k3s/agent/images/chrome-sandbox.tar
+        echo "browser image imported; bundle removed from agent/images"
+      fi
+
+runcmd:
+  # swap first, so the kubelet starts with the device it is meant to use
+  - [sh, /usr/local/bin/setup-swap.sh]
+  - [sh, /usr/local/bin/install-k3s.sh]
+
+final_message: "vm-swap-lab ready in $UPTIME seconds"

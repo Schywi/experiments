@@ -1,0 +1,6 @@
+arm: zram-multi
+swap_mode: zram  class: swap-on
+task: zram-multi: install agent-sandbox and the warm pool
+message: non-zero return code
+stdout: downloading agent-sandbox v1.0.7
+stderr: curl: (6) Could not resolve host: github.com

@@ -1,0 +1,18 @@
+== swap backing ==
+swap: zram 512M lz4 on /dev/zram0
+
+NAME       TYPE      SIZE USED PRIO
+/dev/zram0 partition 512M   0B   -2
+
+Filename				Type		Size		Used		Priority
+/dev/zram0                              partition	524284		0		-2
+
+NAME       ALGORITHM DISKSIZE DATA COMPR TOTAL STREAMS MOUNTPOINT
+/dev/zram0 lz4           512M   4K   65B   20K       4 [SWAP]
+
+== kubelet running config (/configz) ==
+failSwapOn=False memorySwap.swapBehavior=NoSwap
+
+== pod cgroups (browser containers are the scopes with a memory limit) ==
+  (no pod with a memory limit is running yet — start the pool first)
+WARNING: memorySwap.swapBehavior=NoSwap; this lab runs LimitedSwap
