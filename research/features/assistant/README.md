@@ -1,5 +1,6 @@
 ---
 title: 'Assistant features'
+date: 2026-10-25
 kind: index
 ---
 

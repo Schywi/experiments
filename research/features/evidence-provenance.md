@@ -1,5 +1,6 @@
 ---
 title: 'Feature: Evidence provenance & deep links'
+date: 2026-10-08
 kind: feature
 state: implemented
 tags: [assistant, provenance, state-implemented]

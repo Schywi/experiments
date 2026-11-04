@@ -404,6 +404,23 @@ PY
 
 printf 'class\treplicas\trep\theld\tsuccess\tfailed\tqueue_p95_ms\tswap_peak_mib\trefaults\tcpu_core_s\tzram_ratio\tdev_used_pct\trecomp_s\trecomp_cpu_s\thost_cpu_s\tnote\n'
 
+# A swap-on arm on a guest with no swap device cannot hold anything, and running it
+# anyway hides the cause: the 2026-11-04 arm produced 21 failures with
+# "Swap: 0 0 0" and "Mem available 22 MiB" while the table only showed failures.
+# The swap device is a precondition, so it is checked as one.
+if [[ "${CLASS}" == "swap-on" ]]; then
+  swaps="$(vm_ssh 'grep -c . /proc/swaps 2>/dev/null || echo 0' || echo 0)"
+  # /proc/swaps has a header line, so a real device means 2+
+  if [[ "${swaps}" -lt 2 ]]; then
+    echo "guest has no active swap device (${swaps} line(s) in /proc/swaps): swap-on cannot be measured." >&2
+    vm_ssh 'cat /proc/swaps; free -m' >&2 || true
+    row "${CLASS}" "-" "-" "no" 0 0 0 0 0 "guest has no active swap device; arm not measurable"
+    exit 1
+  fi
+  echo "guest swap:"
+  vm_ssh 'cat /proc/swaps' || true
+fi
+
 # A recompression arm on a guest that cannot recompress is not a slow arm, it is a
 # duplicate of the control arm. Measured on Ubuntu 24.04: six rungs of
 # zram-multi ran byte-identical to zram-multi-ctl and the only trace was a reason

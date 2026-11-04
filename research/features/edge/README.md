@@ -1,5 +1,6 @@
 ---
 title: 'Edge cases'
+date: 2026-10-08
 kind: index
 ---
 

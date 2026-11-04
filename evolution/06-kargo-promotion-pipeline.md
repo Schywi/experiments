@@ -1,5 +1,6 @@
 ---
 title: 'Phase 6 — promotion with Kargo, and a planner that reads the whole sentence (2026-10-24 → )'
+date: 2026-10-28
 kind: narrative
 phase: 6
 commits:

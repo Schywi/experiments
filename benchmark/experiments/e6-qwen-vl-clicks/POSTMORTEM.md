@@ -1,5 +1,6 @@
 ---
 title: 'E6 postmortem — Qwen3-VL-2B driving a real Chromium, aborted'
+date: 2026-10-29
 kind: experiment
 state: unknown
 tags: [benchmark, state-unknown]

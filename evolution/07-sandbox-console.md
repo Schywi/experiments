@@ -1,5 +1,6 @@
 ---
 title: 'Phase 7 — agent-sandbox and the console that proves it (2026-10-18 → )'
+date: 2026-10-25
 kind: narrative
 phase: 7
 tags: [console]

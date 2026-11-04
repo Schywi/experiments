@@ -1,5 +1,6 @@
 ---
 title: 'Feature (experiment): an agent that drives a browser sandbox'
+date: 2026-10-29
 kind: feature
 state: research
 tags: [assistant, state-research]

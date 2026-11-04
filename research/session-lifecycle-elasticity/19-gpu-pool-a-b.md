@@ -3,7 +3,7 @@ title: 'GPU-enabled pool A/B: does acceleration raise session capacity'
 kind: experiment
 state: benchmarked
 phase: 8
-date: 2026-10-31
+date: 2026-11-02
 branch: 'research/session-lifecycle-elasticity'
 tags: [session-lifecycle, gpu, state-benchmarked]
 ---

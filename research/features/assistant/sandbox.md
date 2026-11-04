@@ -1,5 +1,6 @@
 ---
 title: 'Sandbox specialist (thin client over the console API)'
+date: 2026-10-25
 kind: feature
 state: unknown
 tags: [assistant, console, state-unknown]

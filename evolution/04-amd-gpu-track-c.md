@@ -1,5 +1,6 @@
 ---
 title: 'Phase 4 — AMD GPU, Track C (2026-10-06 → 2026-10-18)'
+date: 2026-10-22
 kind: narrative
 phase: 4
 commits: [5668f1a, 4b6dbea, 81c398d, 9b5554e, a07bced, ab05883]

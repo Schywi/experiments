@@ -3,7 +3,7 @@ title: 'CPU/GPU pool split, per-session routing'
 kind: analysis
 state: hypothesis
 phase: 8
-date: 2026-10-31
+date: 2026-11-02
 branch: 'research/session-lifecycle-elasticity'
 tags: [session-lifecycle, gpu, state-hypothesis]
 ---
@@ -12,11 +12,33 @@ tags: [session-lifecycle, gpu, state-hypothesis]
 
 | | |
 |---|---|
-| Status | Design note, implementation follows |
+| Status | Design note, implementation follows — retained for routing and device containment, not for capacity (see §0) |
 | Date | 2026-10-31 |
 | Phase | 8 — session lifecycle elasticity |
 | Branch | `research/session-lifecycle-elasticity` |
 | Related | [19](19-gpu-pool-a-b.md), `config/sandbox/`, `apps/session-lab/internal/runtime/session/` |
+
+## 0. Why this split survives note 19
+
+[19](19-gpu-pool-a-b.md) settled the capacity question this note was originally motivated by: at 30
+concurrent sessions, node CPU was **1.53 cores against 1.58 of 6** with and without acceleration,
+because `session-lab`'s hold samples cgroups and never requests a frame. A GPU tier therefore buys
+**no extra sessions per node**, and nothing below depends on it doing so.
+
+What the split is still for:
+
+1. **Containment of a single exclusive device.** There is one card and one accelerated browser at a
+   time (`amd.com/render: 1`, and it currently reports `0/0`). A distinct pool is what stops a GPU
+   request from being placed on every session that would like one.
+2. **Routing by workload class, which is independent of capacity.** Sessions that capture frames —
+   screenshot loops, VLM grounding ([E5](../../benchmark/experiments/e5-vlm-grounding/RESULTS.md)),
+   the console's tap-to-screenshot — measure **−26 % CPU per browser** when accelerated
+   ([19](19-gpu-pool-a-b.md) §1). Sessions that only hold a page gain nothing.
+3. **The routing mechanism is the deliverable**, not a capacity win: one pool name per session
+   instead of one per process. §2–§6 stand unchanged.
+
+What it is explicitly **not** for: raising sustainable concurrency. The recorded ceiling under this
+workload is CPU requests and the control plane (notes 12, 13, 18), not rendering.
 
 ## 1. What this is
 

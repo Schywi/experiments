@@ -1,5 +1,6 @@
 ---
 title: 'E3 results — AMD RX 570 (Vulkan) vs CPU for Qwen2.5‑1.5B inference'
+date: 2026-10-18
 kind: experiment
 state: benchmarked
 tags: [benchmark, gpu, state-benchmarked]

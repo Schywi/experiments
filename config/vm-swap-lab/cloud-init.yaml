@@ -66,9 +66,22 @@ write_files:
           # start fails with "Failed to configure disk size into
           # /sys/block/zram0/disksize: Cannot allocate memory" — observed on a
           # fresh 3 GiB VM. Three explicit steps have no such ordering problem.
-          # Fedora carries zram in kernel-modules-core, which is installed; no
-          # extra package needed (Ubuntu needed linux-modules-extra).
-          modprobe zram
+          # Distro-agnostic on purpose. Fedora carries zram in
+          # kernel-modules-core (already installed); Debian/Ubuntu keep it in
+          # linux-modules-extra. Hardcoding either one breaks the other: assuming
+          # Fedora while the cached base image was still Ubuntu left this guest
+          # with NO swap at all, and the swap-on arm then ran 21 sessions against
+          # a node with 22 MiB available and no device.
+          if ! modprobe zram 2>/dev/null; then
+            if command -v apt-get >/dev/null 2>&1; then
+              apt-get update -qq || true
+              apt-get install -y --no-install-recommends \
+                "linux-modules-extra-$(uname -r)" || true
+            elif command -v dnf >/dev/null 2>&1; then
+              dnf install -y "kernel-modules-extra-$(uname -r)" || true
+            fi
+            modprobe zram 2>/dev/null || { echo "cannot load the zram module" >&2; exit 1; }
+          fi
           if [ -e /sys/block/zram0/disksize ] && [ "$(cat /sys/block/zram0/disksize)" != "0" ]; then
             swapoff /dev/zram0 2>/dev/null || true
             echo 1 >/sys/block/zram0/reset || true
@@ -77,6 +90,7 @@ write_files:
           [ -n "${dev}" ] || { echo "zramctl could not create a device" >&2; exit 1; }
           mkswap "${dev}" >/dev/null
           swapon "${dev}"
+          grep -q "${dev}" /proc/swaps || { echo "swapon did not take effect for ${dev}" >&2; exit 1; }
           echo "swap: zram ${zram_mb}M ${zram_algo} on ${dev}" >/var/tmp/swap-mode
           ;;
         disk)

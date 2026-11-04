@@ -1,5 +1,6 @@
 ---
 title: '03 — The Gemini design, reviewed against this cluster'
+date: 2026-10-31
 kind: analysis
 state: unknown
 tags: [cpu, state-unknown]

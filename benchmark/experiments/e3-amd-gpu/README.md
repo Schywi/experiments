@@ -1,5 +1,6 @@
 ---
 title: 'E3 — AMD GPU vs CPU for Qwen inference (isolated)'
+date: 2026-10-09
 kind: index
 commits: [b1073c24559ee87a3d6e4cda4812d99ca38d59b8]
 ---

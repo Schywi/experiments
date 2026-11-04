@@ -1,5 +1,6 @@
 ---
 title: 'Capacity, elasticity, and why kine is the ceiling'
+date: 2026-10-31
 kind: analysis
 state: research
 phase: 8

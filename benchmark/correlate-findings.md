@@ -1,5 +1,6 @@
 ---
 title: 'Correlate latency — investigation and the smallest experiment'
+date: 2026-10-08
 kind: analysis
 state: unknown
 tags: [benchmark, state-unknown]

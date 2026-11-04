@@ -1,5 +1,6 @@
 ---
 title: 'Feature (proposed): `get_topology` / `get_topology_snapshot`'
+date: 2026-10-09
 kind: feature
 state: hypothesis
 tags: [assistant, topology, state-hypothesis]

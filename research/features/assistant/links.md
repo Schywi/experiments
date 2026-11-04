@@ -1,5 +1,6 @@
 ---
 title: 'Link contract'
+date: 2026-10-25
 kind: feature
 state: unknown
 tags: [assistant, state-unknown]

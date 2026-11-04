@@ -1,5 +1,6 @@
 ---
 title: 'Deep Research Prompt: A Pareto Platform Cockpit for Kubernetes'
+date: 2026-09-06
 kind: analysis
 state: unknown
 tags: [state-unknown]

@@ -1,5 +1,6 @@
 ---
 title: 'Edge-case catalogue'
+date: 2026-10-08
 kind: feature
 state: unknown
 tags: [assistant, state-unknown]

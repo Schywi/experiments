@@ -21,7 +21,13 @@ namespace="${NAMESPACE:-sandbox-demo}"
   echo "${arm}"
   echo
   echo "== swap mode recorded in the guest =="
-  vm_ssh 'cat /var/tmp/swap-mode 2>/dev/null || echo none'
+  # Absent is not "none": /var/tmp/swap-mode only exists if setup-swap.sh reached
+  # its end. The run that lost all swap printed "none" and hid a script that died,
+  # so the two cases are reported separately, with cloud-init's own log.
+  vm_ssh 'if [ -f /var/tmp/swap-mode ]; then cat /var/tmp/swap-mode;
+          else echo "MISSING: setup-swap.sh did not complete"; fi;
+          echo "-- cloud-init log (swap/zram/error lines) --";
+          grep -iE "zram|swap|failed|error|cannot" /var/log/cloud-init-output.log 2>/dev/null | tail -15'
   echo
   echo "== node / resources =="
   vm_ssh 'nproc; free -m; cat /proc/swaps'

@@ -2,4 +2,14 @@
 zram-multi-ctl
 
 == swap mode recorded in the guest ==
-Connection timed out during banner exchange
+none
+
+== node / resources ==
+4
+               total        used        free      shared  buff/cache   available
+Mem:            3915        3892          86         241         357          22
+Swap:              0           0           0
+Filename				Type		Size		Used		Priority
+
+== node conditions ==
+Unable to connect to the server: net/http: TLS handshake timeout

@@ -1,5 +1,6 @@
 ---
 title: 'Phase 1 — Bounded Worm replication on k3d (2026-09-05 → 2026-09-07)'
+date: 2026-10-22
 kind: narrative
 phase: 1
 commits:

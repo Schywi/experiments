@@ -1,9 +1,10 @@
 arm: zram-multi
 swap_mode: zram  class: swap-on
-task: zram-multi: boot 4 vCPU / 4096 MiB / 12 GiB, swap=zram
+task: zram-multi: capacity ladder (class=swap-on)
 message: non-zero return code
-stdout: serving k3s artifacts from /home/dev/Documentos/git_repos/experiments/config/vm-swap-lab/cache at http://10.0.2.2:8099
-booting vm-swap-lab (4 vcpu, 4096 MiB, 12 GiB overlay) on ssh port 2222
-  swap: zram 128 MiB, algorithm lzo-rle
-waiting for ssh (serial log: /home/dev/Documentos/git_repos/experiments/config/vm-swap-lab/serial.log)
-stderr: ./up.sh: linha 189: SSH_USER: variável não associada
+stdout: == building session-lab for the guest ==
+class	replicas	rep	held	success	failed	queue_p95_ms	swap_peak_mib	refaults	cpu_core_s	zram_ratio	dev_used_pct	recomp_s	recomp_cpu_s	host_cpu_s	note
+swap-on	-	-	no	0	0	0	0	0	-	-	-	-	-	-	guest has no CONFIG_ZRAM_MULTI_COMP; arm not measurable
+stderr: guest kernel has no /sys/block/zram0/recomp_algorithm: CONFIG_ZRAM_MULTI_COMP is off.
+Recompression cannot run, so this arm would duplicate the control arm. Stopping.
+Ubuntu ships it off (noble 6.8, plucky 6.14 annotations: amd64 'n'); Fedora 44 has it =y.

@@ -3,7 +3,7 @@ title: 'Client-go throughput, APF and Chromium density limits'
 kind: analysis
 state: research
 phase: 8
-date: 2026-10-29
+date: 2026-10-30
 tags: [session-lifecycle, state-research]
 ---
 

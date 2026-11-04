@@ -1,5 +1,6 @@
 ---
 title: 'E5 — VLM grounding on Chromium screenshots'
+date: 2026-10-28
 kind: index
 ---
 

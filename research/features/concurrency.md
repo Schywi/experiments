@@ -1,5 +1,6 @@
 ---
 title: 'LLM concurrency limit + bounded FIFO queue'
+date: 2026-10-09
 kind: feature
 state: implemented
 tags: [assistant, state-implemented]

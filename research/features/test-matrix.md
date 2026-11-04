@@ -1,5 +1,6 @@
 ---
 title: 'Assistant test-question matrix'
+date: 2026-10-25
 kind: feature
 state: implemented
 tags: [assistant, state-implemented]

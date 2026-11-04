@@ -1,5 +1,6 @@
 ---
 title: 'Swap as capacity for Chromium sandbox sessions'
+date: 2026-11-04
 kind: index
 ---
 

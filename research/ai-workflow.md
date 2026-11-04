@@ -1,5 +1,6 @@
 ---
 title: 'AI workflow — local infrastructure assistant ("Jarvis")'
+date: 2026-10-06
 kind: analysis
 state: unknown
 tags: [state-unknown]

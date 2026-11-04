@@ -1,0 +1,268 @@
+{
+  "run_id": "cap-swap-on-7-r1-20261104T204352Z",
+  "config": {
+    "run_id": "cap-swap-on-7-r1-20261104T204352Z",
+    "sessions": 21,
+    "rate": 0.35,
+    "fixed_arrival": false,
+    "mix": [
+      {
+        "label": "20s",
+        "hold_ns": 20000000000,
+        "count": 21
+      }
+    ],
+    "policy": "destroy",
+    "class": "normal",
+    "namespace": "sandbox-demo",
+    "pool": "browser-pool",
+    "template": "",
+    "pool_replicas": 7,
+    "workers": 0,
+    "contexts_per_browser": 1,
+    "cdp_transport": "http",
+    "cdp_port": 9224,
+    "overload_factor": 1,
+    "arrival_window_ns": 60000000000,
+    "sample_seconds": 2,
+    "out_dir": "/home/fedora/runs",
+    "dry_run": false
+  },
+  "started_ns": 1793825067758209497,
+  "ended_ns": 1793825799383769112,
+  "planned_sessions": 21,
+  "stored_sessions": 21,
+  "outcomes": {
+    "acquisition_failed": 14,
+    "destroy_failed": 7
+  },
+  "arrival_rate": 0.35,
+  "offered_concurrency": 7,
+  "concurrency": {
+    "mean": 4.2229847682381845,
+    "peak": 7
+  },
+  "queue_wait_ms": {
+    "count": 7,
+    "p50": 71.715014,
+    "p95": 83.419277,
+    "p99": 83.419277,
+    "max": 364.369753
+  },
+  "acquire_ms": {
+    "count": 7,
+    "p50": 89.474241,
+    "p95": 124.558416,
+    "p99": 124.558416,
+    "max": 440.964401
+  },
+  "hold_ms": {
+    "count": 7,
+    "p50": 20089.837498,
+    "p95": 20107.765579,
+    "p99": 20107.765579,
+    "max": 20118.857552
+  },
+  "reset_ms": {
+    "count": 0,
+    "p50": 0,
+    "p95": 0,
+    "p99": 0,
+    "max": 0
+  },
+  "release_ms": {
+    "count": 0,
+    "p50": 0,
+    "p95": 0,
+    "p99": 0,
+    "max": 0
+  },
+  "resume_ms": {
+    "count": 0,
+    "p50": 0,
+    "p95": 0,
+    "p99": 0,
+    "max": 0
+  },
+  "launch_types": {
+    "warm": 7
+  },
+  "buckets": {
+    "20s": {
+      "sessions": 21,
+      "ok": 0,
+      "failed": 21,
+      "queue_p50_ms": 0,
+      "hold_p50_ms": 0
+    }
+  },
+  "resources": {
+    "sessions_with_samples": 7,
+    "cpu_core_seconds_total": 34.977455,
+    "cpu_core_seconds_p50": 5.123404,
+    "cpu_core_seconds_max": 5.301932,
+    "mem_peak_p50_mib": 224.5234375,
+    "mem_peak_max_mib": 236.80078125,
+    "mem_working_set_peak_max_mib": 232.90625,
+    "throttled_sessions": 0,
+    "oom_kills": 0,
+    "refault_sessions": 7
+  },
+  "instances": {
+    "total": 7,
+    "max_sessions_per_instance": 0,
+    "mean_sessions_per_instance": 0,
+    "rebuild_p50_ms": 0,
+    "boot_cpu_peak_p50": 0,
+    "boot_cpu_peak_max": 0
+  },
+  "host_memory": {
+    "samples": 17,
+    "total_mib": 3915.17578125,
+    "min_available_mib": 26.69921875,
+    "min_at_ns": 1793825177936938379,
+    "min_ratio_pct": 0.6819417630713819,
+    "swap_used_mib": 0
+  },
+  "template_limits": {
+    "container": "browser",
+    "cpu_request_milli": 100,
+    "cpu_limit_milli": 0,
+    "mem_request_mib": 256,
+    "mem_limit_mib": 768
+  },
+  "autoscaler": {
+    "hpa_count": 0,
+    "keda_crd_present": false
+  },
+  "replicas": [
+    {
+      "at_ns": 1793825067795325909,
+      "desired": 7,
+      "ready": 7,
+      "note": "preflight"
+    },
+    {
+      "at_ns": 1793825067904905050,
+      "desired": 7,
+      "ready": 7,
+      "note": "resize"
+    },
+    {
+      "at_ns": 1793825070639247994,
+      "desired": 7,
+      "ready": 6
+    },
+    {
+      "at_ns": 1793825072652260227,
+      "desired": 7,
+      "ready": 6
+    },
+    {
+      "at_ns": 1793825074641978924,
+      "desired": 7,
+      "ready": 6
+    },
+    {
+      "at_ns": 1793825076639927996,
+      "desired": 7,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793825078656327538,
+      "desired": 7,
+      "ready": 6
+    },
+    {
+      "at_ns": 1793825080696718798,
+      "desired": 7,
+      "ready": 6
+    },
+    {
+      "at_ns": 1793825082652675473,
+      "desired": 7,
+      "ready": 3
+    },
+    {
+      "at_ns": 1793825084719413205,
+      "desired": 7,
+      "ready": 3
+    },
+    {
+      "at_ns": 1793825086867416351,
+      "desired": 7,
+      "ready": 4
+    }
+  ],
+  "first_boundary": "destroy_failed at session 1: release: delete claim sandbox-demo/lab-cap-swap-on-7-r1-20261104t204352z-1: Delete \"https://127.0.0.1:6443/apis/extensions.agents.x-k8s.io/v1beta1/namespaces/sandbox-demo/sandboxclaims/lab-cap-swap-on-7-r1-20261104t204352z-1\": net/http: TLS handshake timeout",
+  "boundary_evidence": [
+    "bucket 20s, instance lab-cap-swap-on-7-r1-20261104t204352z-1"
+  ],
+  "elasticity": "exceeded: see first_boundary",
+  "next": "repeat with a lower arrival rate to confirm the boundary is repeatable, then re-run at this rate after changing the constraint above",
+  "arrival_window_s": 50.88338456,
+  "admission_ms": {
+    "count": 7,
+    "p50": 0.002982,
+    "p95": 0.005739,
+    "p99": 0.005739,
+    "max": 0.005898
+  },
+  "per_session": {
+    "task_ms": {
+      "count": 0,
+      "p50": 0,
+      "p95": 0,
+      "p99": 0,
+      "max": 0
+    },
+    "script_ms": {
+      "count": 0,
+      "p50": 0,
+      "p95": 0,
+      "p99": 0,
+      "max": 0
+    },
+    "js_heap_mib": {
+      "count": 0,
+      "p50": 0,
+      "p95": 0,
+      "p99": 0,
+      "max": 0
+    },
+    "cpu_core_seconds": {
+      "count": 7,
+      "p50": 5.123404,
+      "p95": 5.247532,
+      "p99": 5.247532,
+      "max": 5.301932
+    },
+    "mem_mib": {
+      "count": 7,
+      "p50": 224.5234375,
+      "p95": 231.671875,
+      "p99": 231.671875,
+      "max": 236.80078125
+    }
+  },
+  "node_cpu": {
+    "total_cores": 4,
+    "peak_cores": 2.24870378240544,
+    "mean_cores": 1.6103384533495713,
+    "samples": 17
+  },
+  "shared_sessions": 0,
+  "peak_waiting_sessions": 14,
+  "peak_in_flight_sessions": 21,
+  "cleanup_failures": 7,
+  "acquire_by_launch_type": {
+    "warm": {
+      "count": 7,
+      "p50": 89.474241,
+      "p95": 124.558416,
+      "p99": 124.558416,
+      "max": 440.964401
+    }
+  },
+  "active_at_cutoff": 0
+}

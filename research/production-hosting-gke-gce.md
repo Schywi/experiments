@@ -1,5 +1,6 @@
 ---
 title: 'Production hosting on GKE or GCE — what cannot work, and what must change'
+date: 2026-10-22
 kind: analysis
 state: unknown
 tags: [state-unknown]

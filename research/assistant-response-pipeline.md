@@ -1,5 +1,6 @@
 ---
 title: 'Assistant response pipeline v2 — structured facts → dual response → streaming'
+date: 2026-10-07
 kind: analysis
 state: unknown
 tags: [state-unknown]

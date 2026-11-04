@@ -1,5 +1,6 @@
 ---
 title: '06 — What a lightweight riot run actually does'
+date: 2026-11-02
 kind: analysis
 state: unknown
 tags: [cpu, state-unknown]

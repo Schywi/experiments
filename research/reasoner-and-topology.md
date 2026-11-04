@@ -1,5 +1,6 @@
 ---
 title: 'Reasoning model, topology tool, and Cilium observability — investigation'
+date: 2026-10-07
 kind: analysis
 state: unknown
 tags: [topology, state-unknown]

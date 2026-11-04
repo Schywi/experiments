@@ -1,5 +1,6 @@
 ---
 title: 'E3 pre-experiment cleanup — 2026-10-09'
+date: 2026-10-09
 kind: experiment
 state: unknown
 branch: 'Commit'

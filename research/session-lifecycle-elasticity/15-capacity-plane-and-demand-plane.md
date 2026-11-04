@@ -3,7 +3,7 @@ title: 'Capacity plane and demand plane: classes, browser contexts, packaging'
 kind: analysis
 state: implemented
 phase: 8
-date: 2026-10-29
+date: 2026-10-30
 commits: [e888f24]
 tags: [session-lifecycle, state-implemented]
 ---

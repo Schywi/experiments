@@ -1,5 +1,6 @@
 ---
 title: 'Recipes: ordered chains with a handoff'
+date: 2026-10-28
 kind: feature
 state: unknown
 tags: [assistant, state-unknown]

@@ -1,5 +1,6 @@
 ---
 title: 'Research'
+date: 2026-11-04
 kind: index
 ---
 
@@ -64,6 +65,14 @@ so on, so the site can list them: `/tags/state-hypothesis` is every proposed and
 unbuilt piece of this repository in one page. The remaining fields are `phase`,
 `date`, `branch`, `commits` (only hashes the note itself cites) and subject
 `tags`.
+
+**What `date` means.** `date` is the date the document came into existence — the
+date of the commit that first introduced the file, not the date the file was last
+touched. A note's own `| Date |` table row keeps its separate meaning: the date
+the run or measurement happened. The two are allowed to differ, and where they do
+the difference is real information — a run recorded on 2026-10-29 and written up
+on 2026-10-30 carries `date: 2026-10-30` in the frontmatter and `2026-10-29` in
+its table. Neither replaces the other.
 
 ## How to read a claim here
 

@@ -1,5 +1,6 @@
 ---
 title: 'E5 results — three VLMs on real Chromium screenshots'
+date: 2026-10-28
 kind: experiment
 state: benchmarked
 tags: [benchmark, state-benchmarked]

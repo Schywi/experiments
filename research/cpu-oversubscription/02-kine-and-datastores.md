@@ -1,5 +1,6 @@
 ---
 title: '02 — kine, and whether MySQL would help'
+date: 2026-10-31
 kind: analysis
 state: unknown
 tags: [cpu, control-plane, state-unknown]

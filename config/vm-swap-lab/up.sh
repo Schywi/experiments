@@ -93,14 +93,20 @@ warning: /dev/kvm is not available in this shell.
 EOF
 fi
 
-# The cached base image is keyed to the URL that produced it. Without this, the
-# 593 MB Ubuntu image already on disk would be reused after the switch to Fedora
-# and the guest would silently stay Ubuntu — the exact kernel that cannot do
-# recompression.
+# The cached base image is keyed to the URL that produced it. A cached image with
+# NO stamp is of unknown provenance and is discarded, not trusted: the 593 MB
+# Ubuntu image predates stamping, the first version of this check only discarded
+# on a *differing* stamp, and the guest silently stayed Ubuntu — the one distro
+# whose kernel cannot do zram recompression.
 image_stamp="${base_image}.url"
-if [[ -f "${base_image}" && -f "${image_stamp}" && "$(cat "${image_stamp}")" != "${BASE_IMAGE_URL}" ]]; then
-  echo "base image is from a different URL; discarding it"
-  rm -f "${base_image}"
+if [[ -f "${base_image}" ]]; then
+  if [[ ! -f "${image_stamp}" ]]; then
+    echo "cached base image has no origin stamp; discarding it (unknown distro)"
+    rm -f "${base_image}"
+  elif [[ "$(cat "${image_stamp}")" != "${BASE_IMAGE_URL}" ]]; then
+    echo "cached base image came from a different URL; discarding it"
+    rm -f "${base_image}"
+  fi
 fi
 if [[ ! -f "${base_image}" ]]; then
   echo "downloading ${BASE_IMAGE_URL}"

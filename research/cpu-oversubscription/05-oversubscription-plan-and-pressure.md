@@ -1,5 +1,6 @@
 ---
 title: '05 — Oversubscription plan, pressure, and the three real gaps'
+date: 2026-11-02
 kind: design
 state: unknown
 commits: [77cc684, c757981, 8caec1c, 3a4069e]

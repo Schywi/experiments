@@ -1,5 +1,6 @@
 ---
 title: 'Evidence provenance, deep links, and cartography — investigation + plan'
+date: 2026-10-08
 kind: design
 state: unknown
 tags: [provenance, topology, state-unknown]

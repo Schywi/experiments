@@ -37,6 +37,27 @@ commit_message.sh
 # Handoff notes for a specialised agent; never published.
 handoff/
 
+# Archives: sandbox-console ships as a tracked directory; the zip is a stale duplicate.
+*.zip
+
+# Private keys, at any depth — both swap labs generate their own.
+id_ed25519
+id_ed25519*
+
+# Lab artefacts: VM images, caches and serial logs are regenerated, results/ is evidence and stays.
+config/swap-lab/runs/
+config/swap-lab/seed/
+config/swap-lab/*.img
+config/swap-lab/*.img.*
+config/swap-lab/serial.log*
+config/vm-swap-lab/runs/
+config/vm-swap-lab/seed/
+config/vm-swap-lab/cache/
+config/vm-swap-lab/*.img
+config/vm-swap-lab/*.img.*
+config/vm-swap-lab/serial.log*
+config/vm-swap-lab/base.img.url
+
 # Quartz site: build artefact, assembled by scripts/site-sync.sh
 site/content/
 site/public/

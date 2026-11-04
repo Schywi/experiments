@@ -1,5 +1,6 @@
 ---
 title: '04 — Datastore capacity: research brief and prompt'
+date: 2026-10-31
 kind: analysis
 state: unknown
 tags: [cpu, control-plane, state-unknown]

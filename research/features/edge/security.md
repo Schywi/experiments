@@ -1,5 +1,6 @@
 ---
 title: 'Security edge cases'
+date: 2026-10-12
 kind: feature
 state: unknown
 commits: [e415607]

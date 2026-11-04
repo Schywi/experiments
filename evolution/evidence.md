@@ -1,5 +1,6 @@
 ---
 title: 'Commit evidence index'
+date: 2026-10-22
 kind: narrative
 commits:
   - 4ba7b97

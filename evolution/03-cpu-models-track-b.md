@@ -1,5 +1,6 @@
 ---
 title: 'Phase 3 — CPU models inside the cluster, Track B (2026-10-06 → 2026-10-10)'
+date: 2026-10-22
 kind: narrative
 phase: 3
 commits:

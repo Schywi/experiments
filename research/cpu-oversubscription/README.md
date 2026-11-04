@@ -1,5 +1,6 @@
 ---
 title: 'CPU oversubscription — a study of what this cluster can actually pack'
+date: 2026-10-31
 kind: index
 state: benchmarked
 tags: [state-benchmarked]

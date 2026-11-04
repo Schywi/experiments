@@ -1,5 +1,6 @@
 ---
 title: 'E6 — Qwen3-VL-2B drives a real Chromium and clicks'
+date: 2026-10-29
 kind: index
 ---
 

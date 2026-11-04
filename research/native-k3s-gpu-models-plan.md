@@ -1,5 +1,6 @@
 ---
 title: 'Native k3s + GPU + CPU models: plan and recorded decisions'
+date: 2026-10-06
 kind: design
 state: unknown
 tags: [gpu, state-unknown]

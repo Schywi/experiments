@@ -1,5 +1,6 @@
 ---
 title: 'Handoff — session-lab, for the CPU-oversubscription investigation'
+date: 2026-10-31
 kind: handoff
 state: unknown
 branch: 'research/session-lifecycle-elasticity'

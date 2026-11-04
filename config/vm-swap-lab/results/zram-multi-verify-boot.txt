@@ -1,14 +1,8 @@
 == swap backing ==
-swap: zram 512M lzo-rle on /dev/zram0
+swap: (not recorded)
 
-NAME       TYPE      SIZE USED PRIO
-/dev/zram0 partition 512M   0B   -2
 
 Filename				Type		Size		Used		Priority
-/dev/zram0                              partition	524284		0		-2
-
-NAME       ALGORITHM DISKSIZE DATA COMPR TOTAL STREAMS MOUNTPOINT
-/dev/zram0 lzo-rle       512M   4K   73B   12K       4 [SWAP]
 
 == kubelet running config (/configz) ==
 failSwapOn=False memorySwap.swapBehavior=NoSwap

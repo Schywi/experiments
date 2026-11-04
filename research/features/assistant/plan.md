@@ -1,5 +1,6 @@
 ---
 title: 'Plan — real links, LLM queries, chat/investigate split'
+date: 2026-10-25
 kind: feature
 state: unknown
 tags: [assistant, state-unknown]

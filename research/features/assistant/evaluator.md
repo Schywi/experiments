@@ -1,5 +1,6 @@
 ---
 title: 'Evaluator: read the whole sentence before any tool runs'
+date: 2026-10-27
 kind: feature
 state: unknown
 tags: [assistant, state-unknown]

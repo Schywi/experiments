@@ -1,5 +1,6 @@
 ---
 title: 'Benchmark — frozen baseline'
+date: 2026-10-08
 kind: index
 ---
 

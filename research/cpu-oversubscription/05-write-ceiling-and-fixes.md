@@ -1,5 +1,6 @@
 ---
 title: '05 — Raising the write ceiling: what stalls, and what to change'
+date: 2026-10-31
 kind: experiment
 state: benchmarked
 tags: [cpu, state-benchmarked]

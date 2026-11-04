@@ -1,5 +1,6 @@
 ---
 title: '01 — Our implementation, traced'
+date: 2026-10-31
 kind: analysis
 state: unknown
 commits: [30df98e]

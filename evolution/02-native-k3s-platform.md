@@ -1,5 +1,6 @@
 ---
 title: 'Phase 2 — Native k3s on the Fedora host, Track A (2026-10-06)'
+date: 2026-10-22
 kind: narrative
 phase: 2
 commits: [a2a7a41, 4368ef9, cee5c95, a8cd95d, 954fbc9, 66df612, dbcc855, fc3e35b]

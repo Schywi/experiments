@@ -1,5 +1,6 @@
 ---
 title: 'Phase 5 — AI operations assistant, Track D (2026-10-06 → 2026-10-12)'
+date: 2026-10-22
 kind: narrative
 phase: 5
 commits:

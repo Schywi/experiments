@@ -3,7 +3,7 @@ title: 'Leaked claims, the 100ms polling storm, and claim ordering'
 kind: analysis
 state: research
 phase: 8
-date: 2026-10-29
+date: 2026-10-30
 tags: [session-lifecycle, claims, state-research]
 ---
 

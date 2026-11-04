@@ -1,5 +1,6 @@
 ---
 title: 'E2 results — does Laya planning reduce end-to-end latency vs Qwen planning?'
+date: 2026-10-08
 kind: experiment
 state: benchmarked
 tags: [benchmark, state-benchmarked]

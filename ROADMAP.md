@@ -18,7 +18,7 @@ Ground rules that shaped it (from [`AGENTS.md`](AGENTS.md)):
 
 ---
 
-## 0. TL;DR — state on 2026-10-28
+## 0. TL;DR — state on 2026-11-04
 
 | | |
 |---|---|
@@ -31,6 +31,10 @@ Ground rules that shaped it (from [`AGENTS.md`](AGENTS.md)):
 | GPU | AMD RX 570 (`gfx803`) reachable as `amd.com/render` through a Go device plugin; Vulkan path proven, **no ROCm/CUDA, no VRAM enforcement** |
 | AI Ops | `apps/assistant` — 15 tools, one evaluator call reads the sentence and returns the task list, evidence attached server-side |
 | Sandboxes | agent-sandbox `v1.0.7` (pinned release) + `apps/sandbox-console` at `192.168.0.250` — read-only grid, one screenshot per tap, live isolation badge, M1-M7 of `research/rfc-sandbox-console.md`. Warm pool 8/8 ready; 3 of 13 live sandboxes `PodFailed` |
+| Sessions | `apps/session-lab` — a Go session runtime (scheduler, slots, CDP client, store, metrics) plus a pool autoscaler deployed from `config/session-lab/`. 22 design notes measure what one session costs: 42 of 60 offered succeeded, queue wait p95 134 s, reuse 35 ms vs destroy 374 ms + cold start, slot ceiling 168 contexts |
+| Control plane | **The ceiling is not the workload**: kine commits to SQLite in 1–3 s under write pressure. Fix measured live 2026-11-01 (`_synchronous=NORMAL&_busy_timeout=30000`): insert mean 64.6 → 2.06 ms, 823 Slow SQL/hour → 0, 9 fatals/24 h → 0. **Recorded in the note only — `config/k3s/` still carries no `datastore-endpoint`** |
+| Swap | zram as cushion *and* as measured capacity: **5 → 6 concurrent sessions (+20 %)** at 3 vCPU / 4 GiB, tail latency ~70 % better at equal load; lz4 wins capacity at the high rung, zstd wins latency (740 ms vs 39.4 s p95). Not yet a platform default |
+| GPU, measured | Acceleration **does not** raise session capacity — 1.53 vs 1.58 cores of 6 at 30 sessions — because the runner never requests a frame. It pays **−26 % CPU per browser** under a forced render loop, at +14 % screenshot latency |
 | Worm lab | Complete on `trackc`, merged here, and **scaled to 0** — it is preserved history, not a live workload |
 | Branches | `main` (public face, not a deploy source) · `native-k3s-gpu-models` (live Argo target) · `trackc` (worm-lab + registry backports) · `cluster-evolution` (unifies all three) · `feat/kargo` (Phase 6: Kargo + assistant evaluator) |
 
@@ -212,6 +216,105 @@ What breaks is in the phase document: `.248` was allocated to a
 anything that reaches `.249` holds Kargo admin, including the credential that
 pushes to this repository.
 
+### Phase 7 — agent-sandbox and the console that proves it (2026-10-18 → 10-25)
+
+**Branch:** `feat/sandbox-console`. **Tracked docs:**
+[`evolution/07-sandbox-console.md`](evolution/07-sandbox-console.md),
+[`research/rfc-sandbox-console.md`](research/rfc-sandbox-console.md).
+
+A sandbox becomes inspectable: agent-sandbox `v1.0.7` as a pinned Helm release,
+`apps/sandbox-console` as a read-only pane at `192.168.0.250`, and four CRDs whose
+controller stays out of this repository's review surface. The console exists to
+show two things `kubectl get sandboxes` cannot: that a sandbox is a real browser
+(a screenshot) and that it cannot reach the cluster (a four-second hang on
+`10.43.0.1:443`). Four objects turn into a 502 — starting with the router
+NetworkPolicy allowing port `8888` while Chromium listens on `9222`.
+
+### Phase 8 — Session lifecycle elasticity (2026-10-29 → 11-02)
+
+**Branch:** `research/session-lifecycle-elasticity` @ `33c18ec` → `3a4069e`,
+45 commits on `apps/session-lab`. **Tracked docs:**
+[`evolution/08-session-lifecycle-elasticity.md`](evolution/08-session-lifecycle-elasticity.md),
+[`research/session-lifecycle-elasticity/`](research/session-lifecycle-elasticity/README.md).
+
+The first phase whose product is a number rather than a component: a Go session
+runner, a pool autoscaler deployed from `config/session-lab/`, and 22 notes. It
+measures 42 of 60 offered sessions succeeding, queue wait p95 134 s, reuse at
+35 ms against 374 ms plus cold start, scaling 2 → 22 → 2 with 84.9 s to scale out,
+248 of 360 sessions throttled by a 1000m limit, and sixteen leaked claims holding
+the autoscaler at 22 replicas with no traffic.
+
+### Phase 9 — Browser contexts, slots and a CDP client in Go (2026-10-30)
+
+**Branch:** `research/session-lifecycle-elasticity` @ `a35b4e2` → `dfa017a`.
+**Tracked docs:**
+[`evolution/09-contexts-slots-cdp.md`](evolution/09-contexts-slots-cdp.md),
+notes [`16.1`](research/session-lifecycle-elasticity/16.1-browser-contexts-and-slots.md) and
+[`17`](research/session-lifecycle-elasticity/17-cdp-client-in-go.md).
+
+A pod is not a session. `slot = (instance, browserContextId)`, eight per Chromium,
+allocated by `internal/runtime/slots` and reached through a CDP client in
+`internal/runtime/browser` plus an `apps/cdp-forward` sidecar. The slot ceiling is
+168 contexts, and the cgroup cannot see inside a slot — per-slot CPU is the pod's
+number divided by contexts in use, and the notes say so.
+
+### Phase 10 — The session wall (2026-10-25 → 10-30)
+
+**Branch:** `research/session-lifecycle-elasticity` @ `e3c4cf6` → `5e538c0`,
+24 commits on `apps/sandbox-console`. **Tracked doc:**
+[`evolution/10-session-wall.md`](evolution/10-session-wall.md),
+[`16.2`](research/session-lifecycle-elasticity/16.2-session-wall-ui.md).
+
+Once a session is a slot, the interesting object is a run. Four zooms into one
+run — skyline, wall, lane, slot — rendered from a read-only run SQLite, with a
+0.5 fps capture budget at wall zoom because the bridge lock serialises all eight
+slots of a browser.
+
+### Phase 11 — CPU oversubscription and the datastore ceiling (2026-10-31 → 11-01)
+
+**Branch:** `research/session-lifecycle-elasticity` @ `cab89c1`. **Tracked docs:**
+[`evolution/11-cpu-oversubscription.md`](evolution/11-cpu-oversubscription.md),
+[`research/cpu-oversubscription/`](research/cpu-oversubscription/README.md).
+
+Seven notes that find the reason phase 8's 17 refusals were not OOM kills. kine
+commits to SQLite in 1–3 s under write pressure and surfaces as API `Get`/`Delete`
+timeouts, with `PRAGMA busy_timeout=0` turning contention into failure. The DSN
+fix is measured on the live node — and is **not yet in `config/k3s/`**, so a
+rebuild would lose it.
+
+### Phase 12 — Swap as capacity (runs 2026-11-02 → 11-03, recorded 11-04)
+
+**Branch:** `research/session-lifecycle-elasticity` @ `43d2333` → `cd9959a`.
+**Tracked docs:**
+[`evolution/12-swap-as-capacity.md`](evolution/12-swap-as-capacity.md),
+[`research/swap-capacity/`](research/swap-capacity/README.md), labs
+[`config/vm-swap-lab/`](config/vm-swap-lab/README.md) and
+[`config/swap-lab/`](config/swap-lab/up.sh).
+
+zram as capacity, measured in a disposable VM because `memorySwap` is a
+kubelet-wide setting: **5 → 6 concurrent sessions (+20 %)** at 3 vCPU / 4 GiB, with
+~70 % better tail latency at equal load. The ratio run splits its verdict — lz4
+holds the higher rung, zstd is 30–50× better on p95 at moderate overload — because
+the constraint moves from the zram device to the CPU between rungs 6 and 7. The
+study's own harness bug (`rate = rung/20` regardless of `HOLD`) is kept in the note
+as §5c.
+
+### Phase 13 — GPU pools, measured (2026-11-02)
+
+**Branch:** `research/session-lifecycle-elasticity` @ `4b6dbea` → `4c0ba7d` for the
+assets, notes filed 2026-11-02. **Tracked docs:**
+[`evolution/13-gpu-pools.md`](evolution/13-gpu-pools.md),
+[`19`](research/session-lifecycle-elasticity/19-gpu-pool-a-b.md),
+[`20`](research/session-lifecycle-elasticity/20-cpu-gpu-pool-split.md),
+[`08.2`](research/session-lifecycle-elasticity/08.2-gpu-offload-feasibility.md).
+
+A live A/B that closes the acceleration question: **1.53 vs 1.58 cores of 6** at 30
+sessions, because the runner never requests a frame. The GPU pays **−26 % CPU per
+browser** under a forced render loop, so acceleration is worth it per captured
+frame and worth nothing per session. KubeVirt passthrough is recorded as a rejected
+path (`08.2` §14), and the CPU/GPU pool split survives for device containment and
+workload routing rather than capacity.
+
 ---
 
 ## 3. What is actually deployed (verified against the cluster)
@@ -249,7 +352,10 @@ Three things deploy **outside** Argo and are therefore not reproducible from a
 clean checkout: the E4 A/B assistant (`assistant-e4-gpu`, tracked as
 `config/gpu-exp/assistant-e4-gpu.yaml`), and the two sandbox workloads, which are
 Helm releases `sandbox` (rev 7, ns `agent-sandbox-system`) and `sandbox-console`
-(rev 5, ns `sandbox-console`). Registering them as Applications is tracked in §4.
+(rev 5, ns `sandbox-console`), plus the pool autoscaler from
+`config/session-lab/` (chart, RBAC and in-cluster image build; note 10 records the
+deployed revision and the live 2 → 22 → 2 scale-out). Registering all three as
+Applications is tracked in §4.
 
 `config/argocd/applications/stable/` holds four Applications pinned to a full
 commit (`592d7f51…`) with manual sync only. Per
@@ -314,6 +420,32 @@ Grouped from `bd ready`; run `bd ready` for the live list.
     `HUBBLE_URL=http://h` and leaves it reloaded. The file passes alone (8
     passed); the suite does not.
 
+**Capacity and the control plane (what phases 8–13 opened)**
+
+15. **Put the kine DSN into `config/k3s/`.** The fix measured live on 2026-11-01
+    (`_synchronous=NORMAL&_busy_timeout=30000`: insert 64.6 → 2.06 ms, 823 Slow
+    SQL/hour → 0) exists only in
+    [`research/cpu-oversubscription/05-write-ceiling-and-fixes.md`](research/cpu-oversubscription/05-write-ceiling-and-fixes.md)
+    §8. A reinstall from this repository would lose it.
+16. **Repair the GPU device plugin's registration** (`apps/gpu-device-plugin/main.go:146-151`
+    registers once and then blocks on `select {}`), so `amd.com/render` survives a
+    kubelet restart and the `hostPath /dev/dri` workaround can retire.
+17. **Decide whether acceleration becomes the default** in
+    `apps/browser-sandbox/entrypoint.sh` for capture-heavy work: −26 % CPU per
+    browser under a render loop, at +14 % screenshot latency
+    ([`13`](evolution/13-gpu-pools.md)).
+18. **Run the oversubscription ladder.** The cpu-oversubscription study designed it
+    and never executed it; its own README status is *"Measurement added,
+    experiments not yet run."*
+19. **Run the swap arms still open:** the disk-swap arm (§7.1 of the swap study) and
+    the two-layer hypothesis registered before its run (§5e). Then decide whether
+    any zram ratio becomes a default, given the measured 5 → 6 sessions.
+20. **Build or retire the CPU/GPU pool split** ([`20`](research/session-lifecycle-elasticity/20-cpu-gpu-pool-split.md)).
+    The routing design is written; §0 of that note re-grounds it on device
+    containment rather than capacity.
+21. **Store a slot id in the run DB.** `cdp-bridge.py` has no `sessionId`, so the
+    wall binds slots to sessions *by time* above `--contexts-per-browser 1`.
+
 ---
 
 ## 5. Known limits — stated, not hidden
@@ -327,8 +459,19 @@ Grouped from `bd ready`; run `bd ready` for the live list.
 - **The GPU is also the desktop's display card.** It is shared with the host
   session, so there is no headless-only GPU here and no VM boundary to hide
   behind: a passthrough bind would take the card off the desktop entirely.
-- **Memory-bound.** The models fit only with the browser closed; swap is
-  enabled as a cushion (`memorySwap.swapBehavior`), not as capacity.
+- **Memory-bound, and swap is a cushion in its configuration.** The models fit
+  only with the browser closed. The swap lab measured that zram does raise
+  capacity — **5 → 6 concurrent sessions, +20 %** — but
+  `memorySwap.swapBehavior: LimitedSwap` is still configured as a cushion and no
+  compression ratio has been adopted as a default.
+- **The capacity ceiling is the control plane, not the workload.** kine commits to
+  SQLite in 1–3 s under write pressure, so "600 sessions" was never a workload
+  limit; the fix for it lives in a note and not yet in `config/k3s/` (§4.15).
+- **A session is a slot, not a pod.** One Chromium carries up to eight browser
+  contexts, the measured slot ceiling is 168 contexts, and the cgroup cannot see
+  inside a slot — per-slot CPU is the pod's number divided by contexts in use.
+- **Acceleration pays per frame, not per session.** Measured at 1.53 vs 1.58 cores
+  of 6 at 30 sessions; the −26 % CPU win only appears under a forced render loop.
 - **Two reconcilers are never allowed on one resource.** That is why the pinned
   `stable/` bundle and Tilt-driven Worm resources are mutually exclusive.
 - **Benchmarks are single-host measurements.** E2/E3 record a baseline commit
@@ -348,17 +491,27 @@ Tiltfiles assume the same layout. The evolution is documented, not relocated.
 
 ```text
 ROADMAP.md            this file — phases, provenance, open work
-evolution/            per-phase narrative with commit/tag evidence
+evolution/            per-phase narrative with commit/tag evidence (phases 1-13)
 research/             tracked design notes and shipped feature docs
 blog/                 Phase-1 write-ups (k3d / Worm / Tilt)
 benchmark/            measured experiments (E2 planner A/B, E3 AMD GPU, E4 …)
-apps/                 executable software (assistant, models, worm lab, GPU plugin)
+apps/                 executable software
+  assistant/          the AI operations assistant
+  session-lab/        Go session runtime: scheduler, slots, CDP client, autoscaler
+  sandbox-console/    the console and its run/wall layer
+  browser-sandbox/ cdp-forward/   the browser image and its DevTools forwarder
+  models/ gpu-device-plugin/ controller/ worker/ regression/   the rest
 config/               deployable configuration
   k3d/                Phase 1 profile (archived, still runnable on Docker)
   k3s/                Phase 2+ profile (the live one)
   kargo/              Phase 6 promotion: install, gateway, pilot Warehouse/Stages
+  sandbox/            agent-sandbox router, template, warm pool
+  session-lab/        pool autoscaler chart
+  swap-lab/           host-side swap pressure harness
+  vm-swap-lab/        disposable VM lab for the zram/swap experiments
   gpu-exp/            E4/A-B GPU manifests (tracked, not yet Applications)
   argocd/             values and Applications (incl. the four kargo-* ones)
+site/                 Quartz renderer that publishes research/evolution/benchmark/blog
 scripts/              host-side helpers
 Tiltfile*             Phase 1 entrypoints (k3d only)
 docs/                 gitignored, machine-specific runbooks

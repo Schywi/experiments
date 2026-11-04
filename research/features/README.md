@@ -1,5 +1,6 @@
 ---
 title: 'Features'
+date: 2026-10-08
 kind: index
 ---
 
