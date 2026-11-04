@@ -12,7 +12,7 @@ tags: [session-lifecycle, state-implemented]
 
 | | |
 |---|---|
-| Status | Design decision, not implemented |
+| Status | Admission classes **implemented** (`internal/runtime/admission`); preemption not built |
 | Date | 2026-10-29 |
 | Phase | 8 — session lifecycle elasticity |
 | Code read | `run.go`, `schedule.go`, `adapter/kube.go`, `apps/browser-sandbox/cdp-bridge.py` |
@@ -137,7 +137,7 @@ apps/session-lab/
 └── internal/
     ├── runtime/                # DEMAND PLANE — imports infra/sandbox, never infra/kube
     │   ├── schedule/           # arrivals, plan, buckets
-    │   ├── admission/          # classes, queue, gate (next step)
+    │   ├── admission/          # classes, queue, gate (implemented)
     │   ├── session/            # lease, hold, release (was run/)
     │   └── report/             # JSON + text summary
     ├── infra/                  # CAPACITY PLANE — the only k8s caller
@@ -172,9 +172,11 @@ Move mechanics: `git mv` per package plus import rewrites, no behaviour change, 
 | Pool sizing ignores bulk: `target = ready + pending` | `internal/infra/pool/autoscale.go` (unchanged path, new data) |
 | Admission wait recorded per session and printed | `internal/runtime/session/run.go`, `internal/runtime/report/report.go` |
 
-Deliberately not built yet: browser contexts (`--contexts-per-browser`), a slot allocator, preemption.
-The gate bounds *concurrent acquisitions*, which is the part that hurts the API server; the slot
-allocator only becomes meaningful once one Chromium serves several sessions.
+Deliberately not built **at the time of this note**: browser contexts (`--contexts-per-browser`), a
+slot allocator, preemption. The first two were built afterwards and are recorded in
+[`16.1`](16.1-browser-contexts-and-slots.md); preemption is still unbuilt. The gate bounds
+*concurrent acquisitions*, which is the part that hurts the API server; the slot allocator only
+becomes meaningful once one Chromium serves several sessions.
 
 ## 7. Parallel research that may decide the class question
 
