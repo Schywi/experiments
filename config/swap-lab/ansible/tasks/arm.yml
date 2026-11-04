@@ -1,0 +1,98 @@
+---
+# One arm: boot its VM, confirm the backing, push memory until it fails, keep the
+# JSON, optionally stop the VM.
+#
+# The measurement is two runs per arm:
+#   256 MiB  — must succeed everywhere; shows the cost of staying inside RAM
+#   0        — allocate until failure; shows where the wall is and what it costs
+# Both report pswpin/pswpout, swap peak, zram ratio and OOM kills from inside the
+# guest, so swap and zram are compared on the same numbers.
+
+- name: "{{ arm.name }}: stop vm{{ arm.vm_num }} if left running"
+  ansible.builtin.command:
+    cmd: ./down.sh
+    chdir: "{{ lab_dir }}"
+  environment:
+    VM_NUM: "{{ arm.vm_num }}"
+  changed_when: true
+  tags: [always]
+
+- name: "{{ arm.name }}: boot ({{ vm_mem_mb }} MiB, {{ vm_disk_gb }} GiB, backing={{ arm.swap_mode }})"
+  ansible.builtin.command:
+    cmd: ./up.sh
+    chdir: "{{ lab_dir }}"
+  environment:
+    VM_NUM: "{{ arm.vm_num }}"
+    MEM_MB: "{{ vm_mem_mb }}"
+    CPUS: "{{ vm_cpus }}"
+    DISK_GB: "{{ vm_disk_gb }}"
+    SWAP_MODE: "{{ arm.swap_mode }}"
+    SWAP_MB: "{{ backing_mb }}"
+    ZRAM_MB: "{{ backing_mb }}"
+    ZRAM_ALGO: "{{ arm.zram_algo | default('lz4') }}"
+  register: boot
+  changed_when: true
+  tags: [boot, measure]
+
+- name: "{{ arm.name }}: backing as the guest sees it"
+  ansible.builtin.debug:
+    msg: "{{ boot.stdout_lines }}"
+
+- name: "{{ arm.name }}: nothing swapped before the test"
+  ansible.builtin.shell:
+    cmd: |
+      ssh -F /dev/null -i {{ lab_dir }}/id_ed25519 -p {{ 2222 + arm.vm_num - 1 }} \
+        -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR \
+        ubuntu@127.0.0.1 'grep -E "^(MemTotal|SwapTotal)" /proc/meminfo'
+  register: baseline
+  changed_when: false
+  tags: [measure]
+
+- name: "{{ arm.name }}: 256 MiB must fit"
+  ansible.builtin.shell:
+    cmd: |
+      ssh -F /dev/null -i {{ lab_dir }}/id_ed25519 -p {{ 2222 + arm.vm_num - 1 }} \
+        -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR \
+        ubuntu@127.0.0.1 'python3 /usr/local/bin/mempressure.py --target-mib 256 --hold 10 --label {{ arm.name }}-256'
+  register: run_256
+  changed_when: false
+  tags: [measure]
+
+- name: "{{ arm.name }}: allocate until it fails"
+  ansible.builtin.shell:
+    cmd: |
+      ssh -F /dev/null -i {{ lab_dir }}/id_ed25519 -p {{ 2222 + arm.vm_num - 1 }} \
+        -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR \
+        ubuntu@127.0.0.1 'python3 /usr/local/bin/mempressure.py --target-mib 0 --hold 10 --label {{ arm.name }}-max'
+  register: run_max
+  changed_when: false
+  failed_when: false
+  tags: [measure]
+
+- name: "{{ arm.name }}: save both reports"
+  ansible.builtin.copy:
+    dest: "{{ results_dir }}/{{ arm.name }}-{{ item.name }}.json"
+    content: "{{ item.json }}\n"
+    mode: "0644"
+  loop:
+    - { name: "256", json: "{{ run_256.stdout | default('{}') }}" }
+    - { name: "max", json: "{{ run_max.stdout | default('{}') }}" }
+  when: run_256.stdout is defined or run_max.stdout is defined
+  tags: [measure]
+
+- name: "{{ arm.name }}: result"
+  ansible.builtin.debug:
+    msg:
+      - "{{ arm.name }} ({{ arm.note }})"
+      - "{{ run_256.stdout | default('no 256 MiB result') }}"
+  tags: [measure]
+
+- name: "{{ arm.name }}: stop the VM"
+  ansible.builtin.command:
+    cmd: ./down.sh
+    chdir: "{{ lab_dir }}"
+  environment:
+    VM_NUM: "{{ arm.vm_num }}"
+  when: not keep_vm
+  changed_when: true
+  tags: [always]

@@ -1,0 +1,74 @@
+#cloud-config
+# Minimal Linux box for the swap/zram experiment. No Kubernetes, no agents, no
+# packages beyond what the image already carries (python3 is present).
+#
+# Sizing is deliberate: 512 MiB RAM and 4 GiB disk, 384 MiB of swap backing.
+# Backing is 75 % of RAM so an arm can demonstrably exceed physical memory; the
+# same size is used for the zram and file-swap arms so they differ only in how
+# the pages are stored.
+#
+# Placeholders are substituted by up.sh:
+#   __SSH_PUBLIC_KEY__ __SWAP_MODE__ __ZRAM_MB__ __ZRAM_ALGO__ __SWAP_MB__
+#   __MEMPRESSURE_B64__
+
+users:
+  - name: ubuntu
+    sudo: "ALL=(ALL) NOPASSWD:ALL"
+    shell: /bin/bash
+    groups: [sudo]
+    ssh_authorized_keys:
+      - __SSH_PUBLIC_KEY__
+
+ssh_pwauth: false
+disable_root: true
+package_update: false
+packages: []
+
+write_files:
+  - path: /usr/local/bin/setup-swap.sh
+    permissions: "0755"
+    content: |
+      #!/bin/sh
+      # Three ways to back memory, one at a time.
+      set -e
+      mode="__SWAP_MODE__"
+      zram_mb="__ZRAM_MB__"
+      zram_algo="__ZRAM_ALGO__"
+      swap_mb="__SWAP_MB__"
+
+      case "${mode}" in
+        zram)
+          # zram.ko is not in the image's kernel package; on Ubuntu it lives in
+          # linux-modules-extra. Drive the device with zramctl instead of the
+          # systemd generator, whose unit races the module load and then fails
+          # with "Cannot allocate memory" writing disksize.
+          apt-get install -y --no-install-recommends "linux-modules-extra-$(uname -r)" >/dev/null
+          modprobe zram
+          if [ -e /sys/block/zram0/disksize ] && [ "$(cat /sys/block/zram0/disksize)" != "0" ]; then
+            swapoff /dev/zram0 2>/dev/null || true
+            echo 1 >/sys/block/zram0/reset || true
+          fi
+          dev="$(zramctl --find --size "${zram_mb}M" --algorithm "${zram_algo}")"
+          [ -n "${dev}" ] || { echo "zramctl could not create a device" >&2; exit 1; }
+          mkswap "${dev}" >/dev/null
+          swapon "${dev}"
+          ;;
+        disk)
+          fallocate -l "${swap_mb}M" /swapfile
+          chmod 600 /swapfile
+          mkswap /swapfile >/dev/null
+          swapon /swapfile
+          ;;
+        none)
+          : ;;
+      esac
+      # Left at the kernel default (60): the experiment is about capacity and
+      # latency under pressure, not about tuning swappiness.
+      cat /proc/swaps >/var/tmp/swap-mode
+      free -m >>/var/tmp/swap-mode
+
+runcmd:
+  - [sh, /usr/local/bin/setup-swap.sh]
+  - [sh, -c, "echo '__MEMPRESSURE_B64__' | base64 -d > /usr/local/bin/mempressure.py && chmod 0755 /usr/local/bin/mempressure.py"]
+
+final_message: "swap-lab VM ready in $UPTIME seconds"

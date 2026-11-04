@@ -1,0 +1,61 @@
+---
+# Three small Linux VMs, one per memory backing, driven end to end.
+#
+# Nothing is installed on the guests beyond what the cloud image carries: the
+# pressure generator is python3 with mmap, copied in through cloud-init.
+# No Kubernetes, no agents, no services.
+#
+# Sizing (agreed): 512 MiB RAM, 4 GiB disk, 384 MiB backing per VM.
+# Totals across the three: 1 536 MiB RAM, 12 GiB disk (sparse), 6 vCPU.
+#
+# Usage:
+#   ansible-playbook provision.yml                  # all three arms
+#   ansible-playbook provision.yml -e arm=zram      # one arm
+#   ansible-playbook provision.yml --tags boot      # boot only
+#   ansible-playbook provision.yml --tags measure   # measure only (VMs must exist)
+- name: swap vs zram on the smallest practical VM
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    lab_dir: "{{ playbook_dir }}/.."
+    results_dir: "{{ lab_dir }}/results"
+    vm_mem_mb: 512
+    vm_cpus: 2
+    vm_disk_gb: 4
+    backing_mb: 384
+    keep_vm: true
+
+    arms:
+      - name: none
+        vm_num: 1
+        swap_mode: none
+        note: "RAM only — the baseline"
+      - name: disk
+        vm_num: 2
+        swap_mode: disk
+        note: "384 MiB swapfile, no compression"
+      - name: zram
+        vm_num: 3
+        swap_mode: zram
+        zram_algo: lz4
+        note: "384 MiB zram, lz4 ≈2:1"
+
+  tasks:
+    - name: results directory
+      ansible.builtin.file:
+        path: "{{ results_dir }}"
+        state: directory
+        mode: "0755"
+
+    - name: per-arm
+      ansible.builtin.include_tasks: tasks/arm.yml
+      loop: "{{ arms }}"
+      loop_control:
+        loop_var: arm
+      when: arm_filter is not defined or arm_filter == arm.name
+      vars:
+        arm_filter: "{{ arm_choice | default(omit) }}"
+
+  vars_prompt: []
