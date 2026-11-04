@@ -2,7 +2,7 @@
 title: 'Questions that must produce a given result'
 kind: feature
 state: unknown
-tags: [assistant]
+tags: [assistant, state-unknown]
 ---
 
 # Questions that must produce a given result

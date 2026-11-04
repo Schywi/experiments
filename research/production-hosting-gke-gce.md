@@ -2,6 +2,7 @@
 title: 'Production hosting on GKE or GCE — what cannot work, and what must change'
 kind: analysis
 state: unknown
+tags: [state-unknown]
 ---
 
 # Production hosting on GKE or GCE — what cannot work, and what must change

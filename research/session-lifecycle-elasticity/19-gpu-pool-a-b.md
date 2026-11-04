@@ -5,7 +5,7 @@ state: benchmarked
 phase: 8
 date: 2026-10-31
 branch: 'research/session-lifecycle-elasticity'
-tags: [session-lifecycle, gpu]
+tags: [session-lifecycle, gpu, state-benchmarked]
 ---
 
 # Note 19 — GPU-enabled pool A/B: does acceleration raise session capacity

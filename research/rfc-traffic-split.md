@@ -3,6 +3,7 @@ title: 'RFC — Canary and traffic splitting for agent-sandbox (experimental)'
 kind: rfc
 state: hypothesis
 date: 2026-10-24
+tags: [state-hypothesis]
 ---
 
 # RFC — Canary and traffic splitting for agent-sandbox (experimental)

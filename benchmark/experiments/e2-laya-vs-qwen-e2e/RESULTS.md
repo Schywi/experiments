@@ -2,7 +2,7 @@
 title: 'E2 results — does Laya planning reduce end-to-end latency vs Qwen planning?'
 kind: experiment
 state: benchmarked
-tags: [benchmark]
+tags: [benchmark, state-benchmarked]
 ---
 
 # E2 results — does Laya planning reduce end-to-end latency vs Qwen planning?

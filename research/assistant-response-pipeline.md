@@ -2,6 +2,7 @@
 title: 'Assistant response pipeline v2 — structured facts → dual response → streaming'
 kind: analysis
 state: unknown
+tags: [state-unknown]
 ---
 
 # Assistant response pipeline v2 — structured facts → dual response → streaming

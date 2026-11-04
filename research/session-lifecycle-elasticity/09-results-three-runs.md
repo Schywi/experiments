@@ -4,7 +4,7 @@ kind: experiment
 state: benchmarked
 phase: 8
 date: 2026-10-29
-tags: [session-lifecycle, autoscaling]
+tags: [session-lifecycle, autoscaling, state-benchmarked]
 ---
 
 # Note 09 — Three runs on one workload: fixed pool, destroy/rebuild, and autoscaling

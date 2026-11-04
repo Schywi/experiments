@@ -2,7 +2,7 @@
 title: 'LLM concurrency limit + bounded FIFO queue'
 kind: feature
 state: implemented
-tags: [assistant]
+tags: [assistant, state-implemented]
 ---
 
 # LLM concurrency limit + bounded FIFO queue

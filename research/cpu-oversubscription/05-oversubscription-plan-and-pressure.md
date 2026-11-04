@@ -3,7 +3,7 @@ title: '05 — Oversubscription plan, pressure, and the three real gaps'
 kind: design
 state: unknown
 commits: [77cc684, c757981, 8caec1c, 3a4069e]
-tags: [cpu]
+tags: [cpu, state-unknown]
 ---
 
 # 05 — Oversubscription plan, pressure, and the three real gaps

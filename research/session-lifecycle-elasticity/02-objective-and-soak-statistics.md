@@ -5,7 +5,7 @@ state: hypothesis
 phase: 8
 date: 2026-10-29
 commits: [d816e0f]
-tags: [session-lifecycle, claims]
+tags: [session-lifecycle, claims, state-hypothesis]
 ---
 
 # Note 02 — What the run is for, and what a 10k-session soak can claim

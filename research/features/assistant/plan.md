@@ -2,7 +2,7 @@
 title: 'Plan — real links, LLM queries, chat/investigate split'
 kind: feature
 state: unknown
-tags: [assistant]
+tags: [assistant, state-unknown]
 ---
 
 # Plan — real links, LLM queries, chat/investigate split

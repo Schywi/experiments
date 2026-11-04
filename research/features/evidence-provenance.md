@@ -2,7 +2,7 @@
 title: 'Feature: Evidence provenance & deep links'
 kind: feature
 state: implemented
-tags: [assistant, provenance]
+tags: [assistant, provenance, state-implemented]
 ---
 
 # Feature: Evidence provenance & deep links

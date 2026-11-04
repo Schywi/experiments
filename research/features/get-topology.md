@@ -2,7 +2,7 @@
 title: 'Feature (proposed): `get_topology` / `get_topology_snapshot`'
 kind: feature
 state: hypothesis
-tags: [assistant, topology]
+tags: [assistant, topology, state-hypothesis]
 ---
 
 # Feature (proposed): `get_topology` / `get_topology_snapshot`

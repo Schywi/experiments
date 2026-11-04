@@ -2,7 +2,7 @@
 title: '04 — Datastore capacity: research brief and prompt'
 kind: analysis
 state: unknown
-tags: [cpu, control-plane]
+tags: [cpu, control-plane, state-unknown]
 ---
 
 # 04 — Datastore capacity: research brief and prompt

@@ -4,7 +4,7 @@ kind: analysis
 state: research
 phase: 8
 date: 2026-10-29
-tags: [session-lifecycle, claims]
+tags: [session-lifecycle, claims, state-research]
 ---
 
 # Note 14 — Leaked claims, the 100ms polling storm, and claim ordering

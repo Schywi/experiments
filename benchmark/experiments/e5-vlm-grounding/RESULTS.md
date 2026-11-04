@@ -2,7 +2,7 @@
 title: 'E5 results — three VLMs on real Chromium screenshots'
 kind: experiment
 state: benchmarked
-tags: [benchmark]
+tags: [benchmark, state-benchmarked]
 ---
 
 # E5 results — three VLMs on real Chromium screenshots

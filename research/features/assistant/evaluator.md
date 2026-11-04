@@ -2,7 +2,7 @@
 title: 'Evaluator: read the whole sentence before any tool runs'
 kind: feature
 state: unknown
-tags: [assistant]
+tags: [assistant, state-unknown]
 ---
 
 # Evaluator: read the whole sentence before any tool runs

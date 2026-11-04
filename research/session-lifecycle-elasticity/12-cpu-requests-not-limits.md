@@ -3,7 +3,7 @@ title: 'CPU: requests yes, limits no'
 kind: experiment
 state: validated
 date: 2026-10-29
-tags: [session-lifecycle]
+tags: [session-lifecycle, state-validated]
 ---
 
 # Note 12 — CPU: requests yes, limits no

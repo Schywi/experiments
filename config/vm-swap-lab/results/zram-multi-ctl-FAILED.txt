@@ -1,6 +1,9 @@
 arm: zram-multi-ctl
 swap_mode: zram  class: swap-on
-task: zram-multi-ctl: install agent-sandbox and the warm pool
+task: zram-multi-ctl: boot 4 vCPU / 4096 MiB / 12 GiB, swap=zram
 message: non-zero return code
-stdout: downloading agent-sandbox v1.0.7
-stderr: curl: (6) Could not resolve host: github.com
+stdout: serving k3s artifacts from /home/dev/Documentos/git_repos/experiments/config/vm-swap-lab/cache at http://10.0.2.2:8099
+booting vm-swap-lab (4 vcpu, 4096 MiB, 12 GiB overlay) on ssh port 2222
+  swap: zram 128 MiB, algorithm lzo-rle
+waiting for ssh (serial log: /home/dev/Documentos/git_repos/experiments/config/vm-swap-lab/serial.log)
+stderr: ./up.sh: linha 189: SSH_USER: variável não associada

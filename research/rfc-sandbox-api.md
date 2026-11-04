@@ -3,7 +3,7 @@ title: 'RFC — `sandbox-console` HTTP API for tools'
 kind: rfc
 state: implemented
 date: 2026-10-25
-tags: [console]
+tags: [console, state-implemented]
 ---
 
 # RFC — `sandbox-console` HTTP API for tools

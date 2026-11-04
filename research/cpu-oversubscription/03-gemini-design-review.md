@@ -2,7 +2,7 @@
 title: '03 — The Gemini design, reviewed against this cluster'
 kind: analysis
 state: unknown
-tags: [cpu]
+tags: [cpu, state-unknown]
 ---
 
 # 03 — The Gemini design, reviewed against this cluster

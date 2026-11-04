@@ -6,6 +6,7 @@ phase: 8
 date: 2026-10-29
 branch: 'research/session-lifecycle-elasticity'
 commits: [078d1b9, d816e0f, dd9ba54]
+tags: [state-hypothesis]
 ---
 
 # Session lifecycle elasticity — Phase 8 design notes

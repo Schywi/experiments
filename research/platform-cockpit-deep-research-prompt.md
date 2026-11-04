@@ -2,6 +2,7 @@
 title: 'Deep Research Prompt: A Pareto Platform Cockpit for Kubernetes'
 kind: analysis
 state: unknown
+tags: [state-unknown]
 ---
 
 # Deep Research Prompt: A Pareto Platform Cockpit for Kubernetes

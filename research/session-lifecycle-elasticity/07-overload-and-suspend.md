@@ -5,7 +5,7 @@ state: benchmarked
 phase: 8
 date: 2026-10-29
 commits: [159ab5b]
-tags: [session-lifecycle]
+tags: [session-lifecycle, state-benchmarked]
 ---
 
 # Note 07 — The overload run and the suspend run: where the platform stops

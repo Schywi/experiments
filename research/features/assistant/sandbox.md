@@ -2,7 +2,7 @@
 title: 'Sandbox specialist (thin client over the console API)'
 kind: feature
 state: unknown
-tags: [assistant, console]
+tags: [assistant, console, state-unknown]
 ---
 
 # Sandbox specialist (thin client over the console API)

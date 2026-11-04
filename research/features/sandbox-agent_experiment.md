@@ -2,7 +2,7 @@
 title: 'Feature (experiment): an agent that drives a browser sandbox'
 kind: feature
 state: research
-tags: [assistant]
+tags: [assistant, state-research]
 ---
 
 # Feature (experiment): an agent that drives a browser sandbox

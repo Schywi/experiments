@@ -2,7 +2,7 @@
 title: 'Correlate latency — investigation and the smallest experiment'
 kind: analysis
 state: unknown
-tags: [benchmark]
+tags: [benchmark, state-unknown]
 ---
 
 # Correlate latency — investigation and the smallest experiment

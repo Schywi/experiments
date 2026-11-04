@@ -2,7 +2,7 @@
 title: '05 — Raising the write ceiling: what stalls, and what to change'
 kind: experiment
 state: benchmarked
-tags: [cpu]
+tags: [cpu, state-benchmarked]
 ---
 
 # 05 — Raising the write ceiling: what stalls, and what to change

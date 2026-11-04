@@ -3,7 +3,7 @@ title: 'RFC — `sandbox-console`: a Pareto pane to inspect, drive and demo agen
 kind: rfc
 state: hypothesis
 date: 2026-10-24
-tags: [console]
+tags: [console, state-hypothesis]
 ---
 
 # RFC — `sandbox-console`: a Pareto pane to inspect, drive and demo agent-sandbox

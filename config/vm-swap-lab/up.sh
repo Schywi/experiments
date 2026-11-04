@@ -12,6 +12,12 @@
 set -euo pipefail
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# Sourced here, not further down: this file uses ${SSH_USER} while waiting for the
+# guest to answer, and lib.sh is what defines it. Sourcing it later made up.sh
+# abort with "SSH_USER: unbound variable" under `set -u` — after qemu had already
+# booted the VM, so the failure looked like a boot problem.
+# shellcheck source=lib.sh
+source "${script_dir}/lib.sh"
 
 # Fedora Cloud Base 44, not Ubuntu: the guest must have a kernel built with
 # CONFIG_ZRAM_MULTI_COMP, and Ubuntu ships it disabled in every release checked
@@ -195,8 +201,6 @@ for _ in $(seq 1 120); do
 done
 
 echo "waiting for k3s"
-# shellcheck source=lib.sh
-source "${script_dir}/lib.sh"
 # 180 × 5 s = 15 min. The guest has to import the airgap image bundle (~250 MB)
 # before the node registers; 5 minutes was only ever enough with network installs.
 wait_node "${WAIT_NODE_TRIES:-180}"

@@ -2,7 +2,7 @@
 title: '02 — kine, and whether MySQL would help'
 kind: analysis
 state: unknown
-tags: [cpu, control-plane]
+tags: [cpu, control-plane, state-unknown]
 ---
 
 # 02 — kine, and whether MySQL would help

@@ -4,7 +4,7 @@ kind: analysis
 state: hypothesis
 phase: 8
 date: 2026-10-30
-tags: [session-lifecycle, cdp]
+tags: [session-lifecycle, cdp, state-hypothesis]
 ---
 
 # Note 17 — A CDP client in Go, in the runtime

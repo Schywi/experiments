@@ -5,7 +5,7 @@ state: hypothesis
 phase: 8
 date: 2026-10-29
 commits: [d816e0f, 218d60a]
-tags: [session-lifecycle]
+tags: [session-lifecycle, state-hypothesis]
 ---
 
 # Note 03 — What the sandbox platform already does, and what a session-elasticity test would need

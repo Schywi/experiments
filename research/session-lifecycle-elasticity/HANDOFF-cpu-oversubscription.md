@@ -4,7 +4,7 @@ kind: handoff
 state: unknown
 branch: 'research/session-lifecycle-elasticity'
 commits: [30df98e]
-tags: [session-lifecycle, cpu]
+tags: [session-lifecycle, cpu, state-unknown]
 ---
 
 # Handoff — session-lab, for the CPU-oversubscription investigation

@@ -2,7 +2,7 @@
 title: 'Reasoning model, topology tool, and Cilium observability — investigation'
 kind: analysis
 state: unknown
-tags: [topology]
+tags: [topology, state-unknown]
 ---
 
 # Reasoning model, topology tool, and Cilium observability — investigation

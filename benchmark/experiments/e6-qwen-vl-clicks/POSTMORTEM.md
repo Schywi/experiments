@@ -2,7 +2,7 @@
 title: 'E6 postmortem — Qwen3-VL-2B driving a real Chromium, aborted'
 kind: experiment
 state: unknown
-tags: [benchmark]
+tags: [benchmark, state-unknown]
 ---
 
 # E6 postmortem — Qwen3-VL-2B driving a real Chromium, aborted

@@ -2,6 +2,7 @@
 title: 'AI workflow — local infrastructure assistant ("Jarvis")'
 kind: analysis
 state: unknown
+tags: [state-unknown]
 ---
 
 # AI workflow — local infrastructure assistant ("Jarvis")

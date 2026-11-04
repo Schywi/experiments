@@ -2,7 +2,7 @@
 title: 'Edge-case catalogue'
 kind: feature
 state: unknown
-tags: [assistant]
+tags: [assistant, state-unknown]
 ---
 
 # Edge-case catalogue

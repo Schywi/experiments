@@ -5,7 +5,7 @@ state: hypothesis
 phase: 8
 date: 2026-10-29
 commits: [d816e0f]
-tags: [session-lifecycle]
+tags: [session-lifecycle, state-hypothesis]
 ---
 
 # Note 01 — Measuring CPU and memory per session: cgroup v2, PSI, and where eBPF earns its place

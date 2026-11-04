@@ -2,7 +2,7 @@
 title: 'Link contract'
 kind: feature
 state: unknown
-tags: [assistant]
+tags: [assistant, state-unknown]
 ---
 
 # Link contract

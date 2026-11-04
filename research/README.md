@@ -43,6 +43,28 @@ catalogue.
 | [RFC — sandbox-console](rfc-sandbox-console.md) | RFC | A pane to inspect, drive and demo `agent-sandbox` |
 | [RFC — traffic split](rfc-traffic-split.md) | RFC | Canary and traffic splitting for `agent-sandbox`, experimental |
 
+## How a note is labelled
+
+Every note carries YAML frontmatter with two axes, because "what is this" and
+"where does it stand" are different questions:
+
+| Field | Values | Question it answers |
+|---|---|---|
+| `kind` | `analysis` `experiment` `audit` `design` `rfc` `feature` `handoff` `narrative` `index` | What kind of document is this? |
+| `state` | `hypothesis` `research` `implemented` `validated` `benchmarked` `frozen` `superseded` `unknown` | Where does it stand? |
+
+`state` is derived from the `| Status |` row the note already keeps — the table
+is the human sentence, the frontmatter is the machine-readable copy. Index pages
+and narrative write-ups carry no `state`: they make no claim about current state.
+`state: unknown` means the note has no status row, so nothing was asserted on its
+behalf; those 27 notes need an owner's decision, not a guess.
+
+Each state is also emitted as a tag, `state-hypothesis`, `state-implemented` and
+so on, so the site can list them: `/tags/state-hypothesis` is every proposed and
+unbuilt piece of this repository in one page. The remaining fields are `phase`,
+`date`, `branch`, `commits` (only hashes the note itself cites) and subject
+`tags`.
+
 ## How to read a claim here
 
 Notes state what was measured, what was inferred, and what is unknown. Numbers

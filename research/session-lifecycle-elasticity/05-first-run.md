@@ -4,7 +4,7 @@ kind: experiment
 state: benchmarked
 phase: 8
 date: 2026-10-29
-tags: [session-lifecycle]
+tags: [session-lifecycle, state-benchmarked]
 ---
 
 # Note 05 — The first run: a two-session smoke test, and the three defects it found

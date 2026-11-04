@@ -2,7 +2,7 @@
 title: 'Native k3s + GPU + CPU models: plan and recorded decisions'
 kind: design
 state: unknown
-tags: [gpu]
+tags: [gpu, state-unknown]
 ---
 
 # Native k3s + GPU + CPU models: plan and recorded decisions

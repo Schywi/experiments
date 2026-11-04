@@ -3,6 +3,7 @@ title: 'RFC — Environments, immutable artifacts, and promotion'
 kind: rfc
 state: hypothesis
 date: 2026-10-24
+tags: [state-hypothesis]
 ---
 
 # RFC — Environments, immutable artifacts, and promotion

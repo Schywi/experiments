@@ -2,7 +2,7 @@
 title: 'Assistant test-question matrix'
 kind: feature
 state: implemented
-tags: [assistant]
+tags: [assistant, state-implemented]
 ---
 
 # Assistant test-question matrix

@@ -5,7 +5,7 @@ state: validated
 date: 2026-10-29
 branch: 'research/session-lifecycle-elasticity'
 commits: [d60284c]
-tags: [session-lifecycle]
+tags: [session-lifecycle, state-validated]
 ---
 
 # Note 06 — Audit: planned vs. actually built

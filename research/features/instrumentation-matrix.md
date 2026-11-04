@@ -3,7 +3,7 @@ title: 'RFC — Instrumentation coverage matrix'
 kind: feature
 state: hypothesis
 date: 2026-10-28
-tags: [assistant]
+tags: [assistant, state-hypothesis]
 ---
 
 # RFC — Instrumentation coverage matrix

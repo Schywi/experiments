@@ -2,7 +2,7 @@
 title: '06 — What a lightweight riot run actually does'
 kind: analysis
 state: unknown
-tags: [cpu]
+tags: [cpu, state-unknown]
 ---
 
 # 06 — What a lightweight riot run actually does

@@ -2,7 +2,7 @@
 title: 'Message structure (ASCII)'
 kind: feature
 state: unknown
-tags: [assistant]
+tags: [assistant, state-unknown]
 ---
 
 # Message structure (ASCII)

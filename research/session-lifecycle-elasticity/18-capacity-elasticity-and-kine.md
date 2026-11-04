@@ -4,7 +4,7 @@ kind: analysis
 state: research
 phase: 8
 commits: [ae04cf4]
-tags: [session-lifecycle, control-plane]
+tags: [session-lifecycle, control-plane, state-research]
 ---
 
 # Note 18 — Capacity, elasticity, and why kine is the ceiling

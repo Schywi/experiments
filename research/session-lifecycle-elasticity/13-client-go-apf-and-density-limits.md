@@ -4,7 +4,7 @@ kind: analysis
 state: research
 phase: 8
 date: 2026-10-29
-tags: [session-lifecycle]
+tags: [session-lifecycle, state-research]
 ---
 
 # Note 13 — Client-go throughput, APF and Chromium density limits

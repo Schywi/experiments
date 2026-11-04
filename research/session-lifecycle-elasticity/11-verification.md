@@ -5,7 +5,7 @@ state: validated
 date: 2026-10-29
 branch: 'research/session-lifecycle-elasticity'
 commits: [b77308c, 7fb2eb6, 4cce81b]
-tags: [session-lifecycle]
+tags: [session-lifecycle, state-validated]
 ---
 
 # Note 11 — Verification of the running system
