@@ -65,7 +65,10 @@ const config: QuartzConfig = {
     transformers: [
       Plugin.FrontMatter(),
       Plugin.CreatedModifiedDate({
-        priority: ["frontmatter", "filesystem"],
+        // frontmatter only: a page without a real date renders none, instead of
+        // inheriting the copy time of the build tree (which was 2026-11-04 for
+        // every note, tag page and folder listing that had no `date:`).
+        priority: ["frontmatter"],
       }),
       Plugin.SyntaxHighlighting({
         theme: {

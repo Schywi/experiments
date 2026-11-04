@@ -22,7 +22,13 @@ export const defaultContentPageLayout: PageLayout = {
       condition: (page) => page.fileData.slug !== "index",
     }),
     Component.ArticleTitle(),
-    Component.ContentMeta(),
+    // Dates come from frontmatter only. Quartz stamps the build time on any page
+    // that has none, which put "Nov 04, 2026" on the landing page, the root
+    // README and the ROADMAP — pages whose date means nothing.
+    Component.ConditionalRender({
+      component: Component.ContentMeta(),
+      condition: (page) => !["index", "README", "ROADMAP"].includes(page.fileData.slug ?? ""),
+    }),
     Component.TagList(),
   ],
   left: [
@@ -52,7 +58,9 @@ export const defaultContentPageLayout: PageLayout = {
 
 // components for pages that display lists of pages  (e.g. tags or folders)
 export const defaultListPageLayout: PageLayout = {
-  beforeBody: [Component.Breadcrumbs(), Component.ArticleTitle(), Component.ContentMeta()],
+  // No date chip on list pages: a tag or folder listing has no date of its own,
+  // and the fallback was the build time.
+  beforeBody: [Component.Breadcrumbs(), Component.ArticleTitle()],
   left: [
     Component.PageTitle(),
     Component.MobileOnly(Component.Spacer()),
