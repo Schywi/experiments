@@ -45,9 +45,11 @@
     # spending three rungs re-proving 3-5, and hold longer so more pages get
     # displaced before they are touched again. 8 is the ceiling the claim watch
     # tolerates; above it the harness fails and it looks like a capacity boundary.
-    # Rungs 7 and 8 only: rung 6 held on every rep of both arms in the last two
-    # runs, so re-running it costs ~9 minutes per arm to re-prove known ground.
-    ladder: "7 8"
+    # Rungs 5-7. With the backing at 128 MiB the device now fills (measured 93 %
+    # at rung 7, where both arms failed), so the capacity wall moved down: rung 7
+    # is above it and rungs 7-8 only ever measure failure. 5 and 6 are where the
+    # arms can still hold, which is where a latency comparison is possible at all.
+    ladder: "5 6 7"
     # Shorter window and hold shrink each run from ~2.7 to ~1.8 minutes without
     # changing the offered concurrency: capacity.sh computes rate = rung / hold,
     # so N replicas still see exactly N concurrent sessions.

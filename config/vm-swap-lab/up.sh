@@ -171,6 +171,7 @@ sed -e "s|__SSH_PUBLIC_KEY__|$(cat "${ssh_key}.pub")|" \
   -e "s|__SWAP_MODE__|${SWAP_MODE}|" \
   -e "s|__ZRAM_MB__|${ZRAM_MB}|" \
   -e "s|__ZRAM_ALGO__|${ZRAM_ALGO}|" \
+  -e "s|__ZRAM_SECONDARY__|${ZRAM_SECONDARY:-}|" \
   -e "s|__SWAP_MB__|${SWAP_MB}|" \
   -e "s|__K3S_BASE_URL__|${k3s_base_url}|" \
   "${script_dir}/cloud-init.yaml" >"${seed_dir}/user-data"

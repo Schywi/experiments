@@ -1,0 +1,404 @@
+{
+  "run_id": "cap-swap-on-7-r1-20261104T222759Z",
+  "config": {
+    "run_id": "cap-swap-on-7-r1-20261104T222759Z",
+    "sessions": 21,
+    "rate": 0.35,
+    "fixed_arrival": false,
+    "mix": [
+      {
+        "label": "20s",
+        "hold_ns": 20000000000,
+        "count": 21
+      }
+    ],
+    "policy": "destroy",
+    "class": "normal",
+    "namespace": "sandbox-demo",
+    "pool": "browser-pool",
+    "template": "",
+    "pool_replicas": 7,
+    "workers": 0,
+    "contexts_per_browser": 1,
+    "cdp_transport": "http",
+    "cdp_port": 9224,
+    "overload_factor": 1,
+    "arrival_window_ns": 60000000000,
+    "sample_seconds": 2,
+    "out_dir": "/home/fedora/runs",
+    "dry_run": false
+  },
+  "started_ns": 1793831321695241949,
+  "ended_ns": 1793832972535525380,
+  "planned_sessions": 21,
+  "stored_sessions": 21,
+  "outcomes": {
+    "acquisition_failed": 9,
+    "destroy_failed": 8,
+    "success": 4
+  },
+  "arrival_rate": 0.35,
+  "offered_concurrency": 7,
+  "concurrency": {
+    "mean": 2.7176767390104235,
+    "peak": 8
+  },
+  "queue_wait_ms": {
+    "count": 12,
+    "p50": 21427.260575,
+    "p95": 51049.78893,
+    "p99": 51049.78893,
+    "max": 51061.407781
+  },
+  "acquire_ms": {
+    "count": 12,
+    "p50": 25325.023242,
+    "p95": 53187.25025,
+    "p99": 53187.25025,
+    "max": 54227.500157
+  },
+  "hold_ms": {
+    "count": 12,
+    "p50": 20080.098119,
+    "p95": 20333.565151,
+    "p99": 20333.565151,
+    "max": 20749.411123
+  },
+  "reset_ms": {
+    "count": 0,
+    "p50": 0,
+    "p95": 0,
+    "p99": 0,
+    "max": 0
+  },
+  "release_ms": {
+    "count": 4,
+    "p50": 17006.044121,
+    "p95": 17660.331501,
+    "p99": 17660.331501,
+    "max": 19571.008305
+  },
+  "resume_ms": {
+    "count": 0,
+    "p50": 0,
+    "p95": 0,
+    "p99": 0,
+    "max": 0
+  },
+  "launch_types": {
+    "cold": 1,
+    "warm": 11
+  },
+  "buckets": {
+    "20s": {
+      "sessions": 21,
+      "ok": 4,
+      "failed": 17,
+      "queue_p50_ms": 0,
+      "hold_p50_ms": 0
+    }
+  },
+  "resources": {
+    "sessions_with_samples": 12,
+    "cpu_core_seconds_total": 79.973931,
+    "cpu_core_seconds_p50": 6.440245,
+    "cpu_core_seconds_max": 10.326474,
+    "mem_peak_p50_mib": 231.97265625,
+    "mem_peak_max_mib": 434.16015625,
+    "mem_working_set_peak_max_mib": 286.0390625,
+    "throttled_sessions": 0,
+    "oom_kills": 0,
+    "refault_sessions": 12,
+    "swap_peak_p50_mib": 7.84765625,
+    "swap_peak_max_mib": 40.41796875
+  },
+  "instances": {
+    "total": 21,
+    "max_sessions_per_instance": 1,
+    "mean_sessions_per_instance": 0.19047619047619047,
+    "rebuild_p50_ms": 0,
+    "boot_cpu_peak_p50": 0,
+    "boot_cpu_peak_max": 0
+  },
+  "host_memory": {
+    "samples": 137,
+    "total_mib": 3902.65234375,
+    "min_available_mib": 92.71875,
+    "min_at_ns": 1793832790489152445,
+    "min_ratio_pct": 2.3757881008408743,
+    "swap_used_mib": 127.99609375
+  },
+  "template_limits": {
+    "container": "browser",
+    "cpu_request_milli": 100,
+    "cpu_limit_milli": 0,
+    "mem_request_mib": 256,
+    "mem_limit_mib": 768
+  },
+  "autoscaler": {
+    "hpa_count": 0,
+    "keda_crd_present": false
+  },
+  "replicas": [
+    {
+      "at_ns": 1793831321734942775,
+      "desired": 7,
+      "ready": 7,
+      "note": "preflight"
+    },
+    {
+      "at_ns": 1793831321815316424,
+      "desired": 7,
+      "ready": 7,
+      "note": "resize"
+    },
+    {
+      "at_ns": 1793831324284572117,
+      "desired": 7,
+      "ready": 7
+    },
+    {
+      "at_ns": 1793831326288407416,
+      "desired": 7,
+      "ready": 7
+    },
+    {
+      "at_ns": 1793831328290271085,
+      "desired": 7,
+      "ready": 7
+    },
+    {
+      "at_ns": 1793831330286581083,
+      "desired": 7,
+      "ready": 7
+    },
+    {
+      "at_ns": 1793831332289861444,
+      "desired": 7,
+      "ready": 7
+    },
+    {
+      "at_ns": 1793831334289290338,
+      "desired": 7,
+      "ready": 7
+    },
+    {
+      "at_ns": 1793831336286960264,
+      "desired": 7,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793831338283286023,
+      "desired": 7,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793831340290222386,
+      "desired": 7,
+      "ready": 6
+    },
+    {
+      "at_ns": 1793831342286466999,
+      "desired": 7,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793831346593157056,
+      "desired": 7,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793831347165845629,
+      "desired": 7,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793831348318549632,
+      "desired": 7,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793831352640173007,
+      "desired": 7,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793831359026110638,
+      "desired": 7,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793831366132443105,
+      "desired": 7,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793831375440363268,
+      "desired": 7,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793831377186350947,
+      "desired": 7,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793831379535069526,
+      "desired": 7,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793831379950228916,
+      "desired": 7,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793831380350344469,
+      "desired": 7,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793831382284180939,
+      "desired": 7,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793831384288694762,
+      "desired": 7,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793831386285383716,
+      "desired": 7,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793831388286831926,
+      "desired": 7,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793831390289426104,
+      "desired": 7,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793831392282218089,
+      "desired": 7,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793831394289512607,
+      "desired": 7,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793831396289295337,
+      "desired": 7,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793831398284143366,
+      "desired": 7,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793831400282955861,
+      "desired": 7,
+      "ready": 7
+    },
+    {
+      "at_ns": 1793831402283138216,
+      "desired": 7,
+      "ready": 7
+    },
+    {
+      "at_ns": 1793831404291131721,
+      "desired": 7,
+      "ready": 7
+    },
+    {
+      "at_ns": 1793831406286191093,
+      "desired": 7,
+      "ready": 7
+    }
+  ],
+  "first_boundary": "destroy_failed at session 5: release: delete claim sandbox-demo/lab-cap-swap-on-7-r1-20261104t222759z-5: Delete \"https://127.0.0.1:6443/apis/extensions.agents.x-k8s.io/v1beta1/namespaces/sandbox-demo/sandboxclaims/lab-cap-swap-on-7-r1-20261104t222759z-5\": net/http: TLS handshake timeout",
+  "boundary_evidence": [
+    "bucket 20s, instance lab-cap-swap-on-7-r1-20261104t222759z-5"
+  ],
+  "elasticity": "exceeded: see first_boundary",
+  "next": "repeat with a lower arrival rate to confirm the boundary is repeatable, then re-run at this rate after changing the constraint above",
+  "arrival_window_s": 69.230013661,
+  "admission_ms": {
+    "count": 21,
+    "p50": 0.002949,
+    "p95": 0.015504,
+    "p99": 0.015504,
+    "max": 0.053435
+  },
+  "per_session": {
+    "task_ms": {
+      "count": 0,
+      "p50": 0,
+      "p95": 0,
+      "p99": 0,
+      "max": 0
+    },
+    "script_ms": {
+      "count": 0,
+      "p50": 0,
+      "p95": 0,
+      "p99": 0,
+      "max": 0
+    },
+    "js_heap_mib": {
+      "count": 0,
+      "p50": 0,
+      "p95": 0,
+      "p99": 0,
+      "max": 0
+    },
+    "cpu_core_seconds": {
+      "count": 12,
+      "p50": 6.440245,
+      "p95": 10.029883,
+      "p99": 10.029883,
+      "max": 10.326474
+    },
+    "mem_mib": {
+      "count": 12,
+      "p50": 231.97265625,
+      "p95": 277.30859375,
+      "p99": 277.30859375,
+      "max": 434.16015625
+    }
+  },
+  "node_cpu": {
+    "total_cores": 4,
+    "peak_cores": 3.32188642360346,
+    "mean_cores": 2.3925694716789336,
+    "samples": 137
+  },
+  "shared_sessions": 0,
+  "peak_waiting_sessions": 12,
+  "peak_in_flight_sessions": 17,
+  "cleanup_failures": 0,
+  "acquire_by_launch_type": {
+    "cold": {
+      "count": 1,
+      "p50": 52549.360947,
+      "p95": 52549.360947,
+      "p99": 52549.360947,
+      "max": 52549.360947
+    },
+    "warm": {
+      "count": 11,
+      "p50": 25325.023242,
+      "p95": 53187.25025,
+      "p99": 53187.25025,
+      "max": 54227.500157
+    }
+  },
+  "active_at_cutoff": 0
+}

@@ -74,6 +74,7 @@ write_files:
       mode="__SWAP_MODE__"
       zram_mb="__ZRAM_MB__"
       zram_algo="__ZRAM_ALGO__"
+      zram_secondary="__ZRAM_SECONDARY__"
       swap_mb="__SWAP_MB__"
 
       case "${mode}" in
@@ -102,6 +103,20 @@ write_files:
           if [ -e /sys/block/zram0/disksize ] && [ "$(cat /sys/block/zram0/disksize)" != "0" ]; then
             swapoff /dev/zram0 2>/dev/null || true
             echo 1 >/sys/block/zram0/reset || true
+          fi
+          # The secondary algorithm MUST be chosen before disksize is set. The
+          # kernel rejects a change once the device is initialised (EBUSY), and
+          # writing disksize is what initialises it — measured on the Fedora guest
+          # as "recomp_algorithm write refused (have: )" for every rung that tried
+          # it from the harness instead of here.
+          if [ -n "${zram_secondary}" ]; then
+            if [ -e /sys/block/zram0/recomp_algorithm ]; then
+              echo "${zram_secondary}" >/sys/block/zram0/recomp_algorithm || \
+                { echo "could not set recomp_algorithm=${zram_secondary}" >&2; exit 1; }
+              echo "secondary: ${zram_secondary} ($(cat /sys/block/zram0/recomp_algorithm))" >>/var/tmp/swap-mode
+            else
+              echo "WARNING: ${zram_secondary} requested but this kernel has no recomp_algorithm" >>/var/tmp/swap-mode
+            fi
           fi
           dev="$(zramctl --find --size "${zram_mb}M" --algorithm "${zram_algo}")"
           [ -n "${dev}" ] || { echo "zramctl could not create a device" >&2; exit 1; }

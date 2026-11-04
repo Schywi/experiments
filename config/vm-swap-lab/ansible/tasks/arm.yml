@@ -29,6 +29,10 @@
         SWAP_MODE: "{{ arm_cfg.swap_mode }}"
         ZRAM_ALGO: "{{ arm_cfg.zram_algo }}"
         ZRAM_MB: "{{ arm_cfg.zram_mb }}"
+        # The secondary compressor has to be chosen before the device is
+        # initialised; the kernel freezes it afterwards. This is what makes the
+        # multi arm differ from the control at all.
+        ZRAM_SECONDARY: "{{ arm_cfg.recomp_algo | default('') }}"
         SWAP_MB: "{{ arm_cfg.swap_mb }}"
       register: boot
       changed_when: true

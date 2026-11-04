@@ -2,14 +2,16 @@
 zram-multi-ctl
 
 == swap mode recorded in the guest ==
-none
+swap: zram 128M lzo-rle on /dev/zram0
+-- cloud-init log (swap/zram/error lines) --
 
 == node / resources ==
 4
                total        used        free      shared  buff/cache   available
-Mem:            3915        3892          86         241         357          22
-Swap:              0           0           0
+Mem:            3902        3697         115         193         529         205
+Swap:            127         127           0
 Filename				Type		Size		Used		Priority
+/dev/zram0                              partition	131068		130856		-1
 
 == node conditions ==
 Unable to connect to the server: net/http: TLS handshake timeout
