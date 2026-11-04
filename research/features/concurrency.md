@@ -15,6 +15,15 @@ in-process limit, concurrent users each grab a thread, fire a request at the
 model, and block — the queue lives implicitly inside llama.cpp and the 40-thread
 pool, with no fairness and no bound.
 
+![Two claims holding sessions at once](assets/multiple-claims.png)
+
+*Two claims in flight, which is the state the concurrency limit has to survive.*
+
+![Three claims running](assets/running-multiple-claims.png)
+
+*The same run with more claims than the default `llmConcurrency`: the queue and
+the 429 path are what this feature adds.*
+
 ## Contract
 
 Guarded endpoints (all LLM-bound work in `server.py`): `POST /chat`,

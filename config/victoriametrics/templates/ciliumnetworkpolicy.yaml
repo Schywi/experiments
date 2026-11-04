@@ -59,7 +59,8 @@ spec:
             - port: "9966"
               protocol: TCP
     # The cilium-agent runs with hostNetwork, so its metrics are reached through
-    # the host entity rather than a pod IP.
+    # the host entity rather than a pod IP. The session-lab runner runs on the
+    # same node, so its endpoint is reached the same way.
     - toEntities:
         - host
       toPorts:
@@ -68,6 +69,10 @@ spec:
               protocol: TCP
             - port: "9965"
               protocol: TCP
+{{- if .Values.sessionLab.enabled }}
+            - port: "{{ splitList ":" (first .Values.sessionLab.targets) | last }}"
+              protocol: TCP
+{{- end }}
     # Kubernetes API for kubernetes_sd_configs pod discovery.
     - toEntities:
         - kube-apiserver
@@ -79,6 +84,16 @@ spec:
         - ports:
             - port: "8080"
               protocol: TCP
+{{- if .Values.sessionLab.enabled }}
+    # The session-lab pool autoscaler runs in the sandbox namespace.
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: {{ .Values.sessionLab.autoscalerNamespace }}
+      toPorts:
+        - ports:
+            - port: "{{ .Values.sessionLab.autoscalerPort }}"
+              protocol: TCP
+{{- end }}
     # DNS resolution.
     - toEndpoints:
         - matchLabels:

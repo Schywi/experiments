@@ -51,6 +51,11 @@ question ──► known intent? ──yes──► deterministic bundle (0 LLM 
   front of the LLM (`4300050`), so a burst of chat turns cannot stampede a
   1.5B model running on six CPU threads.
 
+![The SRE assistant answering](assets/sre-assistant-answer.png)
+
+*The assistant answering an operations question, with the evidence panel open
+under the answer.*
+
 ## Milestones, as they were actually built
 
 | Milestone | What it added | Commit |

@@ -55,6 +55,11 @@ is not free in the other direction: because each instance is deleted after one s
 sessions needed sixty instances and never reused one (`sessions/instance` mean 1.00 against 2.00 for
 reuse).
 
+![Warm claim against a raw sandbox, side by side](assets/warm-claim-vs-raw-sandbox.png)
+
+*Console capture from the destroy-vs-reuse comparison: a warm claim and a raw
+sandbox opened through the same session route.*
+
 ## 4. What the autoscaler did (requirement 3, 5)
 
 `kubectl get hpa -A` is empty and no KEDA CRD exists, so the run recorded
@@ -72,6 +77,11 @@ the configuration came from the cluster, not from a flag.
 Autoscaling improved the median and the p95 queue wait by roughly 2× at identical offered load, and
 it reached the configured ceiling of 40 replicas — at which point the node, not the pool, was the
 limit.
+
+![Autoscaling load test](assets/autoscaling-load-test.png)
+
+*The load test behind this section: offered concurrency against the pool the
+autoscaler produced.*
 
 ## 5. What broke, and what it means
 

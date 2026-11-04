@@ -57,6 +57,11 @@ A `SandboxClaim` requests a sandbox from a pool (`spec.warmPoolRef.name`). A cla
 
 ---
 
+![Console showing leaked claims as pending requests](assets/console-claim-leakage-pending-requests.png)
+
+*The console with the symptom on screen: released sessions whose claims were
+still pending, on a host that reported low resource use.*
+
 ## 3. Claim reconciliation ordering: old claims vs. new claims
 
 When a cluster holds unfulfilled claims created 1 hour ago alongside newly created claims:
@@ -107,6 +112,15 @@ The runner in `apps/session-lab/internal/run/run.go:504-548` implements two oper
    - Avoids persistent claim leakage across sessions, but pays 374 ms p50 deletion latency plus container initialization delays.
 
 ---
+
+![Console on a fresh claim, about:blank](assets/console-initial-about-blank.png)
+
+*The starting state of a low-resource test: the claim is up, the page is
+`about:blank`, nothing has been loaded yet.*
+
+![Low-resource run under the console](assets/low-resource-run.png)
+
+*The same session route under the reduced resource template.*
 
 ## 6. Prevention and mitigation strategies
 

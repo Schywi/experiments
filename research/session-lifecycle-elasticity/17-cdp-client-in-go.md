@@ -51,6 +51,11 @@ What changes is that the forwarder becomes a **dumb TCP proxy** (`cdp-forward.py
 image, enabled by `CDP_WS_PORT`) instead of a protocol translator. The runner dials the pod directly —
 the same path `Reset` already uses, so host → pod IP is reachable today (measured reset 20–39 ms).
 
+![A CDP frame booting from a claim](assets/cdp-frame-from-claim.png)
+
+*A browser frame reached over CDP on a claimed sandbox: the first page load the
+client drives end to end.*
+
 ## 3. Package layout
 
 ```

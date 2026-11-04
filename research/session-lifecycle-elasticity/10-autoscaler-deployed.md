@@ -52,6 +52,11 @@ the first decision to a fully ready pool was **84.9 s** for 22 replicas — that
 waiting session actually pays, and it is exported as
 `session_lab_autoscaler_scale_out_seconds`.
 
+![First KEDA scale-out test](assets/keda-first-scale-out.png)
+
+*First test of the deployed autoscaler: the replica count leaving `min` as the
+run offers concurrency.*
+
 ## 4. The control plane was the casualty, again
 
 During the run the k3s API server stopped answering for about 45 seconds. Both clients recorded it:

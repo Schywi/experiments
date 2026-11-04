@@ -54,6 +54,10 @@ Missing pieces are simply absent (no `links` on a fact with no namespace, no
 | `search_knowledge` / `remember` / `recall` | not externally reproducible | — |
 | Hubble **flows** | `hubble observe --namespace NS` | **none** — the deployed Hubble UI is namespace-scoped only |
 
+![Deep links from an answer about Kargo](assets/deep-links-kargo.png)
+
+*An answer about the Kargo promotion carrying its evidence panel and deep links.*
+
 ## How it is implemented
 
 | File | Role |

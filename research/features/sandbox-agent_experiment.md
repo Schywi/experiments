@@ -38,6 +38,15 @@ No new code. Measured against `browser-pool-22grt` (RFC §4):
 So: **can an agent interact with a Chromium page? Yes.** Click and scroll are
 real input events, not DOM injection.
 
+![An agent interacting with a Riot claim](assets/riot-claim-interaction.png)
+
+*A scripted agent opening and driving a Riot page inside a claim.*
+
+![The assistant asking the browser for a screenshot](assets/assistant-requests-browser-screenshot.png)
+
+*The same route driven by the cluster's LLM: it asks the browser for a
+screenshot and gets one back.*
+
 ## The lock
 
 One dict in the console process. The console runs one uvicorn worker at

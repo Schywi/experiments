@@ -128,6 +128,10 @@ delivering, and a grey region that grows faster than the lit one says delivery i
 boundary. `176 slots lit` is the concurrency figure, `41 waiting` is admitted sessions with
 no slot, and both are counted from the same scan that draws the glyphs.
 
+![The run overview skyline](assets/wall-run-overview.png)
+
+*Run overview, skyline zoom: sessions per bucket across the life of a run.*
+
 ### 4.2 Wall: buckets, instances, slots
 
 ```
@@ -162,6 +166,14 @@ Glyphs, one character pair per slot position in the browser:
 rather than omitted, so headroom and scarcity are both visible at the same instant, and a
 near-monotonic wall of `██` with no `··` predicts the queue before the queue forms.
 
+![Wall zoom with the CPU ceiling reached](assets/wall-cpu-ceiling-reached.png)
+
+*Wall zoom at the point where the pool hit its CPU limit.*
+
+![Wall zoom in a CPU valley](assets/wall-cpu-valley.png)
+
+*The same zoom in a valley between load spikes.*
+
 ### 4.3 Lane zoom: one instance's eight tracks
 
 A browser is a machine with eight tracks; each track carries sessions one after another,
@@ -188,6 +200,14 @@ wall compresses becomes legible.
 Bars are the hold window measured by the run (`hold_start_ns`→`hold_end_ns`), the `│` marks
 are release plus next claim, and the clock is shared with the overview scrubber so the two
 views agree about "now". Every slot card is reachable from its track.
+
+![Lane zoom during a Riot CPU spike](assets/wall-riot-cpu-spike.png)
+
+*Lane zoom, one instance's eight tracks, while a Riot page drove CPU up.*
+
+![Riot visual stress test](assets/wall-riot-stress-test.png)
+
+*The visual stress test in the same lane view.*
 
 ### 4.4 Slot zoom: one session in one context
 
