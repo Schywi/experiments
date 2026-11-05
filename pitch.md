@@ -59,6 +59,8 @@ The same host runs two stories, and they share the machine. Pick one:
 <p>Contract and reasoning: <a href="research/features/README.md">feature contracts</a> · <a href="research/assistant/README.md">assistant notes</a> · <a href="evolution/05-ai-ops-track-d.md">phase 5 narrative</a></p>
 
 <div class="shots-wrap slides-4">
+<button class="shots-nav prev" type="button" aria-label="Previous slide">‹</button>
+<button class="shots-nav next" type="button" aria-label="Next slide">›</button>
 <div class="shots shots--auto">
 <div class="track">
 
@@ -95,6 +97,8 @@ The same host runs two stories, and they share the machine. Pick one:
 <p>Design notes: <a href="research/session-lifecycle-elasticity/README.md">session lifecycle elasticity</a> · <a href="evolution/08-session-lifecycle-elasticity.md">phase 8</a> · <a href="research/session-lifecycle-elasticity/16.2-session-wall-ui.md">the console</a></p>
 
 <div class="shots-wrap slides-5">
+<button class="shots-nav prev" type="button" aria-label="Previous slide">‹</button>
+<button class="shots-nav next" type="button" aria-label="Next slide">›</button>
 <div class="shots shots--auto">
 <div class="track">
 
@@ -129,6 +133,37 @@ The same host runs two stories, and they share the machine. Pick one:
 
 </section>
 </div>
+
+<script>
+(() => {
+  const wire = () => {
+    document.querySelectorAll(".shots-wrap").forEach((wrap) => {
+      if (wrap.dataset.wired) return;
+      const track = wrap.querySelector(".track");
+      if (!track) return;
+      const slides = track.children.length;
+      let i = 0;
+      const go = (step) => {
+        track.style.animation = "none";
+        i = (i + step + slides) % slides;
+        track.style.transition = "transform 0.3s ease";
+        track.style.transform = `translateX(${-100 * i}%)`;
+      };
+      const prev = wrap.querySelector(".shots-nav.prev");
+      const next = wrap.querySelector(".shots-nav.next");
+      if (prev) prev.addEventListener("click", () => go(-1));
+      if (next) next.addEventListener("click", () => go(1));
+      wrap.dataset.wired = "1";
+    });
+  };
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", wire);
+  } else {
+    wire();
+  }
+  document.addEventListener("nav", wire);
+})();
+</script>
 
 Deep dives, one per mechanism, each behind a dropdown. Every claim inside carries the
 file and line it can be checked against.

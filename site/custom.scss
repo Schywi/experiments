@@ -378,3 +378,46 @@ article figure {
 .slides-5 { --slides: 5; }
 .slides-6 { --slides: 6; }
 .slides-8 { --slides: 8; }
+
+/* ── carousel arrows ───────────────────────────────────────────────────────
+   Two buttons over the frame. Without JavaScript the autoplay runs; the first
+   click stops it for that instance and the arrows step the track, because a
+   stylesheet cannot move an animated track on demand.                        */
+
+.shots-nav {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.1rem;
+  height: 2.1rem;
+  padding: 0;
+  font-size: 1.2rem;
+  line-height: 1;
+  color: var(--dark);
+  background: color-mix(in srgb, var(--light) 88%, transparent);
+  border: 1px solid var(--lightgray);
+  border-radius: 999px;
+  cursor: pointer;
+  opacity: 0.75;
+  transition: opacity 0.15s ease, background-color 0.15s ease;
+
+  &:hover,
+  &:focus-visible {
+    opacity: 1;
+    background: var(--light);
+    outline: none;
+    border-color: var(--secondary);
+  }
+
+  &.prev {
+    left: 0.4rem;
+  }
+
+  &.next {
+    right: 0.4rem;
+  }
+}
