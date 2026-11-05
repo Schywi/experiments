@@ -134,36 +134,7 @@ The same host runs two stories, and they share the machine. Pick one:
 </section>
 </div>
 
-<script>
-(() => {
-  const wire = () => {
-    document.querySelectorAll(".shots-wrap").forEach((wrap) => {
-      if (wrap.dataset.wired) return;
-      const track = wrap.querySelector(".track");
-      if (!track) return;
-      const slides = track.children.length;
-      let i = 0;
-      const go = (step) => {
-        track.style.animation = "none";
-        i = (i + step + slides) % slides;
-        track.style.transition = "transform 0.3s ease";
-        track.style.transform = `translateX(${-100 * i}%)`;
-      };
-      const prev = wrap.querySelector(".shots-nav.prev");
-      const next = wrap.querySelector(".shots-nav.next");
-      if (prev) prev.addEventListener("click", () => go(-1));
-      if (next) next.addEventListener("click", () => go(1));
-      wrap.dataset.wired = "1";
-    });
-  };
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", wire);
-  } else {
-    wire();
-  }
-  document.addEventListener("nav", wire);
-})();
-</script>
+<script src="./static/carousel.js" defer></script>
 
 Deep dives, one per mechanism, each behind a dropdown. Every claim inside carries the
 file and line it can be checked against.

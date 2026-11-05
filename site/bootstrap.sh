@@ -29,4 +29,10 @@ if [ -f "${here}/custom.scss" ]; then
   cp -f "${here}/custom.scss" "${here}/quartz/styles/custom.scss"
 fi
 
+# The carousel controller is served as a static asset, not written inline in the
+# markdown: the HTML pipeline escapes quotes inside raw script text.
+if [ -f "${here}/carousel.js" ]; then
+  cp -f "${here}/carousel.js" "${here}/quartz/static/carousel.js"
+fi
+
 echo "quartz ${QUARTZ_REF} vendored into site/quartz"
