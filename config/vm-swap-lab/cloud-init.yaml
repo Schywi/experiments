@@ -24,15 +24,14 @@
 # 'amd64': 'n'), so no recompression pass can ever run there. Fedora 44's kernel
 # is built with it (=y, checked in /boot/config on the host) and exposes
 # recomp_algorithm / recompress / idle on /sys/block/zram0/.
+# Filled in by up.sh from GUEST: ubuntu→(ubuntu, sudo), fedora→(fedora, wheel).
+# The group matters: cloud-init fails to create the user if the group does not
+# exist on that distro, and then no SSH key lands and the guest never answers.
 users:
-  - name: fedora
+  - name: __GUEST_USER__
     sudo: "ALL=(ALL) NOPASSWD:ALL"
     shell: /bin/bash
-    # `wheel`, not `sudo`: Fedora has no `sudo` group. This line was left over from
-    # the Ubuntu image and cloud-init would have failed to create the user on
-    # Fedora ("group 'sudo' does not exist"), leaving no SSH key and a guest that
-    # never answers.
-    groups: [wheel]
+    groups: [__GUEST_GROUP__]
     ssh_authorized_keys:
       - __SSH_PUBLIC_KEY__
 
@@ -40,11 +39,12 @@ ssh_pwauth: false
 disable_root: true
 
 package_update: true
-# Fedora names the generator package `zram-generator` (Debian/Ubuntu call it
-# `systemd-zram-generator`). It is installed but not relied on: setup-swap.sh
-# drives the device directly, because the generator races the module load.
+# No zram generator package on purpose. Installing it gave the guest TWO owners of
+# /dev/zram0: the distro's systemd-zram-setup@zram0.service created a 3.8 GiB
+# device from its default policy, and setup-swap.sh then failed trying to reset it,
+# so the arm measured a device 30x larger than configured with no secondary
+# algorithm. setup-swap.sh is the only owner now.
 packages:
-  - zram-generator
   - curl
   - util-linux
 
@@ -100,6 +100,10 @@ write_files:
             fi
             modprobe zram 2>/dev/null || { echo "cannot load the zram module" >&2; exit 1; }
           fi
+          # Stop anything else owning the device (a distro zram generator, or a
+          # device left from a previous boot), then start from a clean one.
+          systemctl stop "systemd-zram-setup@zram0.service" 2>/dev/null || true
+          systemctl mask "systemd-zram-setup@zram0.service" 2>/dev/null || true
           if [ -e /sys/block/zram0/disksize ] && [ "$(cat /sys/block/zram0/disksize)" != "0" ]; then
             swapoff /dev/zram0 2>/dev/null || true
             echo 1 >/sys/block/zram0/reset || true

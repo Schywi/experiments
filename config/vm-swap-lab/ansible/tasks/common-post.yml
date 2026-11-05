@@ -1,0 +1,39 @@
+---
+- name: table
+  ansible.builtin.command:
+    cmd: "./arms-report.sh {{ results_dir }}"
+    chdir: "{{ lab_dir }}"
+  register: table
+  changed_when: false
+  # A missing table is a result, not a broken play: it means no rung held and
+  # no report was written. The per-arm tasks already reported why.
+  failed_when: false
+  when: "'provision' not in ansible_run_tags"
+
+- name: print
+  ansible.builtin.debug:
+    msg: "{{ table.stdout_lines | default(['(provision only)']) }}"
+
+# The rescue blocks keep the play going so one arm cannot cancel the rest, but
+# they used to swallow the outcome: on 2026-11-04 both arms died on a DNS error
+# before measuring anything and the recap still said failed=0. A run that
+# measured nothing must not look like a success.
+- name: arms that failed
+  ansible.builtin.debug:
+    msg: "NO MEASUREMENT: {{ failed_arms | default([]) | join(', ') }} — see results/<arm>-FAILED.txt"
+  when: failed_arms | default([]) | length > 0
+
+# `failed_arms` only exists when a rescue ran, so every reference must carry a
+# default — the first version did not, and the guard itself crashed the play on
+# the first run where both arms SUCCEEDED.
+- name: refuse to report success when an arm produced no data
+  ansible.builtin.assert:
+    that:
+      - failed_arms | default([]) | length == 0
+    fail_msg: >-
+      {{ failed_arms | default([]) | length }} of {{ arms | length }} arm(s)
+      failed before measuring anything: {{ failed_arms | default([]) | join(', ') }}.
+      The VM was torn down and the reason is in results/<arm>-FAILED.txt.
+      This play is marked failed on purpose.
+    quiet: true
+  when: "'provision' not in ansible_run_tags"

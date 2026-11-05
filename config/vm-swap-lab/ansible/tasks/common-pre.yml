@@ -1,0 +1,83 @@
+---
+- name: results directory
+  ansible.builtin.file:
+    path: "{{ results_dir }}"
+    state: directory
+    mode: "0755"
+
+# Remove arm directories left over from earlier plays. Without this, arms that
+# are no longer in the list (none, disk, zram-2to1, …) keep their old reports
+# and silently merge into the next table — measured at a different hold, with
+# different session counts, under a different generation of the harness.
+- name: drop results from arms this play does not run
+  ansible.builtin.shell:
+    cmd: |
+      set -eu
+      keep=" {{ arms | map(attribute='name') | join(' ') }} "
+      for d in "{{ results_dir }}"/*/; do
+        [ -d "$d" ] || continue
+        name="$(basename "$d")"
+        case "$keep" in
+          *" $name "*) : ;;
+          *) rm -rf "$d"; echo "dropped stale arm: $name" ;;
+        esac
+      done
+  register: pruned
+  changed_when: "'dropped' in pruned.stdout"
+
+- name: pruning summary
+  ansible.builtin.debug:
+    msg: "{{ pruned.stdout_lines | default(['(nothing stale)']) }}"
+
+# Fetched once, on the host, so no VM needs egress. A guest that could not
+# reach update.k3s.io produced no k3s at all and the failure surfaced as
+# "node did not become Ready within 300s" — a network fault wearing a
+# resource problem's clothes.
+- name: cache the k3s artifacts (binary, airgap images, installer)
+  ansible.builtin.command:
+    cmd: ./fetch-k3s.sh
+    chdir: "{{ lab_dir }}"
+  register: fetched
+  changed_when: "'fetching' in fetched.stdout"
+  when: k3s_cache | default(true)
+
+# The workload image is part of the airgap too: without it the pool sits in
+# ErrImagePull forever, because the guest has no egress.
+- name: cache the browser image
+  ansible.builtin.command:
+    cmd: ./fetch-images.sh
+    chdir: "{{ lab_dir }}"
+  register: images
+  changed_when: "'fetching' in images.stdout"
+  when: k3s_cache | default(true)
+
+# The agent-sandbox manifest was the one artifact still fetched from the
+# internet at install time. On 2026-11-04 a ~90 s DNS outage on the host
+# (`curl (6) Could not resolve host: github.com`) killed both arms two minutes
+# in, and the play still finished with failed=0. Cached here, before any VM
+# boots, for the same reason the k3s artifacts are.
+- name: cache the agent-sandbox manifest
+  ansible.builtin.command:
+    cmd: ./fetch-sandbox.sh
+    chdir: "{{ lab_dir }}"
+  register: sandbox_manifest
+  changed_when: "'fetching' in sandbox_manifest.stdout"
+  when: k3s_cache | default(true)
+
+# Fail in one second, on the host, rather than two minutes into the first arm
+# with a DNS error. Everything the guests need must already be in cache/.
+- name: every artifact is cached before a VM boots
+  ansible.builtin.stat:
+    path: "{{ lab_dir }}/cache/{{ item }}"
+  loop:
+    - k3s
+    - k3s-airgap-images-amd64.tar.zst
+    - install.sh
+    - chrome-sandbox.tar
+    - sandbox-{{ sandbox_version }}.yaml
+  register: cached
+  failed_when: not cached.stat.exists
+
+- name: artifacts
+  ansible.builtin.debug:
+    msg: "{{ (fetched.stdout_lines | default([])) + (images.stdout_lines | default([])) }}"

@@ -12,6 +12,17 @@
 
 - name: "{{ arm_cfg.name }}: run"
   block:
+    # Every lab script reads the guest from the environment; setting it once here
+    # is what keeps provision.yml (ubuntu) and provision-fedora.yml (fedora) from
+    # leaking into each other.
+    - name: "{{ arm_cfg.name }}: guest environment"
+      ansible.builtin.set_fact:
+        guest_env:
+          GUEST: "{{ guest }}"
+          SSH_USER: "{{ guest_ssh_user }}"
+          GUEST_USER: "{{ guest_ssh_user }}"
+          GUEST_GROUP: "{{ guest_group }}"
+
     - name: "{{ arm_cfg.name }}: stop any running VM"
       ansible.builtin.command:
         cmd: ./down.sh
@@ -23,6 +34,10 @@
         cmd: ./up.sh
         chdir: "{{ lab_dir }}"
       environment:
+        GUEST: "{{ guest }}"
+        GUEST_USER: "{{ guest_ssh_user }}"
+        GUEST_GROUP: "{{ guest_group }}"
+        SSH_USER: "{{ guest_ssh_user }}"
         CPUS: "{{ vm_cpus }}"
         MEM_MB: "{{ vm_mem_mb }}"
         DISK_GB: "{{ vm_disk_gb }}"
@@ -45,8 +60,7 @@
       ansible.builtin.command:
         cmd: ./verify-swap.sh
         chdir: "{{ lab_dir }}"
-      environment:
-        REQUIRE_MULTICOMP: "{{ '1' if arm_cfg.recomp_algo | default('') else '0' }}"
+      environment: "{{ guest_env | combine({'REQUIRE_MULTICOMP': '1' if arm_cfg.recomp_algo | default('') else '0'}) }}"
       register: verified
       changed_when: false
       failed_when: false
@@ -70,6 +84,7 @@
       ansible.builtin.command:
         cmd: ./install-sandbox.sh
         chdir: "{{ lab_dir }}"
+      environment: "{{ guest_env }}"
       register: installed
       changed_when: true
 
@@ -81,6 +96,7 @@
       ansible.builtin.command:
         cmd: ./set-kubelet-swap.sh
         chdir: "{{ lab_dir }}"
+      environment: "{{ guest_env }}"
       register: kubelet_swap
       changed_when: true
       failed_when: "'LimitedSwap' not in kubelet_swap.stdout"
@@ -89,6 +105,7 @@
       ansible.builtin.command:
         cmd: ./verify-swap.sh
         chdir: "{{ lab_dir }}"
+      environment: "{{ guest_env }}"
       register: verified_after
       changed_when: false
       failed_when: false
@@ -131,6 +148,9 @@
         # Without this the ladder silently ran one rep per rung: capacity.sh
         # defaults REPEATS=1 and the play's `repeats: 3` never reached it.
         REPEATS: "{{ repeats }}"
+        RUNG_TIMEOUT: "{{ rung_timeout }}"
+        GUEST: "{{ guest }}"
+        SSH_USER: "{{ guest_ssh_user }}"
       register: ladder_out
       changed_when: true
       when: "'provision' not in ansible_run_tags"
@@ -187,6 +207,7 @@
       ansible.builtin.command:
         cmd: "./collect-diagnostics.sh {{ results_dir }}/{{ arm_cfg.name }}-diagnostics.txt {{ arm_cfg.name }}"
         chdir: "{{ lab_dir }}"
+      environment: "{{ guest_env }}"
       register: diag
       changed_when: false
       failed_when: false

@@ -9,9 +9,15 @@ set -euo pipefail
 VM_DIR="${VM_DIR:-$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)}"
 SSH_PORT="${SSH_PORT:-2222}"
 SSH_KEY="${SSH_KEY:-${VM_DIR}/id_ed25519}"
-# Fedora Cloud Base's default user (Ubuntu images use `ubuntu`). The guest image
-# is Fedora because it is the distro whose kernel has CONFIG_ZRAM_MULTI_COMP=y.
-SSH_USER="${SSH_USER:-fedora}"
+# Default guest user per distro. Ubuntu is the default because that is what the
+# capacity/ratio experiments use (provision.yml); the Fedora playbook
+# (provision-fedora.yml, recompression only) passes SSH_USER=fedora.
+GUEST="${GUEST:-ubuntu}"
+case "${GUEST}" in
+  fedora) _guest_default_user=fedora ;;
+  *)      _guest_default_user=ubuntu ;;
+esac
+SSH_USER="${SSH_USER:-${GUEST_USER:-${_guest_default_user}}}"
 VM_HOST="${VM_HOST:-127.0.0.1}"
 
 vm_ssh() {

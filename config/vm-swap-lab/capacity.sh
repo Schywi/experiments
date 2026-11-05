@@ -45,6 +45,11 @@ READY_TIMEOUT="${READY_TIMEOUT:-300}"
 # Repeats per rung. A single sample cannot separate "held" from "got lucky" —
 # identical configuration produced 12, 27 and 0 failures at the same rung.
 REPEATS="${REPEATS:-1}"
+# Hard cap on one rung, in seconds. Without it a failing rung waits out every
+# claim timeout inside session-lab: measured 28-33 minutes per failing rung, so a
+# 3 rung x 3 rep ladder of failures ran for over four hours. A capped rung is
+# recorded as failed (which is the same verdict, only sooner).
+RUNG_TIMEOUT="${RUNG_TIMEOUT:-360}"
 
 # Two-layer compression (CONFIG_ZRAM_MULTI_COMP). The primary algorithm handles
 # every page on its way into zram and therefore sits on the fault path; the
@@ -298,19 +303,31 @@ print(n * {'s':1,'m':60,'h':3600}[unit])
     ) &
   fi
 
-  local ran=0
-  if vm_ssh "cd /home/${SSH_USER} && ./session-lab --namespace ${namespace} --pool ${pool} \
+  local ran=0 timed_out=0
+  # `timeout` here is the guest's, so the limit applies to the run that is
+  # actually slow, not to the ssh connection carrying it.
+  if vm_ssh "cd /home/${SSH_USER} && timeout ${RUNG_TIMEOUT} ./session-lab --namespace ${namespace} --pool ${pool} \
       --policy destroy --duration ${WINDOW} --rate ${rate} --hold ${HOLD} \
       --pool-replicas ${n} --sample-seconds ${SAMPLE_SECONDS} \
       --kubeconfig /home/${SSH_USER}/.kube/config \
       --out /home/${SSH_USER}/runs --run-id ${run_id}" >/dev/null 2>&1; then
     ran=1
+  else
+    # 124 = the guest's timeout fired. Distinguish it from an API failure: a cap
+    # means "this rung did not finish in ${RUNG_TIMEOUT}s", which is a capacity
+    # verdict, not a broken cluster.
+    vm_ssh "test -f /home/${SSH_USER}/runs/${run_id}.json" >/dev/null 2>&1 && ran=1
+    [[ "${ran}" -eq 0 ]] && timed_out=1
   fi
   busy1="$(host_busy_jiffies)"
   stop_loop
 
   if [[ "${ran}" -ne 1 ]]; then
-    row "${CLASS}" "${n}" "${rep}" "no" 0 0 0 0 0 "session-lab failed (api or node unavailable)"
+    if [[ "${timed_out}" -eq 1 ]]; then
+      row "${CLASS}" "${n}" "${rep}" "no" 0 0 0 0 0 "rung did not finish within ${RUNG_TIMEOUT}s (timeout)"
+    else
+      row "${CLASS}" "${n}" "${rep}" "no" 0 0 0 0 0 "session-lab failed (api or node unavailable)"
+    fi
     return 1
   fi
 

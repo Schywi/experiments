@@ -24,6 +24,27 @@ restarts containerd and kills them. Inside a VM the same change costs one
 Swap sizing rule: **never `ram/2`**. A 1.5 GiB zram device on a 3 GiB node takes that
 RAM away from the pods it is meant to help; the default is `ZRAM_MB=768` (25 %).
 
+## Two experiments, two playbooks, two guests
+
+| playbook | guest | arms | why |
+|---|---|---|---|
+| `ansible/provision.yml` | **Ubuntu 24.04** | `none`, `zram-2to1` (lz4), `zram-5to1` (zstd) | the capacity/ratio experiment; unchanged |
+| `ansible/provision-fedora.yml` | **Fedora 44** | `zram-multi-ctl`, `zram-multi` (lzo-rle + zstd recompression) | only the two-layer recompression test |
+
+They are separate because `CONFIG_ZRAM_MULTI_COMP` is opt-in per distro: Ubuntu
+ships it **off** (kernel annotations: noble 6.8 and plucky 6.14, `amd64: 'n'`),
+Fedora 44 builds it **in** (`=y`). The Fedora guest cannot change anything about
+the Ubuntu runs — they are different playbooks, different arms, different base
+images (the cached image is keyed to its URL).
+
+`GUEST=ubuntu|fedora` is the switch; everything else (image, ssh user, sudo group,
+package manager, zram module package) follows from it.
+
+Each rung is capped by `rung_timeout` (default **360 s**). A failing rung used to
+wait out every claim timeout — measured **28–33 min per failing rung**, i.e. over
+four hours for a 3×3 ladder of failures. A capped rung is recorded as
+`rung did not finish within 360s (timeout)`, which is the same verdict, sooner.
+
 ## Run it
 
 ```bash

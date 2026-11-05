@@ -1,0 +1,86 @@
+---
+# Fedora lab — ONLY for the two-layer zram recompression experiment.
+#
+# Why a separate playbook: CONFIG_ZRAM_MULTI_COMP is opt-in per distro and Ubuntu
+# ships it off (kernel annotations for noble 6.8 and plucky 6.14 both say
+# 'amd64': 'n'), while Fedora 44 builds it in ('=y' — measured in /boot/config on
+# the host and in the guest, where /sys/block/zram0/recomp_algorithm exists).
+# The capacity/ratio experiments do not need it, so they stay on Ubuntu in
+# provision.yml and nothing in this file can change their results.
+#
+# What runs here: two arms that differ in exactly one thing — whether a secondary
+# compressor is configured at boot — so the recompression effect can be
+# attributed instead of being confounded with the primary algorithm.
+#
+#   zram-multi-ctl   lzo-rle primary, no secondary     (control)
+#   zram-multi       lzo-rle primary + zstd secondary  (hypothesis)
+#
+# Usage:
+#   ansible-playbook provision-fedora.yml                       # both arms
+#   ansible-playbook provision-fedora.yml -e arm_name=zram-multi
+#   ansible-playbook provision-fedora.yml -e keep_vm=true
+- name: zram multi-comp arms (fedora)
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    lab_dir: "{{ playbook_dir }}/.."
+    # One results tree per experiment: the housekeeping step prunes arm
+    # directories the current play does not run, so a shared results/ would let
+    # one experiment delete the other's reports.
+    results_dir: "{{ lab_dir }}/results-{{ guest }}"
+    guest: fedora
+    guest_ssh_user: fedora
+    guest_group: wheel
+    vm_cpus: 4
+    vm_mem_mb: 4096
+    vm_disk_gb: 12
+    # Rungs 5-7: with the backing at 128 MiB the device fills (93 % measured at
+    # rung 7, where both arms failed), so 7 is already above the wall.
+    ladder: "5 6 7"
+    hold: 20s
+    window: 60s
+    sample_seconds: 2
+    swap_per_pod: 67108864
+    ready_timeout: 300
+    rung_timeout: 360
+    repeats: 2
+    recomp_when: before
+    recomp_type: both
+    sandbox_version: v1.0.7
+    k3s_cache: true
+    keep_vm: false
+    arm_name: ""
+
+    # 128 MiB, not 512: at 512 MiB the device sat 1-20 % full and recompression
+    # had nothing to densify, so the hypothesis could not be measured at all.
+    arms:
+      - name: zram-multi-ctl
+        swap_mode: zram
+        class: swap-on
+        zram_algo: lzo-rle
+        zram_mb: 128
+        swap_mb: 512
+        recomp_algo: ""
+      - name: zram-multi
+        swap_mode: zram
+        class: swap-on
+        zram_algo: lzo-rle
+        zram_mb: 128
+        swap_mb: 512
+        recomp_algo: zstd
+
+  tasks:
+    - name: housekeeping and cached artifacts
+      ansible.builtin.include_tasks: tasks/common-pre.yml
+
+    - name: each arm
+      ansible.builtin.include_tasks: tasks/arm.yml
+      loop: "{{ arms }}"
+      loop_control:
+        loop_var: arm_cfg
+      when: arm_name == "" or arm_name == arm_cfg.name
+
+    - name: report
+      ansible.builtin.include_tasks: tasks/common-post.yml

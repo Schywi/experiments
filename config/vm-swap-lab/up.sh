@@ -19,12 +19,24 @@ script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib.sh
 source "${script_dir}/lib.sh"
 
-# Fedora Cloud Base 44, not Ubuntu: the guest must have a kernel built with
-# CONFIG_ZRAM_MULTI_COMP, and Ubuntu ships it disabled in every release checked
-# (noble 6.8 and plucky 6.14 annotations: amd64 'n'). Fedora 44 enables it, so
-# recomp_algorithm / recompress / idle exist and the two-layer test is possible.
-# Filename is pinned; bump it with the release.
-BASE_IMAGE_URL="${BASE_IMAGE_URL:-https://download.fedoraproject.org/pub/fedora/linux/releases/44/Cloud/x86_64/images/Fedora-Cloud-Base-Generic-44-1.7.x86_64.qcow2}"
+# Guest distro. Ubuntu is the lab default (capacity/ratio experiments, unchanged).
+# Fedora is used by exactly one experiment — zram recompression — because its
+# kernel has CONFIG_ZRAM_MULTI_COMP=y while Ubuntu ships it off in every release
+# checked (noble 6.8 and plucky 6.14 annotations: amd64 'n').
+GUEST="${GUEST:-ubuntu}"
+case "${GUEST}" in
+  ubuntu)
+    default_image="https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-amd64.img"
+    default_user="ubuntu"; default_group="sudo" ;;
+  fedora)
+    default_image="https://download.fedoraproject.org/pub/fedora/linux/releases/44/Cloud/x86_64/images/Fedora-Cloud-Base-Generic-44-1.7.x86_64.qcow2"
+    default_user="fedora"; default_group="wheel" ;;
+  *) echo "GUEST must be ubuntu or fedora, got '${GUEST}'" >&2; exit 2 ;;
+esac
+BASE_IMAGE_URL="${BASE_IMAGE_URL:-${default_image}}"
+GUEST_USER="${GUEST_USER:-${default_user}}"
+GUEST_GROUP="${GUEST_GROUP:-${default_group}}"
+SSH_USER="${SSH_USER:-${GUEST_USER}}"
 MEM_MB="${MEM_MB:-3072}"
 # One vCPU per VM by default: the arms are meant to be a fleet of small boxes,
 # not one big one. Note that at 1 vCPU the CPU wall lands at ~3-4 concurrent
@@ -172,6 +184,8 @@ sed -e "s|__SSH_PUBLIC_KEY__|$(cat "${ssh_key}.pub")|" \
   -e "s|__ZRAM_MB__|${ZRAM_MB}|" \
   -e "s|__ZRAM_ALGO__|${ZRAM_ALGO}|" \
   -e "s|__ZRAM_SECONDARY__|${ZRAM_SECONDARY:-}|" \
+  -e "s|__GUEST_USER__|${GUEST_USER}|" \
+  -e "s|__GUEST_GROUP__|${GUEST_GROUP}|" \
   -e "s|__SWAP_MB__|${SWAP_MB}|" \
   -e "s|__K3S_BASE_URL__|${k3s_base_url}|" \
   "${script_dir}/cloud-init.yaml" >"${seed_dir}/user-data"
