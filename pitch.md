@@ -7,7 +7,7 @@ kind: index
 
 Registered data only. Every block below is quoted verbatim from a note in this
 repository, with its source and line range underneath. Nothing here is computed,
-summarised or interpreted — the narrative is written by the author in §10.
+summarised or interpreted — the narrative is written by the author in §11.
 
 ## 0. What we set out to do
 
@@ -42,35 +42,95 @@ What a claim bought at that point: agent-sandbox `v1.0.7` (pinned release, sha25
 
 Source: [`ROADMAP.md`](ROADMAP.md) §0 and §3, [`README.md`](README.md).
 
-The cockpit drawing a run — four zooms of the same object, left to right:
+## 2. Two narratives
 
-<div class="shots-wrap">
-<div class="shots" tabindex="0">
+The same host runs two stories, and they share the machine. Pick one:
+
+<div class="tabs narrative">
+<input type="radio" name="narrative" id="n-sre" checked>
+<input type="radio" name="narrative" id="n-chromium">
+<label for="n-sre">The SRE assistant</label>
+<label for="n-chromium">The Elastic Chromium</label>
+
+<section>
+
+<p>An operations assistant over the live cluster: 15 tools, one evaluator call that reads the whole sentence and returns the task list, and every answer carrying its evidence — tool, arguments, time, source, a copyable command or PromQL, and a Grafana or Hubble deep link where the backend supports one.</p>
+
+<p>Contract and reasoning: <a href="research/features/README.md">feature contracts</a> · <a href="research/assistant/README.md">assistant notes</a> · <a href="evolution/05-ai-ops-track-d.md">phase 5 narrative</a></p>
+
+<div class="shots-wrap slides-4">
+<div class="shots shots--auto">
+<div class="track">
 
 <figure>
-<img src="research/session-lifecycle-elasticity/assets/wall-run-overview.png" alt="Run overview: sessions per bucket across the life of a run" loading="lazy">
-<figcaption>Run overview — the skyline: sessions per 30 s bucket across a whole run</figcaption>
+<img src="evolution/assets/sre-assistant-answer.png" alt="The assistant answering an operations question with the evidence panel open" loading="lazy">
+<figcaption>An answer with its evidence panel — the pane the assistant returns alongside the text</figcaption>
 </figure>
 
 <figure>
-<img src="research/session-lifecycle-elasticity/assets/wall-cpu-valley.png" alt="Wall zoom in a valley between load spikes" loading="lazy">
-<figcaption>Wall zoom — buckets, instances and slots, in a valley between spikes</figcaption>
+<img src="research/features/assets/deep-links-kargo.png" alt="An answer about the Kargo promotion carrying evidence and deep links" loading="lazy">
+<figcaption>An answer about the Kargo promotion, carrying its deep links</figcaption>
 </figure>
 
 <figure>
-<img src="research/session-lifecycle-elasticity/assets/wall-cpu-ceiling-reached.png" alt="Wall zoom at the point where the pool reached its CPU limit" loading="lazy">
-<figcaption>Wall zoom — the same view at the point the pool reached its CPU limit</figcaption>
+<img src="research/features/assets/assistant-requests-browser-screenshot.png" alt="The assistant asking the browser for a screenshot of a claim" loading="lazy">
+<figcaption>The assistant asking a sandbox for a screenshot, and getting one back</figcaption>
 </figure>
 
 <figure>
-<img src="research/session-lifecycle-elasticity/assets/wall-riot-cpu-spike.png" alt="Lane zoom: one instance's eight tracks while a Riot page drove CPU up" loading="lazy">
-<figcaption>Lane zoom — one instance's eight tracks while a Riot page drove CPU up</figcaption>
+<img src="research/features/assets/riot-claim-interaction.png" alt="A scripted agent driving a Riot page inside a claim" loading="lazy">
+<figcaption>An agent driving a Riot page inside a claim</figcaption>
 </figure>
 
 </div>
 </div>
+</div>
 
-## 2. GPU offload
+</section>
+
+<section>
+
+<p>A claim becomes a pod, a pod runs one Chromium, and one Chromium carries up to eight browser contexts — so a session is a slot, not a pod. The workload is driven by the runner, sized by an autoscaler that reads claim demand and node pressure together, and bounded by the control plane underneath it.</p>
+
+<p>Design notes: <a href="research/session-lifecycle-elasticity/README.md">session lifecycle elasticity</a> · <a href="evolution/08-session-lifecycle-elasticity.md">phase 8</a> · <a href="research/session-lifecycle-elasticity/16.2-session-wall-ui.md">the console</a></p>
+
+<div class="shots-wrap slides-5">
+<div class="shots shots--auto">
+<div class="track">
+
+<figure>
+<img src="research/session-lifecycle-elasticity/assets/console-initial-about-blank.png" alt="The console on a fresh claim with the page at about:blank" loading="lazy">
+<figcaption>A fresh claim in the console — the page is at about:blank</figcaption>
+</figure>
+
+<figure>
+<img src="research/session-lifecycle-elasticity/assets/cdp-frame-from-claim.png" alt="A CDP frame booting from a claim" loading="lazy">
+<figcaption>A frame booting from a claim, driven over CDP</figcaption>
+</figure>
+
+<figure>
+<img src="research/session-lifecycle-elasticity/assets/console-claim-leakage-pending-requests.png" alt="The console showing leaked claims as pending requests" loading="lazy">
+<figcaption>Leaked claims visible as pending requests in the console</figcaption>
+</figure>
+
+<figure>
+<img src="research/session-lifecycle-elasticity/assets/low-resource-run.png" alt="The same session route under the reduced resource template" loading="lazy">
+<figcaption>The same route under the reduced resource template</figcaption>
+</figure>
+
+<figure>
+<img src="research/session-lifecycle-elasticity/assets/keda-first-scale-out.png" alt="First KEDA scale-out test of the deployed autoscaler" loading="lazy">
+<figcaption>The first scale-out test of the deployed autoscaler</figcaption>
+</figure>
+
+</div>
+</div>
+</div>
+
+</section>
+</div>
+
+## 3. GPU offload
 
 > GPU acceleration does **not** raise concurrent session capacity on this node for the
 > workload `session-lab` actually generates. The runner's hold is a sleep that samples
@@ -86,12 +146,7 @@ The cockpit drawing a run — four zooms of the same object, left to right:
 
 Source: [`19-gpu-pool-a-b.md`](research/session-lifecycle-elasticity/19-gpu-pool-a-b.md) §1, lines 27–37.
 
-<figure>
-<img src="research/session-lifecycle-elasticity/assets/wall-riot-stress-test.png" alt="Lane zoom during the Riot visual stress test" loading="lazy">
-<figcaption>The visual stress test in the same lane view — eight tracks of one instance, rendering work in flight</figcaption>
-</figure>
-
-## 3. Overload run
+## 4. Overload run
 
 > | Quantity | Measured |
 > |---|---|
@@ -104,7 +159,7 @@ Source: [`19-gpu-pool-a-b.md`](research/session-lifecycle-elasticity/19-gpu-pool
 
 Source: [`07-overload-and-suspend.md`](research/session-lifecycle-elasticity/07-overload-and-suspend.md) lines 34–48.
 
-## 4. Slots
+## 5. Slots
 
 > | Scheduler (CPU requests) | ~21 browsers × 8 = **168 slots**; 27 if browsers had no neighbours | `FailedScheduling … Insufficient cpu` at 23:59 with 21 instances |
 
@@ -112,7 +167,7 @@ Source: [`07-overload-and-suspend.md`](research/session-lifecycle-elasticity/07-
 
 Source: [`18-capacity-elasticity-and-kine.md`](research/session-lifecycle-elasticity/18-capacity-elasticity-and-kine.md) lines 62 and 67.
 
-## 5. Capacity arithmetic, as registered
+## 6. Capacity arithmetic, as registered
 
 > ```
 > sessions/s = concurrent slots / mean hold
@@ -127,7 +182,7 @@ Source: [`18-capacity-elasticity-and-kine.md`](research/session-lifecycle-elasti
 
 Source: [`18-capacity-elasticity-and-kine.md`](research/session-lifecycle-elasticity/18-capacity-elasticity-and-kine.md) §2, lines 74–83.
 
-## 6. Lifecycle and autoscaling
+## 7. Lifecycle and autoscaling
 
 > | queue wait p50 / p95 | 3.2 s / 134 s | **85 s / 209 s** | **1.4 s / 54 s** |
 > | reset p50 / p95 | 35 ms / 625 ms | — | 39 ms / 531 ms |
@@ -145,7 +200,7 @@ Source: [`09-results-three-runs.md`](research/session-lifecycle-elasticity/09-re
 
 Source: [`10-autoscaler-deployed.md`](research/session-lifecycle-elasticity/10-autoscaler-deployed.md) line 56.
 
-## 7. Swap and zram
+## 8. Swap and zram
 
 > **YES, by one concurrent session: 5 → 6 (+20 %)** at 3 vCPU / 4 GiB, and with zram
 > it also cuts tail latency ~70 % at equal load (§5b).
@@ -164,7 +219,7 @@ Source: [`swap-capacity/README.md`](research/swap-capacity/README.md) lines 23�
 <figcaption>The ratio run — the benchmark capture behind the table above</figcaption>
 </figure>
 
-## 8. Control plane
+## 9. Control plane
 
 > | Status | §8 fix applied and measured on the live node 2026-11-01 (`_synchronous=NORMAL&_busy_timeout=30000`): insert mean 64.6 → 2.06 ms, 823 Slow SQL/hour → 0, 9 fatals/24 h → 0 |
 
@@ -172,12 +227,12 @@ Source: [`swap-capacity/README.md`](research/swap-capacity/README.md) lines 23�
 
 Source: [`05-write-ceiling-and-fixes.md`](research/cpu-oversubscription/05-write-ceiling-and-fixes.md) lines 15 and 331.
 
-## 9. Per-session footprint
+## 10. Per-session footprint
 
 > | Pod cgroup `memory.current` | 559 MiB | `03-browser-density.md:187` |
 
 Source: [`13-client-go-apf-and-density-limits.md`](research/session-lifecycle-elasticity/13-client-go-apf-and-density-limits.md) line 92.
 
-## 10. The narrative
+## 11. The narrative
 
 Author writes here.

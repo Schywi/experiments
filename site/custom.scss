@@ -296,3 +296,79 @@ article figure {
     padding: 0 0.7rem 0.5rem;
   }
 }
+
+/* ── autoplay carousel ─────────────────────────────────────────────────────
+   A track of slides that steps on a timer, pausing while the reader is over it
+   or has focused inside. Slide count comes from --slides on the wrapper, so one
+   rule serves any number of figures:
+
+     <div class="shots-wrap" style="--slides: 8">
+       <div class="shots shots--auto">
+         <div class="track"> <figure>…</figure> … </div>
+       </div>
+     </div>
+
+   steps(N, end) gives N discrete positions, so the track jumps a whole slide at
+   a time instead of panning, and returns to the first on the wrap.            */
+
+.shots--auto {
+  overflow: hidden;
+
+  > .track {
+    display: flex;
+    animation: shots-step calc(var(--slides, 4) * 4s) steps(var(--slides, 4), end) infinite;
+
+    > figure {
+      flex: 0 0 100%;
+      margin: 0;
+      scroll-snap-align: none;
+    }
+  }
+}
+
+@keyframes shots-step {
+  from {
+    transform: translateX(0);
+  }
+
+  to {
+    transform: translateX(calc(-100% * var(--slides, 4)));
+  }
+}
+
+.shots-wrap:hover .shots--auto > .track,
+.shots-wrap:focus-within .shots--auto > .track {
+  animation-play-state: paused;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shots--auto > .track {
+    animation: none;
+  }
+}
+
+/* ── narrative switch ──────────────────────────────────────────────────────
+   The two-narrative tab pair gets larger labels than the compact tabs above,
+   because it is a fork in the pitch rather than a detail selector.            */
+
+.tabs.narrative {
+  > label {
+    padding: 0.45rem 1.1rem;
+    font-size: 1rem;
+    font-weight: 600;
+  }
+
+  > section {
+    padding: 1rem 0.7rem 0.6rem;
+  }
+}
+
+/* Slide count comes from a class, not an inline style: the HTML renderer drops
+   style attributes, and the track needs the count to step correctly.          */
+
+.slides-2 { --slides: 2; }
+.slides-3 { --slides: 3; }
+.slides-4 { --slides: 4; }
+.slides-5 { --slides: 5; }
+.slides-6 { --slides: 6; }
+.slides-8 { --slides: 8; }
