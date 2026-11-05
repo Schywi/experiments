@@ -11,6 +11,8 @@ docs/
 # playbooks meant to travel with the repository (see .agents/skills/*/SKILL.md).
 .agents/*
 !.agents/skills/
+# The blogging skill stays local; it is not part of this repository's playbook.
+.agents/skills/blogging/
 .env
 .env.*
 !.env.example
