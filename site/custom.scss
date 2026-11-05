@@ -12,3 +12,287 @@
     grid-template-columns: 232px auto 320px;
   }
 }
+
+/* ── tabs ──────────────────────────────────────────────────────────────────
+   Radio-driven, no JavaScript. Inline scripts do not re-run after a Quartz SPA
+   page swap, so anything interactive in body content has to be pure CSS.
+
+   Markup: all inputs first, then their labels, then the panels, in order.
+
+     <div class="tabs">
+       <input type="radio" name="t" id="t1" checked>
+       <input type="radio" name="t" id="t2">
+       <label for="t1">CPU</label>
+       <label for="t2">GPU</label>
+       <section>…</section>
+       <section>…</section>
+     </div>
+
+   Four pairs are wired; a fifth tab needs a fifth pair added here.            */
+
+.tabs {
+  position: relative;
+  margin: 1.2rem 0;
+  padding: 0.3rem;
+  border: 1px solid var(--lightgray);
+  border-radius: 10px;
+  background: var(--light);
+
+  > input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  > label {
+    display: inline-block;
+    margin: 0.15rem;
+    padding: 0.3rem 0.9rem;
+    border-radius: 999px;
+    font-size: 0.9rem;
+    color: var(--darkgray);
+    cursor: pointer;
+    user-select: none;
+    transition: background-color 0.15s ease, color 0.15s ease;
+
+    &:hover {
+      background: var(--lightgray);
+    }
+  }
+
+  > section {
+    display: none;
+    padding: 0.9rem 0.6rem 0.4rem;
+  }
+
+  > input:nth-of-type(1):checked ~ label:nth-of-type(1),
+  > input:nth-of-type(2):checked ~ label:nth-of-type(2),
+  > input:nth-of-type(3):checked ~ label:nth-of-type(3),
+  > input:nth-of-type(4):checked ~ label:nth-of-type(4) {
+    background: var(--secondary);
+    color: var(--light);
+  }
+
+  > input:nth-of-type(1):checked ~ section:nth-of-type(1),
+  > input:nth-of-type(2):checked ~ section:nth-of-type(2),
+  > input:nth-of-type(3):checked ~ section:nth-of-type(3),
+  > input:nth-of-type(4):checked ~ section:nth-of-type(4) {
+    display: block;
+  }
+}
+
+/* ── carousel ──────────────────────────────────────────────────────────────
+   Scroll-snap, no JavaScript. Native horizontal scrolling gives touch, trackpad
+   and keyboard for free; put tabindex="0" on .shots so arrow keys scroll it.
+
+     <div class="shots-wrap">
+       <div class="shots" tabindex="0">
+         <figure><img …><figcaption>…</figcaption></figure>
+         …
+       </div>
+     </div>
+
+   .shots-wrap paints a gradient over the right edge so a partly visible slide
+   reads as "there is more to the right" rather than as a clipped image.        */
+
+.shots-wrap {
+  position: relative;
+  margin: 1.2rem 0;
+}
+
+.shots-wrap::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0.5rem;
+  width: 3rem;
+  pointer-events: none;
+  border-radius: 0 8px 8px 0;
+  background: linear-gradient(to right, transparent, var(--light));
+}
+
+.shots {
+  display: flex;
+  gap: 1rem;
+  padding: 0 0 0.6rem;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: thin;
+  scroll-behavior: smooth;
+
+  &:focus-visible {
+    outline: 2px solid var(--secondary);
+    outline-offset: 2px;
+    border-radius: 8px;
+  }
+
+  > figure {
+    flex: 0 0 85%;
+    margin: 0;
+    scroll-snap-align: center;
+
+    img {
+      display: block;
+      width: 100%;
+      border-radius: 8px;
+    }
+  }
+
+  @media all and (max-width: 800px) {
+    > figure {
+      flex-basis: 92%;
+    }
+  }
+}
+
+/* ── before / after ────────────────────────────────────────────────────────
+   Two images stacked in one figure; the second is clipped to its right half
+   until the figure is hovered or focused, so the comparison reveals itself.
+   No JavaScript. Markup:
+
+     <figure class="cmp" tabindex="0">
+       <img src="…before.png" alt="…">
+       <img src="…after.png"  alt="…">
+       <figcaption><b>before</b> … · <b>after</b> …</figcaption>
+     </figure>                                                              */
+
+figure.cmp {
+  position: relative;
+  margin: 1.2rem 0;
+  border: 1px solid var(--lightgray);
+  border-radius: 8px;
+  overflow: hidden;
+  cursor: crosshair;
+
+  img {
+    display: block;
+    width: 100%;
+  }
+
+  img:nth-of-type(2) {
+    position: absolute;
+    inset: 0;
+    height: 100%;
+    object-fit: contain;
+    object-position: right center;
+    clip-path: inset(0 0 0 50%);
+    transition: clip-path 0.25s ease;
+  }
+
+  &:hover img:nth-of-type(2),
+  &:focus-within img:nth-of-type(2),
+  &:focus img:nth-of-type(2) {
+    clip-path: inset(0);
+  }
+
+  figcaption {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    padding: 0.4rem 0.7rem;
+    font-size: 0.82rem;
+    background: color-mix(in srgb, var(--light) 88%, transparent);
+    border-top: 1px solid var(--lightgray);
+  }
+}
+
+/* ── figures ───────────────────────────────────────────────────────────────
+   Every screenshot gets a border and a small-caps caption. Images in the body
+   markdown carry loading="lazy" as an attribute — that is markup, applied where
+   the figures are written, not something CSS can do.                          */
+
+article figure {
+  margin: 1.2rem 0;
+  border: 1px solid var(--lightgray);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--light);
+
+  img {
+    display: block;
+    width: 100%;
+  }
+
+  figcaption {
+    padding: 0.45rem 0.7rem;
+    font-size: 0.82rem;
+    font-variant: small-caps;
+    letter-spacing: 0.03em;
+    color: var(--darkgray);
+    border-top: 1px solid var(--lightgray);
+  }
+}
+
+/* ── evidence chips ────────────────────────────────────────────────────────
+   The labels the notes already use, made instant to read:
+
+     <span class="chip chip--m">[M]</span>   measured
+     <span class="chip chip--i">[I]</span>   inferred
+     <span class="chip chip--u">[U]</span>   unknown
+
+   Deliberately not applied inside verbatim quotes: those stay character-for-
+   character, so chips go in captions and in prose that is ours.               */
+
+.chip {
+  display: inline-block;
+  margin: 0 0.15em;
+  padding: 0 0.35em;
+  border: 1px solid currentColor;
+  border-radius: 0.35em;
+  font-family: var(--codeFont);
+  font-size: 0.72em;
+  line-height: 1.55;
+  vertical-align: 0.12em;
+  white-space: nowrap;
+}
+
+.chip--m {
+  color: var(--secondary);
+}
+
+.chip--i {
+  color: var(--tertiary);
+}
+
+.chip--u {
+  color: var(--gray);
+}
+
+/* ── collapsible callouts ──────────────────────────────────────────────────
+   A deep dive lives in a `> [!note]- Title` callout: collapsed by default, one
+   click to open, and the chevron makes that affordance visible. Quartz supplies
+   the collapse behaviour (callout.inline.ts re-binds on every SPA nav); this is
+   only padding and the arrow.                                                */
+
+.callout.is-collapsible {
+  > .callout-title {
+    padding: 0.5rem 0.7rem;
+    cursor: pointer;
+  }
+
+  > .callout-title::after {
+    content: "";
+    margin-left: auto;
+    width: 0.5em;
+    height: 0.5em;
+    flex: 0 0 auto;
+    border-right: 2px solid currentColor;
+    border-bottom: 2px solid currentColor;
+    transform: rotate(45deg);
+    transition: transform 0.15s ease;
+    opacity: 0.7;
+  }
+
+  &.is-collapsed > .callout-title::after {
+    transform: rotate(-45deg);
+  }
+
+  > .callout-content {
+    padding: 0 0.7rem 0.5rem;
+  }
+}
