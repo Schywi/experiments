@@ -294,4 +294,4 @@ Prerequisite to all of it: **Part 0** — real DNS + Cilium LB, `/etc/hosts` gon
 
 ## Where this sits
 
-- Collection: [experiments](../README.md)
+- Collection: [experiments](../../README.md)

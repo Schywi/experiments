@@ -109,7 +109,7 @@ namespace `ResourceQuota` — a desired count above the quota *stays pending*
 instead of bypassing the cap.
 
 **Why it ended:** two hard blockers, both recorded in
-[`research/native-k3s-gpu-models-plan.md`](research/native-k3s-gpu-models-plan.md):
+[`research/native-k3s-gpu-models-plan.md`](research/platform/native-k3s-gpu-models-plan.md):
 the k3d container kernel rejected Cilium 1.20's BPF SNAT program (forced
 iptables masquerading + host-legacy routing), and the base environment had no
 systemd/eBPF. Also: a GPU inside a Docker-in-Docker node is not a place to learn
@@ -220,7 +220,7 @@ pushes to this repository.
 
 **Branch:** `feat/sandbox-console`. **Tracked docs:**
 [`evolution/07-sandbox-console.md`](evolution/07-sandbox-console.md),
-[`research/rfc-sandbox-console.md`](research/rfc-sandbox-console.md).
+[`research/rfc-sandbox-console.md`](research/rfcs/rfc-sandbox-console.md).
 
 A sandbox becomes inspectable: agent-sandbox `v1.0.7` as a pinned Helm release,
 `apps/sandbox-console` as a read-only pane at `192.168.0.250`, and four CRDs whose
@@ -406,7 +406,7 @@ Grouped from `bd ready`; run `bd ready` for the live list.
 12. Cloud hosting on GKE/GCE: Cilium LB IPAM and L2 announcements **cannot work
     there** (routed VPC; Cilium is managed on GKE). The full inventory, exposure
     matrix and migration checklist live in
-    [`research/production-hosting-gke-gce.md`](research/production-hosting-gke-gce.md);
+    [`research/production-hosting-gke-gce.md`](research/platform/production-hosting-gke-gce.md);
     no code exists yet (`bd experiments-9q0`).
 
 **Assistant**
@@ -481,7 +481,7 @@ Grouped from `bd ready`; run `bd ready` for the live list.
 - **The exposure design is LAN-only.** It relies on a real L2 segment for
   `192.168.0.240-250`; a routed cloud VPC (GKE/GCE) cannot announce those
   addresses, so hosting there means reconfiguring exposure first — see
-  [`research/production-hosting-gke-gce.md`](research/production-hosting-gke-gce.md).
+  [`research/production-hosting-gke-gce.md`](research/platform/production-hosting-gke-gce.md).
 
 ---
 

@@ -12,7 +12,7 @@ tags: [console]
 [`../apps/sandbox-console/`](../apps/sandbox-console/README.md),
 [`../apps/browser-sandbox/`](../apps/browser-sandbox/README.md),
 [`../config/sandbox/`](../config/sandbox/README.md) · **design note:**
-[`../research/rfc-sandbox-console.md`](../research/rfc-sandbox-console.md)
+[`../research/rfc-sandbox-console.md`](../research/rfcs/rfc-sandbox-console.md)
 
 Renumbered from 6: `cluster-evolution` already carries
 `evolution/06-kargo-promotion-pipeline.md`.

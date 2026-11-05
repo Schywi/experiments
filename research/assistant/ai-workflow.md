@@ -95,4 +95,4 @@ RBAC + audit; M3 `get_pod_logs` + `get_events`.
 
 ## Where this sits
 
-- Collection: [experiments](../README.md)
+- Collection: [experiments](../../README.md)

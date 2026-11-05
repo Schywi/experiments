@@ -157,5 +157,5 @@ Expected: `query_prometheus` facts carry `reproduce.promql` and
 ## Where this sits
 
 - Feature index: [Features](README.md)
-- The investigation behind it: [Evidence provenance, deep links, and cartography](../evidence-provenance.md)
-- The answers this applies to: [Assistant response pipeline v2](../assistant-response-pipeline.md)
+- The investigation behind it: [Evidence provenance, deep links, and cartography](../assistant/evidence-provenance.md)
+- The answers this applies to: [Assistant response pipeline v2](../assistant/assistant-response-pipeline.md)

@@ -16,7 +16,7 @@ tags: [session-lifecycle, state-hypothesis]
 | Phase | 8 — session lifecycle elasticity |
 | Scope | A Go program that generates session demand, owns session state, drives the sandbox APIs, measures what happens, and reports where the platform broke |
 | Code | `apps/session-lab/` — new Go module in this repository |
-| Related | [01](01-instrumentation-cpu-memory.md), [02](02-objective-and-soak-statistics.md), [03](03-what-exists-today.md), [`../rfc-sandbox-console.md`](../rfc-sandbox-console.md) |
+| Related | [01](01-instrumentation-cpu-memory.md), [02](02-objective-and-soak-statistics.md), [03](03-what-exists-today.md), [`../rfc-sandbox-console.md`](../rfcs/rfc-sandbox-console.md) |
 
 ---
 

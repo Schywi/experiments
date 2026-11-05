@@ -79,7 +79,7 @@ The code was not the problem. The substrate was:
    device-plugin semantics get learned.
 
 That analysis is recorded in
-[`../research/native-k3s-gpu-models-plan.md`](../research/native-k3s-gpu-models-plan.md)
+[`../research/native-k3s-gpu-models-plan.md`](../research/platform/native-k3s-gpu-models-plan.md)
 and it is the direct cause of Phase 2.
 
 ## What survives into today

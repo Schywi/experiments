@@ -28,7 +28,7 @@ commits:
 accelerates what the card actually supports.**
 
 The reasoning is in
-[`../research/native-k3s-gpu-models-plan.md`](../research/native-k3s-gpu-models-plan.md)
+[`../research/native-k3s-gpu-models-plan.md`](../research/platform/native-k3s-gpu-models-plan.md)
 §3, and it is a hardware statement, not a preference:
 
 | Model | Runtime | Footprint on this host | GPU stance |

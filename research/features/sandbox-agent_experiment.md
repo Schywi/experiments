@@ -203,5 +203,5 @@ in the repo. The audit log stays one JSONL file with a new `agent` field.
 ## Where this sits
 
 - Feature index: [Features](README.md)
-- The console it drives: [RFC — sandbox-console](../rfc-sandbox-console.md)
+- The console it drives: [RFC — sandbox-console](../rfcs/rfc-sandbox-console.md)
 - The lock's concurrency sibling: [LLM concurrency limit](concurrency.md)

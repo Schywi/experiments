@@ -19,7 +19,7 @@ tags: [state-hypothesis]
 | Branch | `research/session-lifecycle-elasticity`, cut from `cluster-evolution` at `078d1b9` |
 | Scope | A Go session scheduler and experiment runner at `apps/session-lab/`, with design notes here |
 | Subject | `kubernetes-sigs/agent-sandbox`, read through the fork checkout `~/Documentos/git_repos/agent-sandbox` |
-| Related | [`../rfc-sandbox-console.md`](../rfc-sandbox-console.md) (Phase 7), [`../../ROADMAP.md`](../../ROADMAP.md) |
+| Related | [`../rfc-sandbox-console.md`](../rfcs/rfc-sandbox-console.md) (Phase 7), [`../../ROADMAP.md`](../../ROADMAP.md) |
 
 ---
 

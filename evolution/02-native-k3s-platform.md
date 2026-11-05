@@ -18,7 +18,7 @@ Move the identical component set off Docker-in-Docker and onto the real host:
 same Cilium version, same ingress, same Argo CD posture — but now on a kernel
 that actually implements what Cilium assumes. The plan and its rejected
 alternatives live in
-[`../research/native-k3s-gpu-models-plan.md`](../research/native-k3s-gpu-models-plan.md).
+[`../research/native-k3s-gpu-models-plan.md`](../research/platform/native-k3s-gpu-models-plan.md).
 
 ## What changed structurally
 

@@ -28,21 +28,17 @@ the reasoning: what was proposed, what was measured, what broke.
 contract behind each capability, one file per feature, plus the edge-case
 catalogue.
 
-## Notes and RFCs
+## Loose documents, grouped
 
-| Note | Kind | Subject |
+The root holds no documents of its own any more: four folders collect what used
+to sit loose here, and each folder has an index.
+
+| Folder | Holds | Index |
 |---|---|---|
-| [AI workflow](ai-workflow.md) | investigation | The local infrastructure assistant, end to end |
-| [Assistant response pipeline v2](assistant-response-pipeline.md) | plan | Structured facts → dual response → streaming |
-| [Evidence provenance and cartography](evidence-provenance.md) | investigation + plan | Where each answer's facts come from, and the deep links that prove it |
-| [Native k3s + GPU + CPU models](native-k3s-gpu-models-plan.md) | plan | The pivot off k3d, and the recorded decisions behind it |
-| [Platform cockpit deep research prompt](platform-cockpit-deep-research-prompt.md) | prompt | A Pareto cockpit for Kubernetes, as a research brief |
-| [Production hosting on GKE or GCE](production-hosting-gke-gce.md) | analysis | What cannot work there, and what must change |
-| [Reasoning model, topology tool, Cilium observability](reasoner-and-topology.md) | investigation | The three layers a topology question needs |
-| [RFC — environments and promotion](rfc-environments-and-promotion.md) | RFC | Immutable artifacts and how they move between environments |
-| [RFC — sandbox-console API](rfc-sandbox-api.md) | RFC | The HTTP API the console exposes to tools |
-| [RFC — sandbox-console](rfc-sandbox-console.md) | RFC | A pane to inspect, drive and demo `agent-sandbox` |
-| [RFC — traffic split](rfc-traffic-split.md) | RFC | Canary and traffic splitting for `agent-sandbox`, experimental |
+| [`assistant/`](assistant/README.md) | How the assistant is wired, how an answer is assembled, where its evidence comes from, what a topology question needs | 4 notes |
+| [`rfcs/`](rfcs/README.md) | Proposals written to be argued with — promotion, the console API, the console itself, traffic splitting | 4 RFCs |
+| [`platform/`](platform/README.md) | What the cluster runs on, and what would change to host it elsewhere | 2 notes |
+| [`prompts/`](prompts/README.md) | Research briefs that can be re-run against a later state | 1 brief |
 
 ## How a note is labelled
 
