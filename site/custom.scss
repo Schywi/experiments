@@ -474,3 +474,46 @@ article figure {
     transform: scale(1);
   }
 }
+
+/* ── slide indicators ──────────────────────────────────────────────────────
+   Dots plus an "n / total" counter, built by site/carousel.js so they share one
+   index with the arrows and the autoplay timer. Without JavaScript the CSS
+   animation still plays, and there are simply no dots to show.               */
+
+.shots-dots {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  margin-top: 0.2rem;
+}
+
+.shots-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  padding: 0;
+  border: 1px solid var(--gray);
+  border-radius: 999px;
+  background: transparent;
+  cursor: pointer;
+  transition: background-color 0.15s ease, transform 0.15s ease;
+
+  &.is-active {
+    background: var(--secondary);
+    border-color: var(--secondary);
+    transform: scale(1.25);
+  }
+
+  &:hover,
+  &:focus-visible {
+    border-color: var(--secondary);
+    outline: none;
+  }
+}
+
+.shots-counter {
+  margin-left: 0.35rem;
+  font-family: var(--codeFont);
+  font-size: 0.75rem;
+  color: var(--gray);
+}
