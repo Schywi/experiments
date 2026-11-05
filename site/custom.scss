@@ -421,3 +421,56 @@ article figure {
     right: 0.4rem;
   }
 }
+
+/* ── images are inspectable ────────────────────────────────────────────────
+   The cursor says a picture can be opened; the overlay is created and filled by
+   site/carousel.js, which reuses one element for every figure.               */
+
+.center figure img {
+  cursor: zoom-in;
+}
+
+.lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 2vmin;
+  background: rgb(0 0 0 / 0.82);
+  backdrop-filter: blur(2px);
+  cursor: zoom-out;
+
+  &.open {
+    display: flex;
+  }
+
+  > img {
+    max-width: 96vw;
+    max-height: 92vh;
+    width: auto;
+    height: auto;
+    border-radius: 6px;
+    box-shadow: 0 12px 48px rgb(0 0 0 / 0.5);
+    cursor: zoom-out;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .lightbox > img {
+    animation: lightbox-in 0.15s ease-out;
+  }
+}
+
+@keyframes lightbox-in {
+  from {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
