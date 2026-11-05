@@ -9,6 +9,16 @@ Registered data only. Every block below is quoted verbatim from a note in this
 repository, with its source and line range underneath. Nothing here is computed,
 summarised or interpreted — the narrative is written by the author in §10.
 
+## 0. What we set out to do
+
+> in resume we tried to scale Agentsandbox claim/sandbox pool past kubernetes
+> cold start and allocation aiming for the maximum amount of served users
+> possible
+
+Cold boot **~40 s** · warm adoption **107 ms** · resume **p50 2853 ms** — [08.2 §6](research/session-lifecycle-elasticity/08.2-gpu-offload-feasibility.md), [07](research/session-lifecycle-elasticity/07-overload-and-suspend.md) lines 97–98.
+
+What a claim bought at that point: agent-sandbox `v1.0.7` (pinned release, sha256-checked), a router + browser template + warm pool from `config/sandbox/`, and a Chromium-with-CDP image from `apps/browser-sandbox/` — [evolution/07](evolution/07-sandbox-console.md) lines 40–42.
+
 ## 1. What it is
 
 ```text
@@ -32,6 +42,34 @@ summarised or interpreted — the narrative is written by the author in §10.
 
 Source: [`ROADMAP.md`](ROADMAP.md) §0 and §3, [`README.md`](README.md).
 
+The cockpit drawing a run — four zooms of the same object, left to right:
+
+<div class="shots-wrap">
+<div class="shots" tabindex="0">
+
+<figure>
+<img src="research/session-lifecycle-elasticity/assets/wall-run-overview.png" alt="Run overview: sessions per bucket across the life of a run" loading="lazy">
+<figcaption>Run overview — the skyline: sessions per 30 s bucket across a whole run</figcaption>
+</figure>
+
+<figure>
+<img src="research/session-lifecycle-elasticity/assets/wall-cpu-valley.png" alt="Wall zoom in a valley between load spikes" loading="lazy">
+<figcaption>Wall zoom — buckets, instances and slots, in a valley between spikes</figcaption>
+</figure>
+
+<figure>
+<img src="research/session-lifecycle-elasticity/assets/wall-cpu-ceiling-reached.png" alt="Wall zoom at the point where the pool reached its CPU limit" loading="lazy">
+<figcaption>Wall zoom — the same view at the point the pool reached its CPU limit</figcaption>
+</figure>
+
+<figure>
+<img src="research/session-lifecycle-elasticity/assets/wall-riot-cpu-spike.png" alt="Lane zoom: one instance's eight tracks while a Riot page drove CPU up" loading="lazy">
+<figcaption>Lane zoom — one instance's eight tracks while a Riot page drove CPU up</figcaption>
+</figure>
+
+</div>
+</div>
+
 ## 2. GPU offload
 
 > GPU acceleration does **not** raise concurrent session capacity on this node for the
@@ -47,6 +85,11 @@ Source: [`ROADMAP.md`](ROADMAP.md) §0 and §3, [`README.md`](README.md).
 > **244 → 279 ms (+14%)**.
 
 Source: [`19-gpu-pool-a-b.md`](research/session-lifecycle-elasticity/19-gpu-pool-a-b.md) §1, lines 27–37.
+
+<figure>
+<img src="research/session-lifecycle-elasticity/assets/wall-riot-stress-test.png" alt="Lane zoom during the Riot visual stress test" loading="lazy">
+<figcaption>The visual stress test in the same lane view — eight tracks of one instance, rendering work in flight</figcaption>
+</figure>
 
 ## 3. Overload run
 
@@ -93,6 +136,11 @@ Source: [`18-capacity-elasticity-and-kine.md`](research/session-lifecycle-elasti
 
 Source: [`09-results-three-runs.md`](research/session-lifecycle-elasticity/09-results-three-runs.md) lines 42–44 and 80.
 
+<figure>
+<img src="research/session-lifecycle-elasticity/assets/warm-claim-vs-raw-sandbox.png" alt="A warm claim and a raw sandbox opened through the same session route" loading="lazy">
+<figcaption>Warm claim against a raw sandbox — reset p50 35 ms versus delete p50 374 ms (p95 7.07 s) plus a cold start</figcaption>
+</figure>
+
 > | 17:16:18 | 22 | 22 | `scale-out complete: 22 ready after 84.9s` |
 
 Source: [`10-autoscaler-deployed.md`](research/session-lifecycle-elasticity/10-autoscaler-deployed.md) line 56.
@@ -110,6 +158,11 @@ Source: [`10-autoscaler-deployed.md`](research/session-lifecycle-elasticity/10-a
 > | **latency at rung 6** — same 27 sessions, same box | **zstd (5:1)**: 740 ms vs 22.7 s vs 39.4 s p95 | 30–50× better |
 
 Source: [`swap-capacity/README.md`](research/swap-capacity/README.md) lines 23–24, 141–142, 303–312.
+
+<figure>
+<img src="research/swap-capacity/assets/zram-ratio-benchmark.png" alt="The zram compression ratio benchmark capture" loading="lazy">
+<figcaption>The ratio run — the benchmark capture behind the table above</figcaption>
+</figure>
 
 ## 8. Control plane
 
