@@ -16,7 +16,7 @@ Findings from the swap experiment run in a disposable k3s VM
 | **[I]** | inferred from measurements, stated as an inference |
 | **[U]** | unknown — the evidence to settle it was not produced |
 
-Two questions were asked, both now answered:
+Four questions were asked; three are answered and one is parked.
 
 1. **Can swap be used for these workloads at all?** — **YES [M]**, mechanically proven (§3).
 2. **Does swap raise capacity (sessions served concurrently) and by how much?** —
@@ -25,8 +25,20 @@ Two questions were asked, both now answered:
    state, and the harness bug behind it, are kept in §5c as the record of what had
    to be fixed first.
 
-Still open: **which compression ratio** (2:1 / 3:1 / 5:1) gives that latency win at
-the lowest CPU cost — the design for that run is §5d.
+Two more results stand:
+
+3. **Which compression ratio?** — answered in §5d.1: **lz4 (2:1) holds the most
+   sessions** (31/31 at rung 7, the best capacity result here) and **zstd (5:1)
+   gives by far the best latency** at equal load (740 ms vs 39 s p95). Both are
+   real; the choice depends on the criterion.
+4. **Two-layer recompression** (fast primary + dense secondary) — **PARKED, see
+   §5e.2 [U]**. It was never measured: no run ever got the secondary compressor
+   selected, so the hypothesis is untested, not refuted.
+
+> **Scope of the park:** only the two-layer recompression question is parked. It
+> does **not** affect anything above — swap works, per-pod `memory.swap.max` is
+> enforced, lz4 is the capacity winner and zstd the latency winner, and all of it
+> was measured. §5e.2 is a note about one unanswered question, not a retraction.
 
 ---
 
