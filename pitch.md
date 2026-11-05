@@ -1,12 +1,8 @@
 # The pitch
 
-One host. 60 vCPU-seconds of work in flight per second, 168 browser contexts
-live at once, 42 sessions confirmed running at overload — and the reason the
-number is 42 is a database commit, not a browser.
-
-This file is the short version of `ROADMAP.md` and `research/`: what the thing
-is, how much it holds, and which wall stops it. Every figure carries its label
-(`[M]` measured, `[I]` inferred, `[U]` unknown) and the note it comes from.
+Registered data only. Every block below is quoted verbatim from a note in this
+repository, with its source and line range underneath. Nothing here is computed,
+summarised or interpreted — the narrative is written by the author in §10.
 
 ## 1. What it is
 
@@ -29,119 +25,101 @@ is, how much it holds, and which wall stops it. Every figure carries its label
  └────────────┘   └─────────────┘      └──────────────┘    └────────────┘  └───────────┘
 ```
 
-A session is not a pod. One Chromium carries up to eight browser contexts; a
-**slot** is `(instance, browserContextId)` and one slot serves one session. That
-is what turns one node into 168 concurrent sessions instead of 21 pods.
+Source: [`ROADMAP.md`](ROADMAP.md) §0 and §3, [`README.md`](README.md).
 
-## 2. How much it holds
+## 2. GPU offload
 
-```text
- 1 pod ──► 1 Chromium ──► 8 contexts ──► 8 slots ──► 8 sessions
-   │           │
-   │           └── 559 MiB RSS  [M]                      1 GPU render node, shared
-   └── 154 MiB p50 peak / 168 MiB working-set per session [M]
-       template: requests 100m CPU, limits 768Mi, no CPU quota [M]
+> GPU acceleration does **not** raise concurrent session capacity on this node for the
+> workload `session-lab` actually generates. The runner's hold is a sleep that samples
+> cgroups; it never requests a frame, so headless Chromium renders nothing and the GPU has
+> nothing to relieve. Measured node CPU was identical across arms: **1.53 vs 1.58 cores
+> out of 6** at 30 concurrent sessions.
+>
+> The only case where the GPU moved a number is a forced render loop (40
+> `Page.captureScreenshot` calls per session), which `session-lab` does not implement
+> ([08 §9.2](research/session-lifecycle-elasticity/08.2-gpu-offload-feasibility.md) calls this the missing "drive phase"). There the
+> GPU cut CPU per browser **2.13 → 1.57 cores (−26%)** while screenshot latency rose
+> **244 → 279 ms (+14%)**.
 
- the three walls, as measured
- ┌─────────────────────────────┬───────────────────────────┬──────────────────────────────┐
- │ scheduler / API server      │ warm pool                 │ browser contexts             │
- │ 60 offered → 42 ran         │ 2 → 22 → 2 replicas       │ 168 contexts                 │
- │ 17 refused, queue p95 134 s │ 84.9 s to scale out       │ ~8 per Chromium              │
- │ memory 20.9 % free at peak  │ ceil 120 pods configured  │ 559 MiB per browser          │
- └─────────────────────────────┴───────────────────────────┴──────────────────────────────┘
-```
+Source: [`19-gpu-pool-a-b.md`](research/session-lifecycle-elasticity/19-gpu-pool-a-b.md) §1, lines 27–37.
 
-**Throughput is concurrency ÷ hold, not a session count.** At the measured
-concurrency and the 30 s hold the runs used:
+## 3. Overload run
 
-| Basis | Concurrency | Hold | Sessions/s | Sessions/hour | Sessions/day |
-|---|---|---|---|---|---|
-| Measured overload point **[M]** | 42 | 30 s | 1.40 | 5 040 | **≈ 121 000** **[I]** |
-| Slot ceiling **[M]** 168 contexts | 168 | 30 s | 5.60 | 20 160 | **≈ 484 000** **[I]** |
+> | Quantity | Measured |
+> |---|---|
+> | planned / stored | 60 / 60 |
+> | outcomes | `success` 42, `acquisition_failed` 17, `reset_failed` 1 |
+> | offered concurrency | 60.0 |
+> | queue wait (claim → Ready) | p50 3.2 s, p95 134 s, p99 136 s, max 136 s |
+> | memory | 154 MiB p50 peak, 209 MiB max, 168 MiB working-set max |
+> | node memory | MemAvailable floor 3322 MiB of 15924 MiB (20.9%), swap used 4418 MiB, 195 samples |
 
-The daily column is arithmetic on measured inputs `[I]`, not a soak result: no
-run here has produced a 24-hour artefact. The defensible claim is "**42
-concurrent, 168 slots, 5 000 sessions/hour measured at overload, and the daily
-figure is that rate held**".
+Source: [`07-overload-and-suspend.md`](research/session-lifecycle-elasticity/07-overload-and-suspend.md) lines 34–48.
 
-## 3. Where the CPU goes, including the GPU
+## 4. Slots
 
-Acceleration is measured, and it pays in one place only: **per captured frame.**
+> | Scheduler (CPU requests) | ~21 browsers × 8 = **168 slots**; 27 if browsers had no neighbours | `FailedScheduling … Insufficient cpu` at 23:59 with 21 instances |
 
-```text
- 30 concurrent sessions, sleep-hold workload (what session-lab runs)
-   CPU-only Chromium   1.58 cores of 6   ┐
-   RADV-accelerated    1.53 cores of 6   ┴─► no change. The hold never asks for a frame.
+> So the honest statement is: **168 concurrent contexts is the slot ceiling on this node,
 
- forced render loop, 40 Page.captureScreenshot per session
-   CPU-only Chromium   2.13 cores/browser   screenshot p50 244 ms
-   RADV-accelerated    1.57 cores/browser   screenshot p50 279 ms
-                       −26 % CPU            +14 % latency        [M] note 19 §1
+Source: [`18-capacity-elasticity-and-kine.md`](research/session-lifecycle-elasticity/18-capacity-elasticity-and-kine.md) lines 62 and 67.
 
- LLM inference on the same card, Vulkan/RADV, Qwen2.5-1.5B, 64-token answer
-   CPU  ≈4 410 ms      GPU ≈806 ms      ≈6× faster, host RSS ≈4.4× lower  [M] e3 RESULTS
-```
+## 5. Capacity arithmetic, as registered
 
-So the pitch is precise rather than generous: **the GPU buys CPU per frame and
-per token, not sessions per node.** A screenshot-heavy or VLM workload gets a
-quarter of its browser CPU back; a page-holding workload gets nothing, because
-there is nothing to offload. `gpu_compositing` stays `disabled_software` in both
-arms — headless Chromium has no display surface to composite **[M]**.
+> ```
+> sessions/s = concurrent slots / mean hold
+> ```
+>
+> | Bound | Concurrency | sessions/s | sessions / 24 h |
+> |---|---|---|---|
+> | Slots | 168 | 2.24 | 193 500 |
+> | CPU, measured 2.0 core-seconds per session over ~2.7 free cores | 135 | 1.35 | 116 600 |
+> | Control plane (what actually broke) | — | ~2 | ~170 000 theoretical, **0 observed** |
+> | A defensible soak target | 75 | 1.0 | 86 400 |
 
-## 4. What the cheap boxes do for it
+Source: [`18-capacity-elasticity-and-kine.md`](research/session-lifecycle-elasticity/18-capacity-elasticity-and-kine.md) §2, lines 74–83.
 
-| Lever | Measured effect | Note |
-|---|---|---|
-| Lifecycle policy | reuse resets a session in **35 ms**; destroy pays **374 ms + cold start** | 09 |
-| Lifecycle + autoscaling together | queue wait p50/p95 **3.2 s / 134 s → 1.4 s / 54 s**, and the 40-replica ceiling is reached | 09 |
-| CPU requests, not limits | **248 of 360** sessions were CFS-throttled by a 1000m quota, which made hold latency an artefact of the quota | 12 |
-| zram swap | **5 → 6** concurrent sessions, **+20 %**, at 3 vCPU / 4 GiB; **~70 %** better tail latency at equal load; lz4 holds the highest rung, zstd is 30–50× better on p95 at moderate overload | swap study §5b, §5d.1 |
-| kine DSN | insert mean **64.6 → 2.06 ms**, **823 → 0** Slow SQL/hour, **9 → 0** fatals/24 h | cpu-oversubscription §8 |
+## 6. Lifecycle and autoscaling
 
-The last row is the one that matters most for a pitch about scale: the platform's
-ceiling is **the SQLite commit under the API server**, not Chromium. kine takes
-1–3 s per commit under write pressure, and that surfaces as an API `Get`/`Delete`
-timeout in the runner — which is what "the 17 refusals" actually were.
+> | queue wait p50 / p95 | 3.2 s / 134 s | **85 s / 209 s** | **1.4 s / 54 s** |
+> | reset p50 / p95 | 35 ms / 625 ms | — | 39 ms / 531 ms |
+> | release (delete) p50 / p95 | — | **374 ms / 7.07 s** | — |
+> | replica trajectory | 2 → 22 → **40** (configured max), then back to 2 after the run |
 
-## 5. What it is not
+Source: [`09-results-three-runs.md`](research/session-lifecycle-elasticity/09-results-three-runs.md) lines 42–44 and 80.
 
-- **Not highly available.** One host, one node, no second control plane. If it
-  reboots, everything is gone and rebuilt.
-- **Not public, not TLS, not authenticated.** Anonymous read-only on a LAN is a
-  lab posture, not a security model.
-- **Not GPU-compute.** Vulkan/RADV on an unsupported Polaris card, no ROCm, no
-  CUDA, no VRAM enforcement — and the card is also this workstation's display.
-- **Not measured over a day.** Every number above is a run of minutes. The daily
-  column is arithmetic and is labelled as such.
+> | 17:16:18 | 22 | 22 | `scale-out complete: 22 ready after 84.9s` |
 
-## 6. What would make it 10×
+Source: [`10-autoscaler-deployed.md`](research/session-lifecycle-elasticity/10-autoscaler-deployed.md) line 56.
 
-1. **Move the control plane off single-node SQLite.** kine is the ceiling; etcd or
-   a real datastore buys more than any browser tuning.
-2. **Put the GPU to work on the workloads that use it.** Capture-heavy sessions
-   gain 26 % CPU per browser; the current workload does not ask.
-3. **Share the card properly.** One device, one accelerated browser at a time
-   today; Mesa-level sharing across containers is untested **[U]**.
-4. **Store the slot id.** The wall binds slots to sessions *by time* above one
-   context per browser; a stored id makes the measurement exact.
+## 7. Swap and zram
 
-## 7. Re-deriving every number
+> **YES, by one concurrent session: 5 → 6 (+20 %)** at 3 vCPU / 4 GiB, and with zram
+> it also cuts tail latency ~70 % at equal load (§5b).
 
-```bash
-# the overload run behind "42 of 60"
-grep -n "42 success\|queue wait" research/session-lifecycle-elasticity/07-overload-and-suspend.md
+> **[M] Swap buys exactly one more concurrent session: 5 → 6, +20 %**, i.e. 15 → 18
+> sessions/min at a 20 s hold. Not more, on this box.
 
-# the slot ceiling and the pod/context split
-sed -n '1,60p' research/session-lifecycle-elasticity/18-capacity-elasticity-and-kine.md
+> | `zram-2to1` | lz4 | 39 409 ms | **31/31 ok** | **6.38** | **7** |
+> | `zram-5to1` | zstd | **740 ms** | 24 ok, 7 failed (API `Delete` timeout) | 7.25 | 6 |
+> | **latency at rung 6** — same 27 sessions, same box | **zstd (5:1)**: 740 ms vs 22.7 s vs 39.4 s p95 | 30–50× better |
 
-# GPU: the A/B and the render-loop counter-case
-sed -n '25,40p' research/session-lifecycle-elasticity/19-gpu-pool-a-b.md
+Source: [`swap-capacity/README.md`](research/swap-capacity/README.md) lines 23–24, 141–142, 303–312.
 
-# swap: capacity and the ratio verdict
-sed -n '120,180p' research/swap-capacity/README.md
+## 8. Control plane
 
-# throughput arithmetic: concurrency ÷ hold
-awk 'BEGIN{printf "42/30*3600/1000 = %.2f k sessions/hour\n", 42/30*3600/1000}'
-```
+> | Status | §8 fix applied and measured on the live node 2026-11-01 (`_synchronous=NORMAL&_busy_timeout=30000`): insert mean 64.6 → 2.06 ms, 823 Slow SQL/hour → 0, 9 fatals/24 h → 0 |
 
-Where this file and a note disagree, **the note wins** and this file is wrong.
+> | `Slow SQL` (threshold 1 s) | 823 / hour | **0** | `journalctl -u k3s` |
+
+Source: [`05-write-ceiling-and-fixes.md`](research/cpu-oversubscription/05-write-ceiling-and-fixes.md) lines 15 and 331.
+
+## 9. Per-session footprint
+
+> | Pod cgroup `memory.current` | 559 MiB | `03-browser-density.md:187` |
+
+Source: [`13-client-go-apf-and-density-limits.md`](research/session-lifecycle-elasticity/13-client-go-apf-and-density-limits.md) line 92.
+
+## 10. The narrative
+
+Author writes here.
