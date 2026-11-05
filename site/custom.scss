@@ -1,0 +1,14 @@
+@use "./base.scss";
+
+// The left rail carries only the Explorer — a file tree. The right rail carries
+// the graph and the table of contents, and needs its width. So on the desktop
+// three-column grid the left panel is narrower than Quartz's 320px default, and
+// the reading column gets the difference.
+//
+// Only the desktop grid is touched: the tablet grid is two-column and the mobile
+// grid is single-column, so Quartz's own rules already do the right thing there.
+@media all and (min-width: 1200px) {
+  #quartz-body {
+    grid-template-columns: 232px auto 320px;
+  }
+}

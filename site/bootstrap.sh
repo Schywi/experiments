@@ -22,4 +22,11 @@ fi
 
 rm -rf "${here}/quartz"
 cp -rf "${upstream}/quartz" "${here}/quartz"
+
+# Our stylesheet overrides live outside the fetched tree so they survive the
+# refresh above; Quartz loads quartz/styles/custom.scss as its entry stylesheet.
+if [ -f "${here}/custom.scss" ]; then
+  cp -f "${here}/custom.scss" "${here}/quartz/styles/custom.scss"
+fi
+
 echo "quartz ${QUARTZ_REF} vendored into site/quartz"
