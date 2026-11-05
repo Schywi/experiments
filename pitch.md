@@ -58,7 +58,7 @@ The same host runs two stories, and they share the machine. Pick one:
 
 <p>Contract and reasoning: <a href="research/features/README.md">feature contracts</a> · <a href="research/assistant/README.md">assistant notes</a> · <a href="evolution/05-ai-ops-track-d.md">phase 5 narrative</a></p>
 
-<div class="shots-wrap slides-4">
+<div class="shots-wrap slides-3">
 <button class="shots-nav prev" type="button" aria-label="Previous slide">‹</button>
 <button class="shots-nav next" type="button" aria-label="Next slide">›</button>
 <div class="shots shots--auto">
@@ -79,11 +79,6 @@ The same host runs two stories, and they share the machine. Pick one:
 <figcaption>The assistant asking a sandbox for a screenshot, and getting one back</figcaption>
 </figure>
 
-<figure>
-<img src="research/features/assets/riot-claim-interaction.png" alt="A scripted agent driving a Riot page inside a claim" loading="lazy">
-<figcaption>An agent driving a Riot page inside a claim</figcaption>
-</figure>
-
 </div>
 </div>
 </div>
@@ -96,7 +91,7 @@ The same host runs two stories, and they share the machine. Pick one:
 
 <p>Design notes: <a href="research/session-lifecycle-elasticity/README.md">session lifecycle elasticity</a> · <a href="evolution/08-session-lifecycle-elasticity.md">phase 8</a> · <a href="research/session-lifecycle-elasticity/16.2-session-wall-ui.md">the console</a></p>
 
-<div class="shots-wrap slides-5">
+<div class="shots-wrap slides-6">
 <button class="shots-nav prev" type="button" aria-label="Previous slide">‹</button>
 <button class="shots-nav next" type="button" aria-label="Next slide">›</button>
 <div class="shots shots--auto">
@@ -110,6 +105,11 @@ The same host runs two stories, and they share the machine. Pick one:
 <figure>
 <img src="research/session-lifecycle-elasticity/assets/cdp-frame-from-claim.png" alt="A CDP frame booting from a claim" loading="lazy">
 <figcaption>A frame booting from a claim, driven over CDP</figcaption>
+</figure>
+
+<figure>
+<img src="research/features/assets/riot-claim-interaction.png" alt="A scripted agent driving a Riot page inside a claim" loading="lazy">
+<figcaption>An agent driving a Riot page inside a claim</figcaption>
 </figure>
 
 <figure>
