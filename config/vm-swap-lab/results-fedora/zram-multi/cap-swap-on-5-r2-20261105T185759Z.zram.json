@@ -1,0 +1,20 @@
+{
+  "class": "swap-on",
+  "replicas": "5",
+  "recomp_algo": "zstd",
+  "recomp_type": null,
+  "recomp_ok": 0,
+  "recomp_reason": "recomp_algorithm is frozen on an initialised device (set __ZRAM_SECONDARY__ at boot; current: )",
+  "recomp_ms": 11,
+  "recomp_cpu_s": 0.02,
+  "host_cpu_s": 314,
+  "ratio_before": 4.66,
+  "ratio_after": 4.66,
+  "ratio_rung": 0.0,
+  "ratio_reported": 4.66,
+  "orig_after_bytes": 6782976,
+  "compr_after_bytes": 1455405,
+  "mem_used_bytes": 8761344,
+  "disksize_bytes": 134217728,
+  "dev_used_pct": 5.1
+}

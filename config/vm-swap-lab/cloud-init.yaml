@@ -123,13 +123,24 @@ write_files:
           # as "recomp_algorithm write refused (have: )" for every rung that tried
           # it from the harness instead of here.
           if [ -n "${zram_secondary}" ]; then
+            # The sysfs ABI is key=value, not a bare name. zram_drv.c's
+            # recomp_algorithm_store() parses `next_arg()` and returns -EINVAL for
+            # any token without a value, so `echo zstd > recomp_algorithm` fails on
+            # every kernel that has this ABI — measured on Fedora 44 as "write
+            # refused" with the device still uninitialised (disksize=0), which is
+            # what ruled out the EBUSY theory. Correct form, from
+            # Documentation/admin-guide/blockdev/zram.rst:
+            #   echo "algo=zstd priority=1" > /sys/block/zram0/recomp_algorithm
+            # The bare-name fallback stays for kernels before that ABI.
             say "secondary: before write, disksize=$(cat /sys/block/zram0/disksize 2>/dev/null) recomp_algorithm='$(cat /sys/block/zram0/recomp_algorithm 2>/dev/null)'"
             if [ ! -e /sys/block/zram0/recomp_algorithm ]; then
               say "secondary: SKIPPED, kernel has no recomp_algorithm"
+            elif echo "algo=${zram_secondary} priority=1" >/sys/block/zram0/recomp_algorithm 2>/dev/null; then
+              say "secondary: set via key=value to '$(cat /sys/block/zram0/recomp_algorithm)'"
             elif echo "${zram_secondary}" >/sys/block/zram0/recomp_algorithm 2>/dev/null; then
-              say "secondary: set to '$(cat /sys/block/zram0/recomp_algorithm)'"
+              say "secondary: set via bare name to '$(cat /sys/block/zram0/recomp_algorithm)'"
             else
-              say "secondary: REFUSED (disksize=$(cat /sys/block/zram0/disksize), now '$(cat /sys/block/zram0/recomp_algorithm 2>/dev/null)'); continuing without it so the guest keeps its swap"
+              say "secondary: REFUSED both syntaxes (disksize=$(cat /sys/block/zram0/disksize), now '$(cat /sys/block/zram0/recomp_algorithm 2>/dev/null)'); continuing without it so the guest keeps its swap"
             fi
           fi
           say "zram: creating device size=${zram_mb}M algo=${zram_algo}"

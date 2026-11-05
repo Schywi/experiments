@@ -5,27 +5,35 @@ multi-comp: yes  (recomp_algorithm present)
 primary algorithms: [lzo-rle] lzo lz4 lz4hc zstd deflate 842 
 
 == swap backing ==
-swap: (not recorded)
+start mode=zram zram=128M algo=lzo-rle secondary=zstd
+zram: modprobe
+secondary: before write, disksize=0 recomp_algorithm=''
+secondary: REFUSED (disksize=0, now ''); continuing without it so the guest keeps its swap
+zram: creating device size=128M algo=lzo-rle
+swap: zram 128M lzo-rle on /dev/zram0 OK
 
+NAME       TYPE      SIZE USED PRIO
+/dev/zram0 partition 128M 524K   -1
 
 Filename				Type		Size		Used		Priority
+/dev/zram0                              partition	131068		524		-1
 
-NAME       ALGORITHM DISKSIZE DATA COMPR TOTAL STREAMS MOUNTPOINT
-/dev/zram0 lzo-rle         0B   0B    0B    0B         
+NAME       ALGORITHM DISKSIZE  DATA  COMPR TOTAL STREAMS MOUNTPOINT
+/dev/zram0 lzo-rle       128M  528K 114.3K  868K         [SWAP]
 
 == kubelet running config (/configz) ==
 failSwapOn=False memorySwap.swapBehavior=LimitedSwap
 
 == pod cgroups (browser containers are the scopes with a memory limit) ==
-  kubepods-burstable-pod700e506c_2b6d_41f8_a114_c08134562ba8.slice pod swap.max=max
+  kubepods-burstable-pod5284b091_73a7_4ca3_86b8_3e93fca3e336.slice pod swap.max=max
     container mem.max=805306368 swap.max=0
     container mem.max=max swap.max=max
-  kubepods-burstable-podcb7f3e39_2bd8_4724_817b_a0d3147e09b2.slice pod swap.max=max
-    container mem.max=max swap.max=max
-    container mem.max=805306368 swap.max=0
-  kubepods-burstable-pod484d0509_e206_417f_b965_6a8f9177fbe0.slice pod swap.max=max
+  kubepods-burstable-pod934df6ea_41c7_4fdd_b99c_c1ab601fdae5.slice pod swap.max=max
     container mem.max=805306368 swap.max=0
     container mem.max=max swap.max=max
-  kubepods-burstable-podb9e62b2b_8fe0_436c_bbc1_95230f34e1d4.slice pod swap.max=max
-    container mem.max=805306368 swap.max=0
+  kubepods-burstable-pod676e3055_608c_4233_8ab1_b0556a24faf4.slice pod swap.max=max
     container mem.max=max swap.max=max
+    container mem.max=805306368 swap.max=0
+  kubepods-burstable-pod371e9f5f_3eaa_4661_bc5c_abd7326bba01.slice pod swap.max=max
+    container mem.max=max swap.max=max
+    container mem.max=805306368 swap.max=0

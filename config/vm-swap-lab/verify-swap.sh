@@ -40,7 +40,10 @@ vm_ssh '. /etc/os-release 2>/dev/null && echo "distro: ${PRETTY_NAME:-unknown}"
         else
           echo "multi-comp: NO   (no recomp_algorithm: CONFIG_ZRAM_MULTI_COMP is off)"
         fi
-        [ -e /sys/block/zram0/comp_algorithm ] && echo "primary algorithms: $(cat /sys/block/zram0/comp_algorithm)"'
+        [ -e /sys/block/zram0/comp_algorithm ] && echo "primary algorithms: $(cat /sys/block/zram0/comp_algorithm)"
+        if [ -e /sys/block/zram0/recomp_algorithm ]; then
+          echo "secondary algorithms: '$(cat /sys/block/zram0/recomp_algorithm)' (the active one is in brackets)"
+        fi'
 
 # REQUIRE_MULTICOMP=1 makes a recompression arm fail here, at boot, instead of
 # after install + kubelet + a ladder that would only prove the arm duplicates the

@@ -170,12 +170,18 @@ if [ ! -e /sys/block/zram0/recomp_algorithm ]; then
   ok=0; reason="kernel has no recomp_algorithm (CONFIG_ZRAM_MULTI_COMP off)"
 elif ! echo "${avail}" | tr ' ' '\n' | grep -qx "${algo}"; then
   ok=0; reason="algo ${algo} not compiled in"
-elif [ "$(cat /sys/block/zram0/recomp_algorithm 2>/dev/null | sed 's/[][]//g' | tr -d ' ')" = "${algo}" ]; then
-  : # already selected at boot, which is the only moment the kernel allows it
-elif ! echo "${algo}" > /sys/block/zram0/recomp_algorithm 2>/dev/null; then
-  # EBUSY: once disksize is set the device is initialised and the secondary
-  # algorithm is frozen. Boot must have chosen it (setup-swap.sh does).
-  ok=0; reason="recomp_algorithm is frozen on an initialised device (set __ZRAM_SECONDARY__ at boot; current: $(cat /sys/block/zram0/recomp_algorithm 2>/dev/null | tr ' ' ','))"
+elif cat /sys/block/zram0/recomp_algorithm 2>/dev/null | grep -q "\[${algo}\]"; then
+  : # boot already selected it; the listing marks the active one in brackets
+elif cat /sys/block/zram0/recomp_algorithm 2>/dev/null | grep -qw "${algo}"; then
+  # listed but not selected: try to select it with the key=value ABI (a bare name
+  # is rejected by any kernel with the current store handler).
+  if ! echo "algo=${algo} priority=1" > /sys/block/zram0/recomp_algorithm 2>/dev/null; then
+    ok=0; reason="could not select ${algo} (current: $(cat /sys/block/zram0/recomp_algorithm 2>/dev/null | tr ' ' ','))"
+  fi
+elif ! echo "algo=${algo} priority=1" > /sys/block/zram0/recomp_algorithm 2>/dev/null; then
+  # Either the device is already initialised (set __ZRAM_SECONDARY__ at boot) or
+  # the kernel rejects the write. The listing below distinguishes them.
+  ok=0; reason="no secondary selected and the write failed (disksize=$(cat /sys/block/zram0/disksize 2>/dev/null); recomp_algorithm: '$(cat /sys/block/zram0/recomp_algorithm 2>/dev/null)')"
 else
   case "${type}" in
     huge) echo "type=huge" > /sys/block/zram0/recompress 2>/dev/null || { ok=0; reason="type=huge refused"; } ;;

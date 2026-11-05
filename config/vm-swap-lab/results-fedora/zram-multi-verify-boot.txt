@@ -5,13 +5,21 @@ multi-comp: yes  (recomp_algorithm present)
 primary algorithms: [lzo-rle] lzo lz4 lz4hc zstd deflate 842 
 
 == swap backing ==
-swap: (not recorded)
+start mode=zram zram=128M algo=lzo-rle secondary=zstd
+zram: modprobe
+secondary: before write, disksize=0 recomp_algorithm=''
+secondary: REFUSED (disksize=0, now ''); continuing without it so the guest keeps its swap
+zram: creating device size=128M algo=lzo-rle
+swap: zram 128M lzo-rle on /dev/zram0 OK
 
+NAME       TYPE      SIZE USED PRIO
+/dev/zram0 partition 128M   0B   -1
 
 Filename				Type		Size		Used		Priority
+/dev/zram0                              partition	131068		0		-1
 
 NAME       ALGORITHM DISKSIZE DATA COMPR TOTAL STREAMS MOUNTPOINT
-/dev/zram0 lzo-rle         0B   0B    0B    0B         
+/dev/zram0 lzo-rle       128M   4K   73B   12K         [SWAP]
 
 == kubelet running config (/configz) ==
 failSwapOn=False memorySwap.swapBehavior=NoSwap
