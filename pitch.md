@@ -1,3 +1,8 @@
+---
+title: 'The pitch'
+kind: index
+---
+
 # The pitch
 
 Registered data only. Every block below is quoted verbatim from a note in this

@@ -19,7 +19,11 @@ done
 
 cp -f "${repo_root}/README.md" "${content}/README.md"
 cp -f "${repo_root}/ROADMAP.md" "${content}/ROADMAP.md"
-cp -f "${repo_root}/site/landing.md" "${content}/index.md"
+# The pitch is the site's home page: / serves pitch.md, and /pitch keeps a
+# stable address for it. site/landing.md stays reachable at /landing.
+cp -f "${repo_root}/pitch.md" "${content}/index.md"
+cp -f "${repo_root}/pitch.md" "${content}/pitch.md"
+cp -f "${repo_root}/site/landing.md" "${content}/landing.md"
 
 find "${content}" -name '__pycache__' -type d -prune -exec rm -rf {} +
 find "${content}" -name '*.pyc' -delete

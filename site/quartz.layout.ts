@@ -27,7 +27,7 @@ export const defaultContentPageLayout: PageLayout = {
     // README and the ROADMAP — pages whose date means nothing.
     Component.ConditionalRender({
       component: Component.ContentMeta(),
-      condition: (page) => !["index", "README", "ROADMAP"].includes(page.fileData.slug ?? ""),
+      condition: (page) => !["index", "pitch", "landing", "README", "ROADMAP"].includes(page.fileData.slug ?? ""),
     }),
     Component.TagList(),
   ],
