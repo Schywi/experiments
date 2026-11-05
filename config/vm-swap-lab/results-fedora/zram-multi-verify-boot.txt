@@ -1,0 +1,21 @@
+== guest ==
+distro: Fedora Linux 44 (Cloud Edition)
+kernel: 6.19.10-300.fc44.x86_64
+multi-comp: yes  (recomp_algorithm present)
+primary algorithms: [lzo-rle] lzo lz4 lz4hc zstd deflate 842 
+
+== swap backing ==
+swap: (not recorded)
+
+
+Filename				Type		Size		Used		Priority
+
+NAME       ALGORITHM DISKSIZE DATA COMPR TOTAL STREAMS MOUNTPOINT
+/dev/zram0 lzo-rle         0B   0B    0B    0B         
+
+== kubelet running config (/configz) ==
+failSwapOn=False memorySwap.swapBehavior=NoSwap
+
+== pod cgroups (browser containers are the scopes with a memory limit) ==
+  (no pod with a memory limit is running yet — start the pool first)
+WARNING: memorySwap.swapBehavior=NoSwap; this lab runs LimitedSwap

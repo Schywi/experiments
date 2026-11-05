@@ -1,0 +1,12 @@
+arm: zram-multi
+swap_mode: zram  class: swap-on
+task: zram-multi: capacity ladder (class=swap-on)
+message: non-zero return code
+stdout: == building session-lab for the guest ==
+class	replicas	rep	held	success	failed	queue_p95_ms	swap_peak_mib	refaults	cpu_core_s	zram_ratio	dev_used_pct	recomp_s	recomp_cpu_s	host_cpu_s	note
+swap-on	-	-	no	0	0	0	0	0	-	-	-	-	-	-	guest has no active swap device; arm not measurable
+stderr: guest has no active swap device (1 line(s) in /proc/swaps): swap-on cannot be measured.
+Filename				Type		Size		Used		Priority
+               total        used        free      shared  buff/cache   available
+Mem:            3902        2116         112          80        2001        1785
+Swap:              0           0           0

@@ -1,0 +1,20 @@
+{
+  "class": "swap-on",
+  "replicas": "6",
+  "recomp_algo": "none",
+  "recomp_type": null,
+  "recomp_ok": 0,
+  "recomp_reason": "",
+  "recomp_ms": 0,
+  "recomp_cpu_s": 0.0,
+  "host_cpu_s": 265,
+  "ratio_before": 2.45,
+  "ratio_after": 2.45,
+  "ratio_rung": 0.0,
+  "ratio_reported": 2.45,
+  "orig_after_bytes": 70635520,
+  "compr_after_bytes": 28839981,
+  "mem_used_bytes": 32325632,
+  "disksize_bytes": 134217728,
+  "dev_used_pct": 52.6
+}

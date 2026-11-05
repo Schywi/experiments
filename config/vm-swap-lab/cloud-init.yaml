@@ -71,6 +71,14 @@ write_files:
       # from the pods it is supposed to help — 1.5 GiB of zram on a 3 GiB node
       # made the node worse.
       set -e
+      # Record every step as it happens. Two runs were lost to a script that died
+      # without leaving any trace, so silence is treated as a bug: the last line in
+      # /var/tmp/swap-mode is by definition the step that failed.
+      logf=/var/tmp/swap-mode
+      say() { echo "$*" >>"${logf}" 2>/dev/null || echo "$*"; }
+      trap 'rc=$?; [ "$rc" -eq 0 ] || echo "FAILED (rc=$rc) at the step above" >>"${logf}" 2>/dev/null || true' EXIT
+      : >"${logf}" 2>/dev/null || logf=/dev/kmsg
+      say "start mode=__SWAP_MODE__ zram=__ZRAM_MB__M algo=__ZRAM_ALGO__ secondary=__ZRAM_SECONDARY__"
       mode="__SWAP_MODE__"
       zram_mb="__ZRAM_MB__"
       zram_algo="__ZRAM_ALGO__"
@@ -90,6 +98,7 @@ write_files:
           # Fedora while the cached base image was still Ubuntu left this guest
           # with NO swap at all, and the swap-on arm then ran 21 sessions against
           # a node with 22 MiB available and no device.
+          say "zram: modprobe"
           if ! modprobe zram 2>/dev/null; then
             if command -v apt-get >/dev/null 2>&1; then
               apt-get update -qq || true
@@ -114,20 +123,22 @@ write_files:
           # as "recomp_algorithm write refused (have: )" for every rung that tried
           # it from the harness instead of here.
           if [ -n "${zram_secondary}" ]; then
-            if [ -e /sys/block/zram0/recomp_algorithm ]; then
-              echo "${zram_secondary}" >/sys/block/zram0/recomp_algorithm || \
-                { echo "could not set recomp_algorithm=${zram_secondary}" >&2; exit 1; }
-              echo "secondary: ${zram_secondary} ($(cat /sys/block/zram0/recomp_algorithm))" >>/var/tmp/swap-mode
+            say "secondary: before write, disksize=$(cat /sys/block/zram0/disksize 2>/dev/null) recomp_algorithm='$(cat /sys/block/zram0/recomp_algorithm 2>/dev/null)'"
+            if [ ! -e /sys/block/zram0/recomp_algorithm ]; then
+              say "secondary: SKIPPED, kernel has no recomp_algorithm"
+            elif echo "${zram_secondary}" >/sys/block/zram0/recomp_algorithm 2>/dev/null; then
+              say "secondary: set to '$(cat /sys/block/zram0/recomp_algorithm)'"
             else
-              echo "WARNING: ${zram_secondary} requested but this kernel has no recomp_algorithm" >>/var/tmp/swap-mode
+              say "secondary: REFUSED (disksize=$(cat /sys/block/zram0/disksize), now '$(cat /sys/block/zram0/recomp_algorithm 2>/dev/null)'); continuing without it so the guest keeps its swap"
             fi
           fi
+          say "zram: creating device size=${zram_mb}M algo=${zram_algo}"
           dev="$(zramctl --find --size "${zram_mb}M" --algorithm "${zram_algo}")"
           [ -n "${dev}" ] || { echo "zramctl could not create a device" >&2; exit 1; }
           mkswap "${dev}" >/dev/null
           swapon "${dev}"
-          grep -q "${dev}" /proc/swaps || { echo "swapon did not take effect for ${dev}" >&2; exit 1; }
-          echo "swap: zram ${zram_mb}M ${zram_algo} on ${dev}" >/var/tmp/swap-mode
+          grep -q "${dev}" /proc/swaps || { say "swapon FAILED for ${dev}"; exit 1; }
+          say "swap: zram ${zram_mb}M ${zram_algo} on ${dev} OK"
           ;;
         disk)
           rm -f /swapfile
@@ -137,10 +148,10 @@ write_files:
           mkswap /swapfile >/dev/null
           swapon /swapfile || { echo "swapon /swapfile failed" >&2; exit 1; }
           grep -q '^/swapfile' /etc/fstab || echo '/swapfile none swap sw 0 0' >>/etc/fstab
-          echo "swap: disk ${swap_mb}M (no zram)" >/var/tmp/swap-mode
+          say "swap: disk ${swap_mb}M (no zram) OK"
           ;;
         none)
-          echo "swap: none" >/var/tmp/swap-mode
+          say "swap: none OK"
           ;;
         *)
           echo "unknown SWAP_MODE '${mode}'" >&2

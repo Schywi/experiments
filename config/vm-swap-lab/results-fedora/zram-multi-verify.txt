@@ -1,0 +1,31 @@
+== guest ==
+distro: Fedora Linux 44 (Cloud Edition)
+kernel: 6.19.10-300.fc44.x86_64
+multi-comp: yes  (recomp_algorithm present)
+primary algorithms: [lzo-rle] lzo lz4 lz4hc zstd deflate 842 
+
+== swap backing ==
+swap: (not recorded)
+
+
+Filename				Type		Size		Used		Priority
+
+NAME       ALGORITHM DISKSIZE DATA COMPR TOTAL STREAMS MOUNTPOINT
+/dev/zram0 lzo-rle         0B   0B    0B    0B         
+
+== kubelet running config (/configz) ==
+failSwapOn=False memorySwap.swapBehavior=LimitedSwap
+
+== pod cgroups (browser containers are the scopes with a memory limit) ==
+  kubepods-burstable-pod700e506c_2b6d_41f8_a114_c08134562ba8.slice pod swap.max=max
+    container mem.max=805306368 swap.max=0
+    container mem.max=max swap.max=max
+  kubepods-burstable-podcb7f3e39_2bd8_4724_817b_a0d3147e09b2.slice pod swap.max=max
+    container mem.max=max swap.max=max
+    container mem.max=805306368 swap.max=0
+  kubepods-burstable-pod484d0509_e206_417f_b965_6a8f9177fbe0.slice pod swap.max=max
+    container mem.max=805306368 swap.max=0
+    container mem.max=max swap.max=max
+  kubepods-burstable-podb9e62b2b_8fe0_436c_bbc1_95230f34e1d4.slice pod swap.max=max
+    container mem.max=805306368 swap.max=0
+    container mem.max=max swap.max=max

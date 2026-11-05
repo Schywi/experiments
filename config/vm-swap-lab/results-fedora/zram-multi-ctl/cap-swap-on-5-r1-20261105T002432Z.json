@@ -1,0 +1,503 @@
+{
+  "run_id": "cap-swap-on-5-r1-20261105T002432Z",
+  "config": {
+    "run_id": "cap-swap-on-5-r1-20261105T002432Z",
+    "sessions": 15,
+    "rate": 0.25,
+    "fixed_arrival": false,
+    "mix": [
+      {
+        "label": "20s",
+        "hold_ns": 20000000000,
+        "count": 15
+      }
+    ],
+    "policy": "destroy",
+    "class": "normal",
+    "namespace": "sandbox-demo",
+    "pool": "browser-pool",
+    "template": "",
+    "pool_replicas": 5,
+    "workers": 0,
+    "contexts_per_browser": 1,
+    "cdp_transport": "http",
+    "cdp_port": 9224,
+    "overload_factor": 1,
+    "arrival_window_ns": 60000000000,
+    "sample_seconds": 2,
+    "out_dir": "/home/fedora/runs",
+    "dry_run": false
+  },
+  "started_ns": 1793838320627710914,
+  "ended_ns": 1793838432248932810,
+  "planned_sessions": 15,
+  "stored_sessions": 15,
+  "outcomes": {
+    "success": 15
+  },
+  "arrival_rate": 0.25,
+  "offered_concurrency": 5,
+  "concurrency": {
+    "mean": 3.480425086346904,
+    "peak": 8
+  },
+  "queue_wait_ms": {
+    "count": 15,
+    "p50": 486.451301,
+    "p95": 13184.43965,
+    "p99": 13184.43965,
+    "max": 19122.587605
+  },
+  "acquire_ms": {
+    "count": 15,
+    "p50": 719.166252,
+    "p95": 13412.672687,
+    "p99": 13412.672687,
+    "max": 19134.99097
+  },
+  "hold_ms": {
+    "count": 15,
+    "p50": 20111.452736,
+    "p95": 20760.759554,
+    "p99": 20760.759554,
+    "max": 20870.075673
+  },
+  "reset_ms": {
+    "count": 0,
+    "p50": 0,
+    "p95": 0,
+    "p99": 0,
+    "max": 0
+  },
+  "release_ms": {
+    "count": 15,
+    "p50": 285.621039,
+    "p95": 3182.503265,
+    "p99": 3182.503265,
+    "max": 4649.933629
+  },
+  "resume_ms": {
+    "count": 0,
+    "p50": 0,
+    "p95": 0,
+    "p99": 0,
+    "max": 0
+  },
+  "launch_types": {
+    "cold": 1,
+    "warm": 14
+  },
+  "buckets": {
+    "20s": {
+      "sessions": 15,
+      "ok": 15,
+      "failed": 0,
+      "queue_p50_ms": 0,
+      "hold_p50_ms": 0
+    }
+  },
+  "resources": {
+    "sessions_with_samples": 15,
+    "cpu_core_seconds_total": 83.959002,
+    "cpu_core_seconds_p50": 5.49914,
+    "cpu_core_seconds_max": 7.116413,
+    "mem_peak_p50_mib": 235.94140625,
+    "mem_peak_max_mib": 445.87890625,
+    "mem_working_set_peak_max_mib": 373.23046875,
+    "throttled_sessions": 0,
+    "oom_kills": 0,
+    "refault_sessions": 15,
+    "swap_peak_p50_mib": 15.03125,
+    "swap_peak_max_mib": 64
+  },
+  "instances": {
+    "total": 15,
+    "max_sessions_per_instance": 1,
+    "mean_sessions_per_instance": 1,
+    "rebuild_p50_ms": 0,
+    "boot_cpu_peak_p50": 0,
+    "boot_cpu_peak_max": 0
+  },
+  "host_memory": {
+    "samples": 56,
+    "total_mib": 3902.65234375,
+    "min_available_mib": 589.3671875,
+    "min_at_ns": 1793838377472757948,
+    "min_ratio_pct": 15.101708673688465,
+    "swap_used_mib": 127.984375
+  },
+  "template_limits": {
+    "container": "browser",
+    "cpu_request_milli": 100,
+    "cpu_limit_milli": 0,
+    "mem_request_mib": 256,
+    "mem_limit_mib": 768
+  },
+  "autoscaler": {
+    "hpa_count": 0,
+    "keda_crd_present": false
+  },
+  "replicas": [
+    {
+      "at_ns": 1793838320647095112,
+      "desired": 5,
+      "ready": 5,
+      "note": "preflight"
+    },
+    {
+      "at_ns": 1793838320711845490,
+      "desired": 5,
+      "ready": 5,
+      "note": "resize"
+    },
+    {
+      "at_ns": 1793838323136356093,
+      "desired": 5,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793838325132127460,
+      "desired": 5,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793838327135389373,
+      "desired": 5,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793838329130435583,
+      "desired": 5,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793838331130967946,
+      "desired": 5,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793838333132810455,
+      "desired": 5,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793838335132622760,
+      "desired": 5,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793838337135184382,
+      "desired": 5,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793838339134888749,
+      "desired": 5,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793838341135512952,
+      "desired": 5,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793838343132589191,
+      "desired": 5,
+      "ready": 4
+    },
+    {
+      "at_ns": 1793838345137880454,
+      "desired": 5,
+      "ready": 4
+    },
+    {
+      "at_ns": 1793838347135148094,
+      "desired": 5,
+      "ready": 4
+    },
+    {
+      "at_ns": 1793838349129947379,
+      "desired": 5,
+      "ready": 4
+    },
+    {
+      "at_ns": 1793838351137308513,
+      "desired": 5,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793838353130411186,
+      "desired": 5,
+      "ready": 4
+    },
+    {
+      "at_ns": 1793838355132235216,
+      "desired": 5,
+      "ready": 3
+    },
+    {
+      "at_ns": 1793838357130032583,
+      "desired": 5,
+      "ready": 3
+    },
+    {
+      "at_ns": 1793838359131794040,
+      "desired": 5,
+      "ready": 3
+    },
+    {
+      "at_ns": 1793838361134168949,
+      "desired": 5,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793838363134647919,
+      "desired": 5,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793838365132389696,
+      "desired": 5,
+      "ready": 4
+    },
+    {
+      "at_ns": 1793838367130992599,
+      "desired": 5,
+      "ready": 3
+    },
+    {
+      "at_ns": 1793838369134235929,
+      "desired": 5,
+      "ready": 4
+    },
+    {
+      "at_ns": 1793838371182867286,
+      "desired": 5,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793838375163269954,
+      "desired": 5,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793838377469780284,
+      "desired": 5,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793838379864616541,
+      "desired": 5,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793838381694549793,
+      "desired": 5,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793838381983236709,
+      "desired": 5,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793838383591929898,
+      "desired": 5,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793838385163948389,
+      "desired": 5,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793838387131750110,
+      "desired": 5,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793838389137254180,
+      "desired": 5,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793838391130866839,
+      "desired": 5,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793838393137132995,
+      "desired": 5,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793838395133728141,
+      "desired": 5,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793838397137340944,
+      "desired": 5,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793838399132093348,
+      "desired": 5,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793838401138484281,
+      "desired": 5,
+      "ready": 4
+    },
+    {
+      "at_ns": 1793838403150498669,
+      "desired": 5,
+      "ready": 1
+    },
+    {
+      "at_ns": 1793838405134537751,
+      "desired": 5,
+      "ready": 1
+    },
+    {
+      "at_ns": 1793838407592237217,
+      "desired": 5,
+      "ready": 1
+    },
+    {
+      "at_ns": 1793838409136782833,
+      "desired": 5,
+      "ready": 2
+    },
+    {
+      "at_ns": 1793838411131181848,
+      "desired": 5,
+      "ready": 2
+    },
+    {
+      "at_ns": 1793838413131741340,
+      "desired": 5,
+      "ready": 2
+    },
+    {
+      "at_ns": 1793838415130883549,
+      "desired": 5,
+      "ready": 3
+    },
+    {
+      "at_ns": 1793838417131823698,
+      "desired": 5,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793838419137229407,
+      "desired": 5,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793838421140238091,
+      "desired": 5,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793838423133808756,
+      "desired": 5,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793838425129358030,
+      "desired": 5,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793838427133734021,
+      "desired": 5,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793838429131719463,
+      "desired": 5,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793838431130612476,
+      "desired": 5,
+      "ready": 5
+    }
+  ],
+  "elasticity": "not tested: the workload did not exceed what the platform served",
+  "next": "raise --overload-factor and repeat until the platform refuses, which is where the boundary is",
+  "arrival_window_s": 59.318247473,
+  "admission_ms": {
+    "count": 15,
+    "p50": 0.003743,
+    "p95": 0.033503,
+    "p99": 0.033503,
+    "max": 0.062106
+  },
+  "per_session": {
+    "task_ms": {
+      "count": 0,
+      "p50": 0,
+      "p95": 0,
+      "p99": 0,
+      "max": 0
+    },
+    "script_ms": {
+      "count": 0,
+      "p50": 0,
+      "p95": 0,
+      "p99": 0,
+      "max": 0
+    },
+    "js_heap_mib": {
+      "count": 0,
+      "p50": 0,
+      "p95": 0,
+      "p99": 0,
+      "max": 0
+    },
+    "cpu_core_seconds": {
+      "count": 15,
+      "p50": 5.49914,
+      "p95": 6.710524,
+      "p99": 6.710524,
+      "max": 7.116413
+    },
+    "mem_mib": {
+      "count": 15,
+      "p50": 235.94140625,
+      "p95": 336.73828125,
+      "p99": 336.73828125,
+      "max": 445.87890625
+    }
+  },
+  "node_cpu": {
+    "total_cores": 4,
+    "peak_cores": 1.1805547792417643,
+    "mean_cores": 1.0069457324234745,
+    "samples": 56
+  },
+  "shared_sessions": 0,
+  "peak_waiting_sessions": 3,
+  "peak_in_flight_sessions": 9,
+  "cleanup_failures": 0,
+  "acquire_by_launch_type": {
+    "cold": {
+      "count": 1,
+      "p50": 19134.99097,
+      "p95": 19134.99097,
+      "p99": 19134.99097,
+      "max": 19134.99097
+    },
+    "warm": {
+      "count": 14,
+      "p50": 492.999961,
+      "p95": 10067.023221,
+      "p99": 10067.023221,
+      "max": 13412.672687
+    }
+  },
+  "active_at_cutoff": 0
+}

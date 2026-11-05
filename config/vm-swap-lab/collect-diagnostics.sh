@@ -26,8 +26,12 @@ namespace="${NAMESPACE:-sandbox-demo}"
   # so the two cases are reported separately, with cloud-init's own log.
   vm_ssh 'if [ -f /var/tmp/swap-mode ]; then cat /var/tmp/swap-mode;
           else echo "MISSING: setup-swap.sh did not complete"; fi;
-          echo "-- cloud-init log (swap/zram/error lines) --";
-          grep -iE "zram|swap|failed|error|cannot" /var/log/cloud-init-output.log 2>/dev/null | tail -15'
+          echo "-- cloud-init logs present --";
+          ls -1 /var/log/cloud-init* 2>/dev/null || echo "none in /var/log";
+          echo "-- cloud-init output (last 25 lines) --";
+          tail -25 /var/log/cloud-init-output.log 2>/dev/null || echo "no cloud-init-output.log";
+          echo "-- journal: cloud-init --";
+          journalctl -t cloud-init --no-pager -n 30 2>/dev/null | tail -30 || echo "no cloud-init journal entries"'
   echo
   echo "== node / resources =="
   vm_ssh 'nproc; free -m; cat /proc/swaps'

@@ -1,0 +1,404 @@
+{
+  "run_id": "cap-swap-on-6-r2-20261105T002432Z",
+  "config": {
+    "run_id": "cap-swap-on-6-r2-20261105T002432Z",
+    "sessions": 18,
+    "rate": 0.3,
+    "fixed_arrival": false,
+    "mix": [
+      {
+        "label": "20s",
+        "hold_ns": 20000000000,
+        "count": 18
+      }
+    ],
+    "policy": "destroy",
+    "class": "normal",
+    "namespace": "sandbox-demo",
+    "pool": "browser-pool",
+    "template": "",
+    "pool_replicas": 6,
+    "workers": 0,
+    "contexts_per_browser": 1,
+    "cdp_transport": "http",
+    "cdp_port": 9224,
+    "overload_factor": 1,
+    "arrival_window_ns": 60000000000,
+    "sample_seconds": 2,
+    "out_dir": "/home/fedora/runs",
+    "dry_run": false
+  },
+  "started_ns": 1793838722745645164,
+  "ended_ns": 1793839441199348661,
+  "planned_sessions": 18,
+  "stored_sessions": 18,
+  "outcomes": {
+    "destroy_failed": 3,
+    "success": 11,
+    "waiting": 4
+  },
+  "arrival_rate": 0.3,
+  "offered_concurrency": 6,
+  "concurrency": {
+    "mean": 3.2967752643976707,
+    "peak": 8
+  },
+  "queue_wait_ms": {
+    "count": 14,
+    "p50": 2491.866103,
+    "p95": 37533.219495,
+    "p99": 37533.219495,
+    "max": 39550.777839
+  },
+  "acquire_ms": {
+    "count": 14,
+    "p50": 3275.487226,
+    "p95": 37545.059145,
+    "p99": 37545.059145,
+    "max": 39744.219379
+  },
+  "hold_ms": {
+    "count": 14,
+    "p50": 20079.063296,
+    "p95": 20492.779148,
+    "p99": 20492.779148,
+    "max": 21119.815539
+  },
+  "reset_ms": {
+    "count": 0,
+    "p50": 0,
+    "p95": 0,
+    "p99": 0,
+    "max": 0
+  },
+  "release_ms": {
+    "count": 11,
+    "p50": 63.022144,
+    "p95": 239.686434,
+    "p99": 239.686434,
+    "max": 262.388715
+  },
+  "resume_ms": {
+    "count": 0,
+    "p50": 0,
+    "p95": 0,
+    "p99": 0,
+    "max": 0
+  },
+  "launch_types": {
+    "cold": 3,
+    "warm": 11
+  },
+  "buckets": {
+    "20s": {
+      "sessions": 18,
+      "ok": 11,
+      "failed": 3,
+      "queue_p50_ms": 0,
+      "hold_p50_ms": 0
+    }
+  },
+  "resources": {
+    "sessions_with_samples": 14,
+    "cpu_core_seconds_total": 75.615144,
+    "cpu_core_seconds_p50": 5.404417,
+    "cpu_core_seconds_max": 6.840905,
+    "mem_peak_p50_mib": 233.625,
+    "mem_peak_max_mib": 378.390625,
+    "mem_working_set_peak_max_mib": 286.32421875,
+    "throttled_sessions": 0,
+    "oom_kills": 0,
+    "refault_sessions": 14,
+    "swap_peak_p50_mib": 1.6796875,
+    "swap_peak_max_mib": 16.609375
+  },
+  "instances": {
+    "total": 16,
+    "max_sessions_per_instance": 1,
+    "mean_sessions_per_instance": 0.6875,
+    "rebuild_p50_ms": 0,
+    "boot_cpu_peak_p50": 0,
+    "boot_cpu_peak_max": 0
+  },
+  "host_memory": {
+    "samples": 57,
+    "total_mib": 3902.65234375,
+    "min_available_mib": 175.31640625,
+    "min_at_ns": 1793839058766760918,
+    "min_ratio_pct": 4.492237350599902,
+    "swap_used_mib": 127.98828125
+  },
+  "template_limits": {
+    "container": "browser",
+    "cpu_request_milli": 100,
+    "cpu_limit_milli": 0,
+    "mem_request_mib": 256,
+    "mem_limit_mib": 768
+  },
+  "autoscaler": {
+    "hpa_count": 0,
+    "keda_crd_present": false
+  },
+  "replicas": [
+    {
+      "at_ns": 1793838722768586446,
+      "desired": 6,
+      "ready": 6,
+      "note": "preflight"
+    },
+    {
+      "at_ns": 1793838722913953274,
+      "desired": 6,
+      "ready": 6,
+      "note": "resize"
+    },
+    {
+      "at_ns": 1793838725192011211,
+      "desired": 6,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793838727190865255,
+      "desired": 6,
+      "ready": 4
+    },
+    {
+      "at_ns": 1793838729191160000,
+      "desired": 6,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793838731189656761,
+      "desired": 6,
+      "ready": 4
+    },
+    {
+      "at_ns": 1793838733222309467,
+      "desired": 6,
+      "ready": 4
+    },
+    {
+      "at_ns": 1793838735504006043,
+      "desired": 6,
+      "ready": 4
+    },
+    {
+      "at_ns": 1793838737493824188,
+      "desired": 6,
+      "ready": 4
+    },
+    {
+      "at_ns": 1793838739500735811,
+      "desired": 6,
+      "ready": 4
+    },
+    {
+      "at_ns": 1793838741878087484,
+      "desired": 6,
+      "ready": 4
+    },
+    {
+      "at_ns": 1793838743884782449,
+      "desired": 6,
+      "ready": 4
+    },
+    {
+      "at_ns": 1793838745371528452,
+      "desired": 6,
+      "ready": 4
+    },
+    {
+      "at_ns": 1793838747196692521,
+      "desired": 6,
+      "ready": 3
+    },
+    {
+      "at_ns": 1793838749269043190,
+      "desired": 6,
+      "ready": 6
+    },
+    {
+      "at_ns": 1793838751221658350,
+      "desired": 6,
+      "ready": 6
+    },
+    {
+      "at_ns": 1793838753193231225,
+      "desired": 6,
+      "ready": 1
+    },
+    {
+      "at_ns": 1793838755193210803,
+      "desired": 6,
+      "ready": 1
+    },
+    {
+      "at_ns": 1793838757201128070,
+      "desired": 6,
+      "ready": 6
+    },
+    {
+      "at_ns": 1793838763740294845,
+      "desired": 6,
+      "ready": 6
+    },
+    {
+      "at_ns": 1793838765190818019,
+      "desired": 6,
+      "ready": 6
+    },
+    {
+      "at_ns": 1793838767190016138,
+      "desired": 6,
+      "ready": 6
+    },
+    {
+      "at_ns": 1793838769191477082,
+      "desired": 6,
+      "ready": 6
+    },
+    {
+      "at_ns": 1793838771199147182,
+      "desired": 6,
+      "ready": 6
+    },
+    {
+      "at_ns": 1793838773191040817,
+      "desired": 6,
+      "ready": 6
+    },
+    {
+      "at_ns": 1793838775192249115,
+      "desired": 6,
+      "ready": 6
+    },
+    {
+      "at_ns": 1793838777198065681,
+      "desired": 6,
+      "ready": 6
+    },
+    {
+      "at_ns": 1793838779196359989,
+      "desired": 6,
+      "ready": 6
+    },
+    {
+      "at_ns": 1793838781190924131,
+      "desired": 6,
+      "ready": 1
+    },
+    {
+      "at_ns": 1793838783192873029,
+      "desired": 6,
+      "ready": 3
+    },
+    {
+      "at_ns": 1793838785193939775,
+      "desired": 6,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793838787192950803,
+      "desired": 6,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793838789191623123,
+      "desired": 6,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793838791192425807,
+      "desired": 6,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793838793244843960,
+      "desired": 6,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793838795192486986,
+      "desired": 6,
+      "ready": 6
+    }
+  ],
+  "first_boundary": "destroy_failed at session 11: release: delete claim sandbox-demo/lab-cap-swap-on-6-r2-20261105t002432z-11: Delete \"https://127.0.0.1:6443/apis/extensions.agents.x-k8s.io/v1beta1/namespaces/sandbox-demo/sandboxclaims/lab-cap-swap-on-6-r2-20261105t002432z-11\": net/http: TLS handshake timeout",
+  "boundary_evidence": [
+    "bucket 20s, instance lab-cap-swap-on-6-r2-20261105t002432z-11"
+  ],
+  "elasticity": "exceeded: see first_boundary",
+  "next": "repeat with a lower arrival rate to confirm the boundary is repeatable, then re-run at this rate after changing the constraint above",
+  "arrival_window_s": 36.838972355,
+  "admission_ms": {
+    "count": 18,
+    "p50": 0.004426,
+    "p95": 0.009343,
+    "p99": 0.009343,
+    "max": 0.009451
+  },
+  "per_session": {
+    "task_ms": {
+      "count": 0,
+      "p50": 0,
+      "p95": 0,
+      "p99": 0,
+      "max": 0
+    },
+    "script_ms": {
+      "count": 0,
+      "p50": 0,
+      "p95": 0,
+      "p99": 0,
+      "max": 0
+    },
+    "js_heap_mib": {
+      "count": 0,
+      "p50": 0,
+      "p95": 0,
+      "p99": 0,
+      "max": 0
+    },
+    "cpu_core_seconds": {
+      "count": 14,
+      "p50": 5.404417,
+      "p95": 6.688993,
+      "p99": 6.688993,
+      "max": 6.840905
+    },
+    "mem_mib": {
+      "count": 14,
+      "p50": 233.625,
+      "p95": 370.234375,
+      "p99": 370.234375,
+      "max": 378.390625
+    }
+  },
+  "node_cpu": {
+    "total_cores": 4,
+    "peak_cores": 2.168795132817143,
+    "mean_cores": 1.6995301814641157,
+    "samples": 57
+  },
+  "shared_sessions": 0,
+  "peak_waiting_sessions": 6,
+  "peak_in_flight_sessions": 13,
+  "cleanup_failures": 3,
+  "acquire_by_launch_type": {
+    "cold": {
+      "count": 3,
+      "p50": 37545.059145,
+      "p95": 37545.059145,
+      "p99": 37545.059145,
+      "max": 39744.219379
+    },
+    "warm": {
+      "count": 11,
+      "p50": 483.382645,
+      "p95": 5209.607494,
+      "p99": 5209.607494,
+      "max": 9930.617276
+    }
+  },
+  "active_at_cutoff": 4
+}

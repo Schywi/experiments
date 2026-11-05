@@ -1,3 +1,5 @@
 # Captured output (kubectl, /proc, sysfs). Trailing spaces are part of the
-# evidence, so whitespace linting does not apply to it.
-config/vm-swap-lab/results/** -whitespace
+# evidence, so whitespace linting does not apply to it. Covers both experiment
+# trees (results-ubuntu/, results-fedora/). Note the /** — a gitattributes
+# pattern matching a directory does not apply to the files inside it.
+config/vm-swap-lab/results*/** -whitespace

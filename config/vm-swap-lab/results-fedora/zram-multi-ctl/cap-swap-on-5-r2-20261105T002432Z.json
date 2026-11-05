@@ -1,0 +1,403 @@
+{
+  "run_id": "cap-swap-on-5-r2-20261105T002432Z",
+  "config": {
+    "run_id": "cap-swap-on-5-r2-20261105T002432Z",
+    "sessions": 15,
+    "rate": 0.25,
+    "fixed_arrival": false,
+    "mix": [
+      {
+        "label": "20s",
+        "hold_ns": 20000000000,
+        "count": 15
+      }
+    ],
+    "policy": "destroy",
+    "class": "normal",
+    "namespace": "sandbox-demo",
+    "pool": "browser-pool",
+    "template": "",
+    "pool_replicas": 5,
+    "workers": 0,
+    "contexts_per_browser": 1,
+    "cdp_transport": "http",
+    "cdp_port": 9224,
+    "overload_factor": 1,
+    "arrival_window_ns": 60000000000,
+    "sample_seconds": 2,
+    "out_dir": "/home/fedora/runs",
+    "dry_run": false
+  },
+  "started_ns": 1793838455360469814,
+  "ended_ns": 1793838527497161436,
+  "planned_sessions": 15,
+  "stored_sessions": 15,
+  "outcomes": {
+    "success": 15
+  },
+  "arrival_rate": 0.25,
+  "offered_concurrency": 5,
+  "concurrency": {
+    "mean": 4.374160135042329,
+    "peak": 8
+  },
+  "queue_wait_ms": {
+    "count": 15,
+    "p50": 77.987828,
+    "p95": 4094.344183,
+    "p99": 4094.344183,
+    "max": 12115.824727
+  },
+  "acquire_ms": {
+    "count": 15,
+    "p50": 230.44228,
+    "p95": 4131.972909,
+    "p99": 4131.972909,
+    "max": 12127.251562
+  },
+  "hold_ms": {
+    "count": 15,
+    "p50": 20065.571641,
+    "p95": 20549.385506,
+    "p99": 20549.385506,
+    "max": 20810.417791
+  },
+  "reset_ms": {
+    "count": 0,
+    "p50": 0,
+    "p95": 0,
+    "p99": 0,
+    "max": 0
+  },
+  "release_ms": {
+    "count": 15,
+    "p50": 39.682173,
+    "p95": 351.855303,
+    "p99": 351.855303,
+    "max": 1022.481135
+  },
+  "resume_ms": {
+    "count": 0,
+    "p50": 0,
+    "p95": 0,
+    "p99": 0,
+    "max": 0
+  },
+  "launch_types": {
+    "cold": 1,
+    "warm": 14
+  },
+  "buckets": {
+    "20s": {
+      "sessions": 15,
+      "ok": 15,
+      "failed": 0,
+      "queue_p50_ms": 0,
+      "hold_p50_ms": 0
+    }
+  },
+  "resources": {
+    "sessions_with_samples": 15,
+    "cpu_core_seconds_total": 76.501208,
+    "cpu_core_seconds_p50": 5.070003,
+    "cpu_core_seconds_max": 5.826532,
+    "mem_peak_p50_mib": 244.41015625,
+    "mem_peak_max_mib": 312.2578125,
+    "mem_working_set_peak_max_mib": 301.81640625,
+    "throttled_sessions": 0,
+    "oom_kills": 0,
+    "refault_sessions": 12,
+    "swap_peak_p50_mib": 4.9765625,
+    "swap_peak_max_mib": 34.875
+  },
+  "instances": {
+    "total": 15,
+    "max_sessions_per_instance": 1,
+    "mean_sessions_per_instance": 1,
+    "rebuild_p50_ms": 0,
+    "boot_cpu_peak_p50": 0,
+    "boot_cpu_peak_max": 0
+  },
+  "host_memory": {
+    "samples": 36,
+    "total_mib": 3902.65234375,
+    "min_available_mib": 882.875,
+    "min_at_ns": 1793838475844788656,
+    "min_ratio_pct": 22.62243526287711,
+    "swap_used_mib": 127.9921875
+  },
+  "template_limits": {
+    "container": "browser",
+    "cpu_request_milli": 100,
+    "cpu_limit_milli": 0,
+    "mem_request_mib": 256,
+    "mem_limit_mib": 768
+  },
+  "autoscaler": {
+    "hpa_count": 0,
+    "keda_crd_present": false
+  },
+  "replicas": [
+    {
+      "at_ns": 1793838455432363039,
+      "desired": 5,
+      "ready": 5,
+      "note": "preflight"
+    },
+    {
+      "at_ns": 1793838455534240045,
+      "desired": 5,
+      "ready": 5,
+      "note": "resize"
+    },
+    {
+      "at_ns": 1793838457801824499,
+      "desired": 5,
+      "ready": 4
+    },
+    {
+      "at_ns": 1793838459809037606,
+      "desired": 5,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793838461802325406,
+      "desired": 5,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793838463810237574,
+      "desired": 5,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793838465803006471,
+      "desired": 5,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793838467802413690,
+      "desired": 5,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793838469800415312,
+      "desired": 5,
+      "ready": 4
+    },
+    {
+      "at_ns": 1793838471802480942,
+      "desired": 5,
+      "ready": 2
+    },
+    {
+      "at_ns": 1793838473827951942,
+      "desired": 5,
+      "ready": 3
+    },
+    {
+      "at_ns": 1793838475841735768,
+      "desired": 5,
+      "ready": 4
+    },
+    {
+      "at_ns": 1793838477800475863,
+      "desired": 5,
+      "ready": 4
+    },
+    {
+      "at_ns": 1793838479800414559,
+      "desired": 5,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793838481803350626,
+      "desired": 5,
+      "ready": 3
+    },
+    {
+      "at_ns": 1793838483800893367,
+      "desired": 5,
+      "ready": 1
+    },
+    {
+      "at_ns": 1793838485801966251,
+      "desired": 5,
+      "ready": 1
+    },
+    {
+      "at_ns": 1793838487804500243,
+      "desired": 5,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793838489800437020,
+      "desired": 5,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793838492139285051,
+      "desired": 5,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793838493800369658,
+      "desired": 5,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793838495800506344,
+      "desired": 5,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793838497804763097,
+      "desired": 5,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793838499834783838,
+      "desired": 5,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793838501813105863,
+      "desired": 5,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793838503802447456,
+      "desired": 5,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793838505804789614,
+      "desired": 5,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793838507812446029,
+      "desired": 5,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793838509830177240,
+      "desired": 5,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793838511802730769,
+      "desired": 5,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793838513802058262,
+      "desired": 5,
+      "ready": 1
+    },
+    {
+      "at_ns": 1793838515813228254,
+      "desired": 5,
+      "ready": 2
+    },
+    {
+      "at_ns": 1793838518066548769,
+      "desired": 5,
+      "ready": 2
+    },
+    {
+      "at_ns": 1793838519803866626,
+      "desired": 5,
+      "ready": 2
+    },
+    {
+      "at_ns": 1793838521806098871,
+      "desired": 5,
+      "ready": 3
+    },
+    {
+      "at_ns": 1793838523833550841,
+      "desired": 5,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793838525805761445,
+      "desired": 5,
+      "ready": 5
+    }
+  ],
+  "elasticity": "not tested: the workload did not exceed what the platform served",
+  "next": "raise --overload-factor and repeat until the platform refuses, which is where the boundary is",
+  "arrival_window_s": 47.575536094,
+  "admission_ms": {
+    "count": 15,
+    "p50": 0.002637,
+    "p95": 0.005243,
+    "p99": 0.005243,
+    "max": 0.026622
+  },
+  "per_session": {
+    "task_ms": {
+      "count": 0,
+      "p50": 0,
+      "p95": 0,
+      "p99": 0,
+      "max": 0
+    },
+    "script_ms": {
+      "count": 0,
+      "p50": 0,
+      "p95": 0,
+      "p99": 0,
+      "max": 0
+    },
+    "js_heap_mib": {
+      "count": 0,
+      "p50": 0,
+      "p95": 0,
+      "p99": 0,
+      "max": 0
+    },
+    "cpu_core_seconds": {
+      "count": 15,
+      "p50": 5.070003,
+      "p95": 5.791429,
+      "p99": 5.791429,
+      "max": 5.826532
+    },
+    "mem_mib": {
+      "count": 15,
+      "p50": 244.41015625,
+      "p95": 309.8671875,
+      "p99": 309.8671875,
+      "max": 312.2578125
+    }
+  },
+  "node_cpu": {
+    "total_cores": 4,
+    "peak_cores": 1.348847194918144,
+    "mean_cores": 1.2479969092019843,
+    "samples": 36
+  },
+  "shared_sessions": 0,
+  "peak_waiting_sessions": 2,
+  "peak_in_flight_sessions": 9,
+  "cleanup_failures": 0,
+  "acquire_by_launch_type": {
+    "cold": {
+      "count": 1,
+      "p50": 12127.251562,
+      "p95": 12127.251562,
+      "p99": 12127.251562,
+      "max": 12127.251562
+    },
+    "warm": {
+      "count": 14,
+      "p50": 141.675846,
+      "p95": 2101.451718,
+      "p99": 2101.451718,
+      "max": 4131.972909
+    }
+  },
+  "active_at_cutoff": 0
+}

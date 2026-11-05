@@ -1,0 +1,183 @@
+== arm ==
+zram-multi
+
+== swap mode recorded in the guest ==
+MISSING: setup-swap.sh did not complete
+-- cloud-init log (swap/zram/error lines) --
+
+== node / resources ==
+4
+               total        used        free      shared  buff/cache   available
+Mem:            3902        2094         127          80        2008        1807
+Swap:              0           0           0
+Filename				Type		Size		Used		Priority
+
+== node conditions ==
+NAME          STATUS   ROLES           AGE     VERSION        INTERNAL-IP   EXTERNAL-IP   OS-IMAGE                          KERNEL-VERSION                    CONTAINER-RUNTIME
+vm-swap-lab   Ready    control-plane   2m38s   v1.37.2+k3s1   10.0.2.15     <none>        Fedora Linux 44 (Cloud Edition)   6.19.10-300.fc44.x86_64 (amd64)   containerd://2.3.7-k3s1
+
+== pool / sandboxes / pods ==
+NAME                                                      READY   DESIRED   TEMPLATE      AGE
+sandboxwarmpool.extensions.agents.x-k8s.io/browser-pool   4       4         browser-tpl   96s
+
+NAME                                         READY   REASON              AGE
+sandbox.agents.x-k8s.io/browser-pool-8kvb5   True    DependenciesReady   96s
+sandbox.agents.x-k8s.io/browser-pool-k4xvh   True    DependenciesReady   96s
+sandbox.agents.x-k8s.io/browser-pool-k6h4v   True    DependenciesReady   96s
+sandbox.agents.x-k8s.io/browser-pool-xftk5   True    DependenciesReady   96s
+
+NAME                     READY   STATUS    RESTARTS   AGE   IP           NODE          NOMINATED NODE   READINESS GATES
+pod/browser-pool-8kvb5   1/1     Running   0          96s   10.42.0.12   vm-swap-lab   <none>           <none>
+pod/browser-pool-k4xvh   1/1     Running   0          96s   10.42.0.14   vm-swap-lab   <none>           <none>
+pod/browser-pool-k6h4v   1/1     Running   0          96s   10.42.0.11   vm-swap-lab   <none>           <none>
+pod/browser-pool-xftk5   1/1     Running   0          96s   10.42.0.13   vm-swap-lab   <none>           <none>
+
+== pod describe (last 25 lines each) ==
+--- pod/browser-pool-8kvb5 ---
+      cpu:        100m
+      memory:     256Mi
+    Readiness:    exec [/bin/sh -c wget -q -O- http://127.0.0.1:9222/json/version >/dev/null] delay=0s timeout=3s period=2s successThreshold=1 failureThreshold=150
+    Environment:  <none>
+    Mounts:       <none>
+Conditions:
+  Type                        Status
+  PodReadyToStartContainers   True 
+  Initialized                 True 
+  Ready                       True 
+  ContainersReady             True 
+  PodScheduled                True 
+Volumes:                      <none>
+QoS Class:                    Burstable
+Node-Selectors:               <none>
+Tolerations:                  node.kubernetes.io/not-ready:NoExecute op=Exists for 300s
+                              node.kubernetes.io/unreachable:NoExecute op=Exists for 300s
+Events:
+  Type     Reason     Age   From               Message
+  ----     ------     ----  ----               -------
+  Normal   Scheduled  96s   default-scheduler  Successfully assigned sandbox-demo/browser-pool-8kvb5 to vm-swap-lab
+  Normal   Pulled     94s   kubelet            spec.containers{browser}: Container image "us-central1-docker.pkg.dev/k8s-staging-images/agent-sandbox/chrome-sandbox:latest-main" already present on machine and can be accessed by the pod
+  Normal   Created    34s   kubelet            spec.containers{browser}: Container created
+  Normal   Started    34s   kubelet            spec.containers{browser}: Container started
+  Warning  Unhealthy  34s   kubelet            spec.containers{browser}: Readiness probe failed:
+--- pod/browser-pool-k4xvh ---
+      cpu:        100m
+      memory:     256Mi
+    Readiness:    exec [/bin/sh -c wget -q -O- http://127.0.0.1:9222/json/version >/dev/null] delay=0s timeout=3s period=2s successThreshold=1 failureThreshold=150
+    Environment:  <none>
+    Mounts:       <none>
+Conditions:
+  Type                        Status
+  PodReadyToStartContainers   True 
+  Initialized                 True 
+  Ready                       True 
+  ContainersReady             True 
+  PodScheduled                True 
+Volumes:                      <none>
+QoS Class:                    Burstable
+Node-Selectors:               <none>
+Tolerations:                  node.kubernetes.io/not-ready:NoExecute op=Exists for 300s
+                              node.kubernetes.io/unreachable:NoExecute op=Exists for 300s
+Events:
+  Type     Reason     Age                From               Message
+  ----     ------     ----               ----               -------
+  Normal   Scheduled  97s                default-scheduler  Successfully assigned sandbox-demo/browser-pool-k4xvh to vm-swap-lab
+  Normal   Pulled     95s                kubelet            spec.containers{browser}: Container image "us-central1-docker.pkg.dev/k8s-staging-images/agent-sandbox/chrome-sandbox:latest-main" already present on machine and can be accessed by the pod
+  Normal   Created    36s                kubelet            spec.containers{browser}: Container created
+  Normal   Started    36s                kubelet            spec.containers{browser}: Container started
+  Warning  Unhealthy  35s (x2 over 35s)  kubelet            spec.containers{browser}: Readiness probe failed:
+--- pod/browser-pool-k6h4v ---
+      cpu:        100m
+      memory:     256Mi
+    Readiness:    exec [/bin/sh -c wget -q -O- http://127.0.0.1:9222/json/version >/dev/null] delay=0s timeout=3s period=2s successThreshold=1 failureThreshold=150
+    Environment:  <none>
+    Mounts:       <none>
+Conditions:
+  Type                        Status
+  PodReadyToStartContainers   True 
+  Initialized                 True 
+  Ready                       True 
+  ContainersReady             True 
+  PodScheduled                True 
+Volumes:                      <none>
+QoS Class:                    Burstable
+Node-Selectors:               <none>
+Tolerations:                  node.kubernetes.io/not-ready:NoExecute op=Exists for 300s
+                              node.kubernetes.io/unreachable:NoExecute op=Exists for 300s
+Events:
+  Type     Reason     Age   From               Message
+  ----     ------     ----  ----               -------
+  Normal   Scheduled  97s   default-scheduler  Successfully assigned sandbox-demo/browser-pool-k6h4v to vm-swap-lab
+  Normal   Pulled     95s   kubelet            spec.containers{browser}: Container image "us-central1-docker.pkg.dev/k8s-staging-images/agent-sandbox/chrome-sandbox:latest-main" already present on machine and can be accessed by the pod
+  Normal   Created    35s   kubelet            spec.containers{browser}: Container created
+  Normal   Started    35s   kubelet            spec.containers{browser}: Container started
+  Warning  Unhealthy  35s   kubelet            spec.containers{browser}: Readiness probe failed:
+--- pod/browser-pool-xftk5 ---
+      cpu:        100m
+      memory:     256Mi
+    Readiness:    exec [/bin/sh -c wget -q -O- http://127.0.0.1:9222/json/version >/dev/null] delay=0s timeout=3s period=2s successThreshold=1 failureThreshold=150
+    Environment:  <none>
+    Mounts:       <none>
+Conditions:
+  Type                        Status
+  PodReadyToStartContainers   True 
+  Initialized                 True 
+  Ready                       True 
+  ContainersReady             True 
+  PodScheduled                True 
+Volumes:                      <none>
+QoS Class:                    Burstable
+Node-Selectors:               <none>
+Tolerations:                  node.kubernetes.io/not-ready:NoExecute op=Exists for 300s
+                              node.kubernetes.io/unreachable:NoExecute op=Exists for 300s
+Events:
+  Type     Reason     Age   From               Message
+  ----     ------     ----  ----               -------
+  Normal   Scheduled  97s   default-scheduler  Successfully assigned sandbox-demo/browser-pool-xftk5 to vm-swap-lab
+  Normal   Pulled     95s   kubelet            spec.containers{browser}: Container image "us-central1-docker.pkg.dev/k8s-staging-images/agent-sandbox/chrome-sandbox:latest-main" already present on machine and can be accessed by the pod
+  Normal   Created    35s   kubelet            spec.containers{browser}: Container created
+  Normal   Started    35s   kubelet            spec.containers{browser}: Container started
+  Warning  Unhealthy  35s   kubelet            spec.containers{browser}: Readiness probe failed:
+
+== events ==
+33s         Normal    SandboxReady        sandbox/browser-pool-k4xvh   Sandbox is ready
+98s         Normal    Scheduled           pod/browser-pool-8kvb5       Successfully assigned sandbox-demo/browser-pool-8kvb5 to vm-swap-lab
+98s         Normal    SandboxPodCreated   sandbox/browser-pool-xftk5   Created Pod "browser-pool-xftk5"
+33s         Normal    SandboxReady        sandbox/browser-pool-8kvb5   Sandbox is ready
+98s         Normal    Scheduled           pod/browser-pool-k4xvh       Successfully assigned sandbox-demo/browser-pool-k4xvh to vm-swap-lab
+98s         Normal    SandboxPodCreated   sandbox/browser-pool-k4xvh   Created Pod "browser-pool-k4xvh"
+98s         Normal    Scheduled           pod/browser-pool-xftk5       Successfully assigned sandbox-demo/browser-pool-xftk5 to vm-swap-lab
+34s         Normal    SandboxReady        sandbox/browser-pool-k6h4v   Sandbox is ready
+98s         Normal    Scheduled           pod/browser-pool-k6h4v       Successfully assigned sandbox-demo/browser-pool-k6h4v to vm-swap-lab
+96s         Normal    Pulled              pod/browser-pool-xftk5       Container image "us-central1-docker.pkg.dev/k8s-staging-images/agent-sandbox/chrome-sandbox:latest-main" already present on machine and can be accessed by the pod
+96s         Normal    Pulled              pod/browser-pool-8kvb5       Container image "us-central1-docker.pkg.dev/k8s-staging-images/agent-sandbox/chrome-sandbox:latest-main" already present on machine and can be accessed by the pod
+96s         Normal    Pulled              pod/browser-pool-k6h4v       Container image "us-central1-docker.pkg.dev/k8s-staging-images/agent-sandbox/chrome-sandbox:latest-main" already present on machine and can be accessed by the pod
+96s         Normal    Pulled              pod/browser-pool-k4xvh       Container image "us-central1-docker.pkg.dev/k8s-staging-images/agent-sandbox/chrome-sandbox:latest-main" already present on machine and can be accessed by the pod
+37s         Normal    Created             pod/browser-pool-k4xvh       Container created
+37s         Normal    Started             pod/browser-pool-k4xvh       Container started
+36s         Warning   Unhealthy           pod/browser-pool-k6h4v       Readiness probe failed:
+36s         Warning   Unhealthy           pod/browser-pool-k4xvh       Readiness probe failed:
+36s         Normal    Started             pod/browser-pool-k6h4v       Container started
+36s         Normal    Created             pod/browser-pool-k6h4v       Container created
+36s         Warning   Unhealthy           pod/browser-pool-8kvb5       Readiness probe failed:
+36s         Normal    Created             pod/browser-pool-8kvb5       Container created
+36s         Normal    Created             pod/browser-pool-xftk5       Container created
+36s         Normal    Started             pod/browser-pool-xftk5       Container started
+36s         Warning   Unhealthy           pod/browser-pool-xftk5       Readiness probe failed:
+36s         Normal    Started             pod/browser-pool-8kvb5       Container started
+
+== kubelet ==
+Nov 05 00:49:39 vm-swap-lab k3s[9150]: time="2026-11-05T00:49:39Z" level=info msg="Imported docker.io/rancher/klipper-lb:v0.4.17"
+Nov 05 00:49:39 vm-swap-lab k3s[9150]: time="2026-11-05T00:49:39Z" level=info msg="Tagged docker.io/rancher/klipper-lb@sha256:910944bb0bd94f060a82a56ca1ea1c577d3e49b3473a093a47a985f32e92d94a"
+Nov 05 00:49:39 vm-swap-lab k3s[9150]: time="2026-11-05T00:49:39Z" level=info msg="Imported docker.io/rancher/local-path-provisioner:v0.0.37"
+Nov 05 00:49:39 vm-swap-lab k3s[9150]: time="2026-11-05T00:49:39Z" level=info msg="Tagged docker.io/rancher/local-path-provisioner@sha256:e757967a5ec338f6a9b371c5a9688bedaa8c3578ea3dd4db329ea0084be0a86f"
+Nov 05 00:49:39 vm-swap-lab k3s[9150]: time="2026-11-05T00:49:39Z" level=info msg="Imported docker.io/rancher/mirrored-coredns-coredns:1.14.7"
+Nov 05 00:49:39 vm-swap-lab k3s[9150]: time="2026-11-05T00:49:39Z" level=info msg="Tagged docker.io/rancher/mirrored-coredns-coredns@sha256:7efd3c635b03efd68c4e8398fc45f0d993d0e9ab016f72c1cefb0fd6d01aa286"
+Nov 05 00:49:39 vm-swap-lab k3s[9150]: time="2026-11-05T00:49:39Z" level=info msg="Imported docker.io/rancher/mirrored-library-busybox:1.37.0"
+Nov 05 00:49:39 vm-swap-lab k3s[9150]: time="2026-11-05T00:49:39Z" level=info msg="Tagged docker.io/rancher/mirrored-library-busybox@sha256:101b4afd76732482eff9b95cae5f94bcf295e521fbec4e01b69c5421f3f3f3e5"
+Nov 05 00:49:39 vm-swap-lab k3s[9150]: time="2026-11-05T00:49:39Z" level=info msg="Imported docker.io/rancher/mirrored-library-traefik:3.7.13"
+Nov 05 00:49:39 vm-swap-lab k3s[9150]: time="2026-11-05T00:49:39Z" level=info msg="Tagged docker.io/rancher/mirrored-library-traefik@sha256:f86a2cab1b5c649070c49f883c743dd32d8485a56e3368c5f93b9e91f1e91259"
+Nov 05 00:49:39 vm-swap-lab k3s[9150]: time="2026-11-05T00:49:39Z" level=info msg="Imported docker.io/rancher/mirrored-metrics-server:v0.9.0"
+Nov 05 00:49:39 vm-swap-lab k3s[9150]: time="2026-11-05T00:49:39Z" level=info msg="Tagged docker.io/rancher/mirrored-metrics-server@sha256:d9862115e7c7881280d3d75ca26bda8ffc0fc213315979575bf23ce9826205c0"
+Nov 05 00:49:39 vm-swap-lab k3s[9150]: time="2026-11-05T00:49:39Z" level=info msg="Imported docker.io/rancher/mirrored-pause:3.10.2"
+Nov 05 00:49:39 vm-swap-lab k3s[9150]: time="2026-11-05T00:49:39Z" level=info msg="Tagged docker.io/rancher/mirrored-pause@sha256:f548e0e8e3dc1896ca956272154dde3314e8cc4fde0a57577ee9fa1c63f5baf4"
+Nov 05 00:49:42 vm-swap-lab k3s[9150]: time="2026-11-05T00:49:42Z" level=info msg="Imported 8 images from /var/lib/rancher/k3s/agent/images/k3s-airgap-images-amd64.tar.zst in 22.760244956s"
