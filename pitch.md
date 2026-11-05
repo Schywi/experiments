@@ -130,6 +130,82 @@ The same host runs two stories, and they share the machine. Pick one:
 </section>
 </div>
 
+Deep dives, one per mechanism, each behind a dropdown. Every claim inside carries the
+file and line it can be checked against.
+
+> [!note]- The two layers: a pod is not a session
+> The 10-minute baseline used to mean one thing. It now means two, and they must not be compared
+> ([16.1](research/session-lifecycle-elasticity/16.1-browser-contexts-and-slots.md) §1).
+>
+> ```text
+>  claim ──► 1 pod ──► 1 Chromium ──► 8 browser contexts ──► 8 slots
+>            infra layer            session layer
+>            1 pod per session      8 contexts per pod
+>                                                │
+>                                     slot = (instance, browserContextId)
+>                                                │
+>                                     ceiling: 168 slots on this node
+> ```
+>
+> A slot is the pair `(instance, browserContextId)`; one slot serves one session. The ceiling is
+> stated as: "So the honest statement is: **168 concurrent contexts is the slot ceiling on this node**"
+> ([18](research/session-lifecycle-elasticity/18-capacity-elasticity-and-kine.md) line 67, and line 62
+> for the arithmetic `~21 browsers × 8 = 168 slots`).
+
+> [!note]- The concurrency model: three classes, one queue, one scheduler
+> Quoted from [15](research/session-lifecycle-elasticity/15-capacity-plane-and-demand-plane.md) §2:
+>
+> > | Class | Queue position | Triggers new capacity | Interruptible |
+> > |---|---|---|---|
+> > | `normal` | first | yes | no |
+> > | `batch` | after normal | yes, only after the deficit survives one autoscaler interval | no |
+> > | `bulk` | last, may starve | **never** | yes — suspend/resume, not kill |
+>
+> "No caps. Nothing is rejected by us; rejection stays whatever the platform does
+> (`Insufficient cpu`), recorded as a boundary event." Two things are listed as deliberately
+> absent: preemption between classes, and "Any second scheduler process. One scheduler owns the
+> queue, as today" (line 198).
+
+> [!note]- The autoscaler loop: demand and pressure, with hysteresis
+> Two inputs are read every reconcile: claim demand and the node's own load
+> ([`autoscale.go`](apps/session-lab/internal/infra/pool/autoscale.go) lines 120 and 132-137;
+> [`main.go`](apps/session-lab/cmd/pool-autoscaler/main.go) lines 99-103 for CPU utilisation plus
+> PSI `full avg10`).
+>
+> ```text
+>  ClaimStats(ready+pending) ──┐
+>                              ├──► demand = ceil(slots / perBrowser)
+>  node CPU util + PSI avg10 ──┘
+>                              │
+>                              ▼
+>        pressure > high  ──► Desired - 1        (relieve the node)
+>        pressure < low   ──► demand             (grow toward what is waiting)
+>        inside the band  ──► hold Desired       (no oscillation)
+>                              │
+>                              ▼
+>        bound growth to Desired + BootConcurrency   (pending pods starve the scheduler)
+>                              │
+>                              ▼
+>                       clamp to Min … Max ──► publish
+> ```
+>
+> The band is written in the source as "Grow toward demand only when the node is clearly free,
+> shrink one step when it is clearly saturated, and hold inside the band so the loop cannot
+> oscillate at the reconcile rate" (lines 151-153); the boot limit as "pending pods hold requests
+> that starve the scheduler" (lines 166-168).
+
+> [!note]- The 17 refusals were the scheduler, on CPU requests
+> Quoted from [07](research/session-lifecycle-elasticity/07-overload-and-suspend.md) lines 55-59:
+>
+> > **The scheduler refused first, on CPU requests.** Seventeen acquisitions failed with
+> > `0/1 nodes are available: 1 Insufficient cpu`, and those claims never reached Ready. At 100m of
+> > CPU requests per sandbox pod, the node's 6000m allocatable admits roughly sixty pods before the
+> > scheduler says no, and the run offered exactly that offered load, so the refusal arrived while the
+> > pool was still refilling. These are the 17 `acquisition_failed` rows, each carrying the scheduler's
+> > message.
+>
+> The outcomes table beside it: `success` 42, `acquisition_failed` 17, `reset_failed` 1 (line 37).
+
 ## 3. GPU offload
 
 > GPU acceleration does **not** raise concurrent session capacity on this node for the
