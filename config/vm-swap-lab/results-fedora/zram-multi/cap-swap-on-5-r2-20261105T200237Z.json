@@ -1,7 +1,7 @@
 {
-  "run_id": "cap-swap-on-5-r2-20261105T185759Z",
+  "run_id": "cap-swap-on-5-r2-20261105T200237Z",
   "config": {
-    "run_id": "cap-swap-on-5-r2-20261105T185759Z",
+    "run_id": "cap-swap-on-5-r2-20261105T200237Z",
     "sessions": 15,
     "rate": 0.25,
     "fixed_arrival": false,
@@ -28,8 +28,8 @@
     "out_dir": "/home/fedora/runs",
     "dry_run": false
   },
-  "started_ns": 1793905280110664093,
-  "ended_ns": 1793905423299724575,
+  "started_ns": 1793909150348600142,
+  "ended_ns": 1793909253512703421,
   "planned_sessions": 15,
   "stored_sessions": 15,
   "outcomes": {
@@ -38,29 +38,29 @@
   "arrival_rate": 0.25,
   "offered_concurrency": 5,
   "concurrency": {
-    "mean": 2.5257027750903727,
-    "peak": 8
+    "mean": 3.173029817790103,
+    "peak": 9
   },
   "queue_wait_ms": {
     "count": 15,
-    "p50": 124.924788,
-    "p95": 37883.218614,
-    "p99": 37883.218614,
-    "max": 73187.769439
+    "p50": 166.030729,
+    "p95": 2232.202451,
+    "p99": 2232.202451,
+    "max": 23237.167785
   },
   "acquire_ms": {
     "count": 15,
-    "p50": 144.446799,
-    "p95": 52701.197773,
-    "p99": 52701.197773,
-    "max": 73353.298093
+    "p50": 289.68089,
+    "p95": 2292.828304,
+    "p99": 2292.828304,
+    "max": 23272.260341
   },
   "hold_ms": {
     "count": 15,
-    "p50": 20081.724152,
-    "p95": 20630.420546,
-    "p99": 20630.420546,
-    "max": 22074.871494
+    "p50": 20083.152627,
+    "p95": 20240.903026,
+    "p99": 20240.903026,
+    "max": 20365.485568
   },
   "reset_ms": {
     "count": 0,
@@ -71,10 +71,10 @@
   },
   "release_ms": {
     "count": 15,
-    "p50": 377.003275,
-    "p95": 27810.026751,
-    "p99": 27810.026751,
-    "max": 29230.490025
+    "p50": 68.594042,
+    "p95": 314.602913,
+    "p99": 314.602913,
+    "max": 419.07725
   },
   "resume_ms": {
     "count": 0,
@@ -84,7 +84,8 @@
     "max": 0
   },
   "launch_types": {
-    "warm": 15
+    "cold": 1,
+    "warm": 14
   },
   "buckets": {
     "20s": {
@@ -97,17 +98,17 @@
   },
   "resources": {
     "sessions_with_samples": 15,
-    "cpu_core_seconds_total": 87.93035099999999,
-    "cpu_core_seconds_p50": 5.358165,
-    "cpu_core_seconds_max": 8.643117,
-    "mem_peak_p50_mib": 249.69921875,
-    "mem_peak_max_mib": 425.59765625,
-    "mem_working_set_peak_max_mib": 314.28515625,
+    "cpu_core_seconds_total": 78.365045,
+    "cpu_core_seconds_p50": 5.213857,
+    "cpu_core_seconds_max": 5.765992,
+    "mem_peak_p50_mib": 238.109375,
+    "mem_peak_max_mib": 369.15234375,
+    "mem_working_set_peak_max_mib": 320.76953125,
     "throttled_sessions": 0,
     "oom_kills": 0,
-    "refault_sessions": 14,
-    "swap_peak_p50_mib": 4.8125,
-    "swap_peak_max_mib": 23.65234375
+    "refault_sessions": 15,
+    "swap_peak_p50_mib": 3.01171875,
+    "swap_peak_max_mib": 17.796875
   },
   "instances": {
     "total": 15,
@@ -118,12 +119,12 @@
     "boot_cpu_peak_max": 0
   },
   "host_memory": {
-    "samples": 54,
-    "total_mib": 3902.66015625,
-    "min_available_mib": 487.4921875,
-    "min_at_ns": 1793905362021469472,
-    "min_ratio_pct": 12.491279485847494,
-    "swap_used_mib": 127.9140625
+    "samples": 52,
+    "total_mib": 3902.65234375,
+    "min_available_mib": 698.27734375,
+    "min_at_ns": 1793909228913331531,
+    "min_ratio_pct": 17.892378880949355,
+    "swap_used_mib": 127.98046875
   },
   "template_limits": {
     "container": "browser",
@@ -138,292 +139,282 @@
   },
   "replicas": [
     {
-      "at_ns": 1793905280146310821,
+      "at_ns": 1793909150387783408,
       "desired": 5,
       "ready": 5,
       "note": "preflight"
     },
     {
-      "at_ns": 1793905280196987574,
+      "at_ns": 1793909150472220217,
       "desired": 5,
       "ready": 5,
       "note": "resize"
     },
     {
-      "at_ns": 1793905282451824977,
+      "at_ns": 1793909152867192404,
       "desired": 5,
       "ready": 5
     },
     {
-      "at_ns": 1793905284449530722,
+      "at_ns": 1793909154872506907,
       "desired": 5,
       "ready": 5
     },
     {
-      "at_ns": 1793905286450457102,
-      "desired": 5,
-      "ready": 5
-    },
-    {
-      "at_ns": 1793905288453513923,
-      "desired": 5,
-      "ready": 5
-    },
-    {
-      "at_ns": 1793905290449668799,
-      "desired": 5,
-      "ready": 5
-    },
-    {
-      "at_ns": 1793905292450630844,
-      "desired": 5,
-      "ready": 5
-    },
-    {
-      "at_ns": 1793905294450912054,
-      "desired": 5,
-      "ready": 5
-    },
-    {
-      "at_ns": 1793905296451719606,
+      "at_ns": 1793909156868680005,
       "desired": 5,
       "ready": 4
     },
     {
-      "at_ns": 1793905298449114382,
-      "desired": 5,
-      "ready": 5
-    },
-    {
-      "at_ns": 1793905300450624706,
-      "desired": 5,
-      "ready": 3
-    },
-    {
-      "at_ns": 1793905302453529159,
-      "desired": 5,
-      "ready": 3
-    },
-    {
-      "at_ns": 1793905304455185856,
+      "at_ns": 1793909158870285971,
       "desired": 5,
       "ready": 4
     },
     {
-      "at_ns": 1793905306479926338,
+      "at_ns": 1793909160867826161,
       "desired": 5,
       "ready": 5
     },
     {
-      "at_ns": 1793905308449016819,
-      "desired": 5,
-      "ready": 5
-    },
-    {
-      "at_ns": 1793905310450897979,
-      "desired": 5,
-      "ready": 5
-    },
-    {
-      "at_ns": 1793905312448498270,
-      "desired": 5,
-      "ready": 5
-    },
-    {
-      "at_ns": 1793905314452217405,
-      "desired": 5,
-      "ready": 3
-    },
-    {
-      "at_ns": 1793905316449130223,
-      "desired": 5,
-      "ready": 1
-    },
-    {
-      "at_ns": 1793905318448973650,
-      "desired": 5,
-      "ready": 1
-    },
-    {
-      "at_ns": 1793905320460351936,
+      "at_ns": 1793909162867509959,
       "desired": 5,
       "ready": 4
     },
     {
-      "at_ns": 1793905322448970677,
+      "at_ns": 1793909164870375871,
+      "desired": 5,
+      "ready": 4
+    },
+    {
+      "at_ns": 1793909166879509530,
+      "desired": 5,
+      "ready": 3
+    },
+    {
+      "at_ns": 1793909168874758910,
+      "desired": 5,
+      "ready": 3
+    },
+    {
+      "at_ns": 1793909170932905552,
       "desired": 5,
       "ready": 5
     },
     {
-      "at_ns": 1793905324456574028,
+      "at_ns": 1793909172870060986,
       "desired": 5,
-      "ready": 1
+      "ready": 5
     },
     {
-      "at_ns": 1793905326475438279,
+      "at_ns": 1793909174872523810,
       "desired": 5,
-      "ready": 1
+      "ready": 5
     },
     {
-      "at_ns": 1793905328515999914,
+      "at_ns": 1793909176870756460,
+      "desired": 5,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793909178868380590,
+      "desired": 5,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793909180872010873,
+      "desired": 5,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793909182869313934,
+      "desired": 5,
+      "ready": 4
+    },
+    {
+      "at_ns": 1793909184869225557,
+      "desired": 5,
+      "ready": 4
+    },
+    {
+      "at_ns": 1793909186905727511,
+      "desired": 5,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793909188869346948,
+      "desired": 5,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793909190867810337,
+      "desired": 5,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793909192867898128,
+      "desired": 5,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793909194871486897,
+      "desired": 5,
+      "ready": 3
+    },
+    {
+      "at_ns": 1793909196896567618,
       "desired": 5,
       "ready": 2
     },
     {
-      "at_ns": 1793905360727244139,
-      "desired": 5,
-      "ready": 3
-    },
-    {
-      "at_ns": 1793905362015011763,
-      "desired": 5,
-      "ready": 3
-    },
-    {
-      "at_ns": 1793905364320106041,
-      "desired": 5,
-      "ready": 3
-    },
-    {
-      "at_ns": 1793905367684391594,
-      "desired": 5,
-      "ready": 3
-    },
-    {
-      "at_ns": 1793905373695200293,
-      "desired": 5,
-      "ready": 3
-    },
-    {
-      "at_ns": 1793905376482322640,
-      "desired": 5,
-      "ready": 3
-    },
-    {
-      "at_ns": 1793905378448756964,
-      "desired": 5,
-      "ready": 3
-    },
-    {
-      "at_ns": 1793905380449883124,
-      "desired": 5,
-      "ready": 3
-    },
-    {
-      "at_ns": 1793905382453496994,
-      "desired": 5,
-      "ready": 3
-    },
-    {
-      "at_ns": 1793905384451350613,
-      "desired": 5,
-      "ready": 3
-    },
-    {
-      "at_ns": 1793905386451698251,
-      "desired": 5,
-      "ready": 3
-    },
-    {
-      "at_ns": 1793905388460895944,
-      "desired": 5,
-      "ready": 3
-    },
-    {
-      "at_ns": 1793905390448478847,
-      "desired": 5,
-      "ready": 3
-    },
-    {
-      "at_ns": 1793905392448879171,
-      "desired": 5,
-      "ready": 3
-    },
-    {
-      "at_ns": 1793905394450005267,
-      "desired": 5,
-      "ready": 3
-    },
-    {
-      "at_ns": 1793905396456351881,
-      "desired": 5,
-      "ready": 3
-    },
-    {
-      "at_ns": 1793905398451107832,
-      "desired": 5,
-      "ready": 3
-    },
-    {
-      "at_ns": 1793905400452830405,
-      "desired": 5,
-      "ready": 3
-    },
-    {
-      "at_ns": 1793905402449785995,
+      "at_ns": 1793909198868427523,
       "desired": 5,
       "ready": 1
     },
     {
-      "at_ns": 1793905404448351667,
-      "desired": 5,
-      "ready": 1
-    },
-    {
-      "at_ns": 1793905406450362430,
-      "desired": 5,
-      "ready": 1
-    },
-    {
-      "at_ns": 1793905408448587635,
-      "desired": 5,
-      "ready": 1
-    },
-    {
-      "at_ns": 1793905410448886900,
-      "desired": 5,
-      "ready": 1
-    },
-    {
-      "at_ns": 1793905412452906802,
-      "desired": 5,
-      "ready": 1
-    },
-    {
-      "at_ns": 1793905414449513541,
-      "desired": 5,
-      "ready": 1
-    },
-    {
-      "at_ns": 1793905416451440997,
-      "desired": 5,
-      "ready": 1
-    },
-    {
-      "at_ns": 1793905418449875656,
+      "at_ns": 1793909200876664917,
       "desired": 5,
       "ready": 2
     },
     {
-      "at_ns": 1793905420451151071,
+      "at_ns": 1793909202877761744,
+      "desired": 5,
+      "ready": 1
+    },
+    {
+      "at_ns": 1793909205022594654,
+      "desired": 5,
+      "ready": 2
+    },
+    {
+      "at_ns": 1793909206913874381,
+      "desired": 5,
+      "ready": 2
+    },
+    {
+      "at_ns": 1793909208966629884,
+      "desired": 5,
+      "ready": 2
+    },
+    {
+      "at_ns": 1793909210881264160,
       "desired": 5,
       "ready": 5
     },
     {
-      "at_ns": 1793905422454946552,
+      "at_ns": 1793909212907212356,
+      "desired": 5,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793909214885489347,
+      "desired": 5,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793909216896586907,
+      "desired": 5,
+      "ready": 1
+    },
+    {
+      "at_ns": 1793909218868215675,
+      "desired": 5,
+      "ready": 1
+    },
+    {
+      "at_ns": 1793909220871807890,
+      "desired": 5,
+      "ready": 1
+    },
+    {
+      "at_ns": 1793909222868671600,
+      "desired": 5,
+      "ready": 1
+    },
+    {
+      "at_ns": 1793909224867079871,
+      "desired": 5,
+      "ready": 4
+    },
+    {
+      "at_ns": 1793909226868390079,
+      "desired": 5,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793909228913067159,
+      "desired": 5,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793909230873631801,
+      "desired": 5,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793909232878103665,
+      "desired": 5,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793909234870513641,
+      "desired": 5,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793909236868089513,
+      "desired": 5,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793909238867565524,
+      "desired": 5,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793909240866119672,
+      "desired": 5,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793909242866665846,
+      "desired": 5,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793909244867211670,
+      "desired": 5,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793909246867888166,
+      "desired": 5,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793909248867636368,
+      "desired": 5,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793909250868038283,
+      "desired": 5,
+      "ready": 5
+    },
+    {
+      "at_ns": 1793909252867779581,
       "desired": 5,
       "ready": 5
     }
   ],
   "elasticity": "not tested: the workload did not exceed what the platform served",
   "next": "raise --overload-factor and repeat until the platform refuses, which is where the boundary is",
-  "arrival_window_s": 62.391505713,
+  "arrival_window_s": 52.687705378,
   "admission_ms": {
     "count": 15,
-    "p50": 0.002972,
-    "p95": 0.01343,
-    "p99": 0.01343,
-    "max": 0.016258
+    "p50": 0.003071,
+    "p95": 0.012891,
+    "p99": 0.012891,
+    "max": 0.016942
   },
   "per_session": {
     "task_ms": {
@@ -449,36 +440,43 @@
     },
     "cpu_core_seconds": {
       "count": 15,
-      "p50": 5.358165,
-      "p95": 8.567916,
-      "p99": 8.567916,
-      "max": 8.643117
+      "p50": 5.213857,
+      "p95": 5.60174,
+      "p99": 5.60174,
+      "max": 5.765992
     },
     "mem_mib": {
       "count": 15,
-      "p50": 249.69921875,
-      "p95": 384.6015625,
-      "p99": 384.6015625,
-      "max": 425.59765625
+      "p50": 238.109375,
+      "p95": 334.26953125,
+      "p99": 334.26953125,
+      "max": 369.15234375
     }
   },
   "node_cpu": {
     "total_cores": 4,
-    "peak_cores": 1.4448690588449384,
-    "mean_cores": 1.3401247552599382,
-    "samples": 54
+    "peak_cores": 1.5807626364563665,
+    "mean_cores": 1.4814012802632315,
+    "samples": 52
   },
   "shared_sessions": 0,
   "peak_waiting_sessions": 4,
-  "peak_in_flight_sessions": 11,
+  "peak_in_flight_sessions": 10,
   "cleanup_failures": 0,
   "acquire_by_launch_type": {
+    "cold": {
+      "count": 1,
+      "p50": 23272.260341,
+      "p95": 23272.260341,
+      "p99": 23272.260341,
+      "max": 23272.260341
+    },
     "warm": {
-      "count": 15,
-      "p50": 144.446799,
-      "p95": 52701.197773,
-      "p99": 52701.197773,
-      "max": 73353.298093
+      "count": 14,
+      "p50": 153.227769,
+      "p95": 1806.083769,
+      "p99": 1806.083769,
+      "max": 2292.828304
     }
   },
   "active_at_cutoff": 0

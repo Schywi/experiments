@@ -1,4 +1,11 @@
 ---
+# PARKED (2026-11-05). The two-layer recompression hypothesis was never measured:
+# the secondary compressor never got selected, and the last blocker is a sysfs ABI
+# detail — recomp_algorithm takes 'algo=zstd priority=1', not a bare name — whose
+# fix is in cloud-init.yaml but was never verified on a guest.
+# Nothing here affects provision.yml (Ubuntu); this file is kept so the experiment
+# can be resumed with one boot instead of being rebuilt.
+#
 # Fedora lab — ONLY for the two-layer zram recompression experiment.
 #
 # Why a separate playbook: CONFIG_ZRAM_MULTI_COMP is opt-in per distro and Ubuntu

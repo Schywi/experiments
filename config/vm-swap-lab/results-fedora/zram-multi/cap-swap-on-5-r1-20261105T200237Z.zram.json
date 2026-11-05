@@ -1,0 +1,20 @@
+{
+  "class": "swap-on",
+  "replicas": "5",
+  "recomp_algo": "zstd",
+  "recomp_type": null,
+  "recomp_ok": 0,
+  "recomp_reason": "no secondary selected and the write failed (disksize=134217728; recomp_algorithm: '')",
+  "recomp_ms": 67,
+  "recomp_cpu_s": 0.3,
+  "host_cpu_s": 244,
+  "ratio_before": 4.7,
+  "ratio_after": 4.7,
+  "ratio_rung": 0.0,
+  "ratio_reported": 4.7,
+  "orig_after_bytes": 782336,
+  "compr_after_bytes": 166413,
+  "mem_used_bytes": 1433600,
+  "disksize_bytes": 134217728,
+  "dev_used_pct": 0.6
+}

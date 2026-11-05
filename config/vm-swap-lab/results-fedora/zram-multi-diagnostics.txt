@@ -5,7 +5,7 @@ zram-multi
 start mode=zram zram=128M algo=lzo-rle secondary=zstd
 zram: modprobe
 secondary: before write, disksize=0 recomp_algorithm=''
-secondary: REFUSED (disksize=0, now ''); continuing without it so the guest keeps its swap
+secondary: set via key=value to '#1: lzo-rle lzo lz4 lz4hc [zstd] deflate 842 '
 zram: creating device size=128M algo=lzo-rle
 swap: zram 128M lzo-rle on /dev/zram0 OK
 -- cloud-init logs present --
@@ -14,44 +14,139 @@ swap: zram 128M lzo-rle on /dev/zram0 OK
 -- cloud-init output (last 25 lines) --
 no cloud-init-output.log
 -- journal: cloud-init --
-Nov 05 18:54:12 vm-swap-lab cloud-init[902]: SHA256:ji4O6Upk20LM+5Shyf4lm2hIDno8rewmqICMEbW/54g root@vm-swap-lab
-Nov 05 18:54:12 vm-swap-lab cloud-init[902]: The key's randomart image is:
-Nov 05 18:54:12 vm-swap-lab cloud-init[902]: +---[ECDSA 256]---+
-Nov 05 18:54:12 vm-swap-lab cloud-init[902]: |  .              |
-Nov 05 18:54:12 vm-swap-lab cloud-init[902]: | . .             |
-Nov 05 18:54:12 vm-swap-lab cloud-init[902]: |. .              |
-Nov 05 18:54:12 vm-swap-lab cloud-init[902]: |o. .             |
-Nov 05 18:54:12 vm-swap-lab cloud-init[902]: |.* ..   S        |
-Nov 05 18:54:12 vm-swap-lab cloud-init[902]: |Xo*.o. o         |
-Nov 05 18:54:12 vm-swap-lab cloud-init[902]: |@@o*..o .        |
-Nov 05 18:54:12 vm-swap-lab cloud-init[902]: |O=XoB=           |
-Nov 05 18:54:12 vm-swap-lab cloud-init[902]: |=OEOo.o          |
-Nov 05 18:54:12 vm-swap-lab cloud-init[902]: +----[SHA256]-----+
-Nov 05 18:54:12 vm-swap-lab cloud-init[902]: Generating public/private ed25519 key pair.
-Nov 05 18:54:12 vm-swap-lab cloud-init[902]: Your identification has been saved in /etc/ssh/ssh_host_ed25519_key
-Nov 05 18:54:12 vm-swap-lab cloud-init[902]: Your public key has been saved in /etc/ssh/ssh_host_ed25519_key.pub
-Nov 05 18:54:12 vm-swap-lab cloud-init[902]: The key fingerprint is:
-Nov 05 18:54:12 vm-swap-lab cloud-init[902]: SHA256:JLi835L3VV67WjU28H2aF+BJYrx11ZaSCMdIVeqAz6Q root@vm-swap-lab
-Nov 05 18:54:12 vm-swap-lab cloud-init[902]: The key's randomart image is:
-Nov 05 18:54:12 vm-swap-lab cloud-init[902]: +--[ED25519 256]--+
-Nov 05 18:54:12 vm-swap-lab cloud-init[902]: |        .o=oo.. +|
-Nov 05 18:54:12 vm-swap-lab cloud-init[902]: |     .  ..oo.o .+|
-Nov 05 18:54:12 vm-swap-lab cloud-init[902]: |    . ...o = =.o |
-Nov 05 18:54:12 vm-swap-lab cloud-init[902]: |   . . o= + * * .|
-Nov 05 18:54:12 vm-swap-lab cloud-init[902]: |    o  ESo o o.*=|
-Nov 05 18:54:12 vm-swap-lab cloud-init[902]: |     .       o.+B|
-Nov 05 18:54:12 vm-swap-lab cloud-init[902]: |    .  .    . +o.|
-Nov 05 18:54:12 vm-swap-lab cloud-init[902]: |     .o..  .  ...|
-Nov 05 18:54:12 vm-swap-lab cloud-init[902]: |      .o...  ... |
-Nov 05 18:54:12 vm-swap-lab cloud-init[902]: +----[SHA256]-----+
+Nov 05 19:58:52 vm-swap-lab cloud-init[901]: SHA256:lrNM3l5Aff6Z9fEkYaVj9Vquj/Zrqdftu20+BCNfmj8 root@vm-swap-lab
+Nov 05 19:58:52 vm-swap-lab cloud-init[901]: The key's randomart image is:
+Nov 05 19:58:52 vm-swap-lab cloud-init[901]: +---[ECDSA 256]---+
+Nov 05 19:58:52 vm-swap-lab cloud-init[901]: |                o|
+Nov 05 19:58:52 vm-swap-lab cloud-init[901]: |           .   +.|
+Nov 05 19:58:52 vm-swap-lab cloud-init[901]: |          . . B o|
+Nov 05 19:58:52 vm-swap-lab cloud-init[901]: |         o . B B |
+Nov 05 19:58:52 vm-swap-lab cloud-init[901]: |        S . o X.+|
+Nov 05 19:58:52 vm-swap-lab cloud-init[901]: |       = + . + *B|
+Nov 05 19:58:52 vm-swap-lab cloud-init[901]: |        + . . +oB|
+Nov 05 19:58:52 vm-swap-lab cloud-init[901]: |         . .  .E=|
+Nov 05 19:58:52 vm-swap-lab cloud-init[901]: |          .  o=O%|
+Nov 05 19:58:52 vm-swap-lab cloud-init[901]: +----[SHA256]-----+
+Nov 05 19:58:52 vm-swap-lab cloud-init[901]: Generating public/private ed25519 key pair.
+Nov 05 19:58:52 vm-swap-lab cloud-init[901]: Your identification has been saved in /etc/ssh/ssh_host_ed25519_key
+Nov 05 19:58:52 vm-swap-lab cloud-init[901]: Your public key has been saved in /etc/ssh/ssh_host_ed25519_key.pub
+Nov 05 19:58:52 vm-swap-lab cloud-init[901]: The key fingerprint is:
+Nov 05 19:58:52 vm-swap-lab cloud-init[901]: SHA256:NyN69U7BayKi//kg0A9vx5yB9gfKosY2KrTtaP6xpxA root@vm-swap-lab
+Nov 05 19:58:52 vm-swap-lab cloud-init[901]: The key's randomart image is:
+Nov 05 19:58:52 vm-swap-lab cloud-init[901]: +--[ED25519 256]--+
+Nov 05 19:58:52 vm-swap-lab cloud-init[901]: |                 |
+Nov 05 19:58:52 vm-swap-lab cloud-init[901]: |                 |
+Nov 05 19:58:52 vm-swap-lab cloud-init[901]: |                 |
+Nov 05 19:58:52 vm-swap-lab cloud-init[901]: |     .   . .     |
+Nov 05 19:58:52 vm-swap-lab cloud-init[901]: | E  . o S B o    |
+Nov 05 19:58:52 vm-swap-lab cloud-init[901]: | ..  . B O B o   |
+Nov 05 19:58:52 vm-swap-lab cloud-init[901]: |..oo  = X B *    |
+Nov 05 19:58:52 vm-swap-lab cloud-init[901]: |.oo.B+ * = *     |
+Nov 05 19:58:52 vm-swap-lab cloud-init[901]: |o++O=o..o.. .    |
+Nov 05 19:58:52 vm-swap-lab cloud-init[901]: +----[SHA256]-----+
 
 == node / resources ==
 4
                total        used        free      shared  buff/cache   available
-Mem:            3902        3755          87         206         495         146
+Mem:            3902        3721          92         208         523         181
 Swap:            127         127           0
 Filename				Type		Size		Used		Priority
-/dev/zram0                              partition	131068		130904		-1
+/dev/zram0                              partition	131068		130864		-1
 
 == node conditions ==
+NAME          STATUS   ROLES           AGE   VERSION        INTERNAL-IP   EXTERNAL-IP   OS-IMAGE                          KERNEL-VERSION                    CONTAINER-RUNTIME
+vm-swap-lab   Ready    control-plane   35m   v1.37.2+k3s1   10.0.2.15     <none>        Fedora Linux 44 (Cloud Edition)   6.19.10-300.fc44.x86_64 (amd64)   containerd://2.3.7-k3s1
+
+== pool / sandboxes / pods ==
+NAME                                                      READY   DESIRED   TEMPLATE      AGE
+sandboxwarmpool.extensions.agents.x-k8s.io/browser-pool           6         browser-tpl   35m
+
+NAME                                         READY   REASON                 AGE
+sandbox.agents.x-k8s.io/browser-pool-2c2bm   False   DependenciesNotReady   27m
+sandbox.agents.x-k8s.io/browser-pool-4g4k6   True    DependenciesReady      28m
+sandbox.agents.x-k8s.io/browser-pool-4gdwh   False   DependenciesNotReady   27m
+sandbox.agents.x-k8s.io/browser-pool-57lrv   False   DependenciesNotReady   27m
+sandbox.agents.x-k8s.io/browser-pool-8f6g6   False   DependenciesNotReady   27m
+sandbox.agents.x-k8s.io/browser-pool-bfvqn   True    DependenciesReady      27m
+sandbox.agents.x-k8s.io/browser-pool-cppt7   True    DependenciesReady      27m
+sandbox.agents.x-k8s.io/browser-pool-cxgwd   True    DependenciesReady      28m
+sandbox.agents.x-k8s.io/browser-pool-kz4hl   False   DependenciesNotReady   27m
+sandbox.agents.x-k8s.io/browser-pool-r44qq   True    DependenciesReady      28m
+sandbox.agents.x-k8s.io/browser-pool-rs4th   False   DependenciesNotReady   27m
+sandbox.agents.x-k8s.io/browser-pool-skvq7   True    DependenciesReady      28m
+sandbox.agents.x-k8s.io/browser-pool-t28fp   True    DependenciesReady      28m
+sandbox.agents.x-k8s.io/browser-pool-trls8   True    DependenciesReady      27m
+sandbox.agents.x-k8s.io/browser-pool-xmqpc   True    DependenciesReady      28m
+
+NAME                     READY   STATUS              RESTARTS   AGE   IP           NODE          NOMINATED NODE   READINESS GATES
+pod/browser-pool-2c2bm   1/1     Running             0          27m   10.42.0.66   vm-swap-lab   <none>           <none>
+pod/browser-pool-4g4k6   1/1     Running             0          28m   10.42.0.62   vm-swap-lab   <none>           <none>
+pod/browser-pool-4gdwh   0/1     ContainerCreating   0          27m   <none>       vm-swap-lab   <none>           <none>
+pod/browser-pool-57lrv   0/1     ContainerCreating   0          27m   <none>       vm-swap-lab   <none>           <none>
+pod/browser-pool-8f6g6   0/1     Pending             0          27m   <none>       <none>        <none>           <none>
+pod/browser-pool-bfvqn   1/1     Running             0          27m   10.42.0.63   vm-swap-lab   <none>           <none>
+pod/browser-pool-cppt7   1/1     Running             0          27m   10.42.0.65   vm-swap-lab   <none>           <none>
+pod/browser-pool-cxgwd   1/1     Running             0          28m   10.42.0.60   vm-swap-lab   <none>           <none>
+pod/browser-pool-kz4hl   0/1     ContainerCreating   0          27m   <none>       vm-swap-lab   <none>           <none>
+pod/browser-pool-r44qq   1/1     Running             0          28m   10.42.0.58   vm-swap-lab   <none>           <none>
+pod/browser-pool-rs4th   0/1     Running             0          27m   10.42.0.67   vm-swap-lab   <none>           <none>
+pod/browser-pool-skvq7   1/1     Running             0          28m   10.42.0.61   vm-swap-lab   <none>           <none>
+pod/browser-pool-t28fp   1/1     Running             0          28m   10.42.0.57   vm-swap-lab   <none>           <none>
+pod/browser-pool-trls8   1/1     Running             0          27m   10.42.0.64   vm-swap-lab   <none>           <none>
+pod/browser-pool-xmqpc   1/1     Running             0          28m   10.42.0.59   vm-swap-lab   <none>           <none>
+
+== pod describe (last 25 lines each) ==
+--- pod/browser-pool-2c2bm ---
+    Readiness:    exec [/bin/sh -c wget -q -O- http://127.0.0.1:9222/json/version >/dev/null] delay=0s timeout=3s period=2s successThreshold=1 failureThreshold=150
+    Environment:  <none>
+    Mounts:       <none>
+Conditions:
+  Type                        Status
+  PodReadyToStartContainers   True 
+  Initialized                 True 
+  Ready                       False 
+  ContainersReady             True 
+  PodScheduled                True 
+Volumes:                      <none>
+QoS Class:                    Burstable
+Node-Selectors:               <none>
+Tolerations:                  node.kubernetes.io/not-ready:NoExecute op=Exists for 300s
+                              node.kubernetes.io/unreachable:NoExecute op=Exists for 300s
+Events:
+  Type     Reason        Age                  From               Message
+  ----     ------        ----                 ----               -------
+  Normal   Scheduled     40m                  default-scheduler  Successfully assigned sandbox-demo/browser-pool-2c2bm to vm-swap-lab
+  Normal   Pulled        40m                  kubelet            spec.containers{browser}: Container image "us-central1-docker.pkg.dev/k8s-staging-images/agent-sandbox/chrome-sandbox:latest-main" already present on machine and can be accessed by the pod
+  Normal   Created       40m                  kubelet            spec.containers{browser}: Container created
+  Normal   Started       40m                  kubelet            spec.containers{browser}: Container started
+  Warning  Unhealthy     40m (x2 over 40m)    kubelet            spec.containers{browser}: Readiness probe failed:
+  Warning  Unhealthy     2m12s (x4 over 26m)  kubelet            spec.containers{browser}: Readiness probe failed: command timed out: "/bin/sh -c wget -q -O- http://127.0.0.1:9222/json/version >/dev/null" timed out after 3s
+  Warning  NodeNotReady  7s                   node-controller    Node is not ready
+--- pod/browser-pool-4g4k6 ---
+    Mounts:       <none>
+Conditions:
+  Type                        Status
+  PodReadyToStartContainers   False 
+  Initialized                 True 
+  Ready                       False 
+  ContainersReady             False 
+  PodScheduled                True 
+Volumes:                      <none>
+QoS Class:                    Burstable
+Node-Selectors:               <none>
+Tolerations:                  node.kubernetes.io/not-ready:NoExecute op=Exists for 300s
+                              node.kubernetes.io/unreachable:NoExecute op=Exists for 300s
+Events:
+  Type     Reason        Age                From               Message
+  ----     ------        ----               ----               -------
+  Normal   Scheduled     41m                default-scheduler  Successfully assigned sandbox-demo/browser-pool-4g4k6 to vm-swap-lab
+  Normal   Pulled        40m                kubelet            spec.containers{browser}: Container image "us-central1-docker.pkg.dev/k8s-staging-images/agent-sandbox/chrome-sandbox:latest-main" already present on machine and can be accessed by the pod
+  Normal   Created       40m                kubelet            spec.containers{browser}: Container created
+  Normal   Started       40m                kubelet            spec.containers{browser}: Container started
+  Warning  Unhealthy     40m                kubelet            spec.containers{browser}: Readiness probe failed:
+  Warning  NodeNotReady  16s                node-controller    Node is not ready
+  Warning  Unhealthy     10s (x6 over 25m)  kubelet            spec.containers{browser}: Readiness probe failed: command timed out: "/bin/sh -c wget -q -O- http://127.0.0.1:9222/json/version >/dev/null" timed out after 3s
+  Warning  Unhealthy     10s                kubelet            spec.containers{browser}: Readiness probe errored and resulted in unknown state: rpc error: code = NotFound desc = failed to exec in container: failed to load task: no running task found: container not created: not found
+  Warning  Unhealthy     7s                 kubelet            spec.containers{browser}: Readiness probe errored and resulted in unknown state: rpc error: code = Unknown desc = failed to exec in container: container is in CONTAINER_EXITED state
+--- pod/browser-pool-4gdwh ---
 Unable to connect to the server: net/http: TLS handshake timeout

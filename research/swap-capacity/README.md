@@ -458,6 +458,52 @@ What the failed attempt *did* establish, and keeps:
 
 ---
 
+### 5e.2 Abandoned (2026-11-05): the hypothesis was never measured
+
+The two-layer experiment is **parked**. It never produced a single rung in which
+recompression actually ran, so the hypothesis remains untested rather than
+refuted — and the cost of getting there stopped being worth it.
+
+**What the harness established along the way** (all measured):
+
+- Fedora 44's guest kernel has `CONFIG_ZRAM_MULTI_COMP=y`; the guest exposes
+  `recomp_algorithm`. Ubuntu does not, in any release checked (noble 6.8 and
+  plucky 6.14: `amd64: 'n'`). The distro question is answered.
+- Capacity at 128 MiB zram, 4 vCPU / 4 GiB, is **5 concurrent sessions** for both
+  the control and the intended treatment arm — the same 5 an Ubuntu guest gives.
+- Neither arm reliably reached 6: rung 6 held once (18/18) and collapsed the
+  other three times, always with `host cpu` in the thousands against ~200–300 on
+  healthy rungs. That is control-plane starvation, not memory pressure.
+- Reportable compression is identical between the arms (ratio 3.65 vs 3.44,
+  `cpu core-s` 5.28 vs 5.27), which is the signature of *the same configuration* —
+  as expected, since no secondary compressor was ever selected.
+
+**Why it kept failing, in order of discovery** — each one masked the next:
+
+1. recompression guard checked `recomp_algorithm`, which is empty until written →
+   no pass, ever (fixed; §5e.1).
+2. arm compared against arms with a different primary algorithm → effect not
+   attributable; control arm added (fixed; §5e.1).
+3. running the write while the device was initialised (`disksize` set) → `EBUSY`
+   by construction. The write must happen between `modprobe` and `disksize`.
+4. **the real blocker, found last:** `recomp_algorithm` takes **key=value**, not a
+   bare algorithm name. `zram_drv.c`'s `recomp_algorithm_store()` parses with
+   `next_arg()` and returns `-EINVAL` for any token without a value, so
+   `echo zstd > recomp_algorithm` can never work on a kernel with that ABI. The
+   documented form is `echo "algo=zstd priority=1" > .../recomp_algorithm`.
+
+Point 4 is provable from the source and was fixed, but the fix was never verified
+on a guest before the experiment was stopped. **UNKNOWN:** whether the key=value
+form selects the secondary on this kernel, and therefore whether two layers beat
+picking a single algorithm. Anyone resuming starts from that one line in
+`config/vm-swap-lab/cloud-init.yaml` (grep `algo=${zram_secondary}`) and one boot.
+
+The harness is kept, not deleted: `ansible/provision-fedora.yml` runs the two
+arms unchanged, `rung_timeout` caps a failing rung at 6 minutes, and
+`setup-swap.sh` logs every step so a silent failure is no longer possible.
+
+---
+
 ## 6. Upstream: swap is not capacity, by design
 
 **[D]** KEP-2400 (NodeSwap), the authority for what Kubernetes does here:
