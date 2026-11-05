@@ -223,7 +223,8 @@ docs/  cv/               gitignored, local only
 
 `ROADMAP.md` for the phases and open work, `evolution/` for the reasoning and
 the commit that produced each layer, `research/` for design notes, `AGENTS.md`
-for the rules agents have to follow.
+for the rules agents have to follow. [`pitch.md`](pitch.md) is the short version:
+what the platform holds, where the GPU actually pays, and which wall stops it.
 
 The same notes are published as a site with an Obsidian-style graph — click a
 node to open the note: <https://schywi.github.io/experiments/>. It is built from
