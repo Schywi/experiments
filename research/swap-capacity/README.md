@@ -602,6 +602,7 @@ Artefacts: `runs/<run-id>.json` (report), `runs/<run-id>.db` (per-session SQLite
 
 ## Where this sits
 
+- Which workload class paid for a rebalance: [01 — attribution across classes](01-attribution-across-classes.md)
 - Collection: [Research](../README.md)
 - The sibling CPU study: [CPU oversubscription](../cpu-oversubscription/README.md)
 - Where these numbers get used: [note 15](../session-lifecycle-elasticity/15-capacity-plane-and-demand-plane.md)
