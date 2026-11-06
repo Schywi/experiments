@@ -155,7 +155,17 @@ sandboxes:
           # driver loaded (note 19), so the request stays an overcommit lever.
           memory: 128Mi
         limits:
-          memory: 768Mi
+          # 840Mi, not the 768Mi the bulk cell keeps. Measured on 2026-11-06:
+          # eight contexts on the heavy page (the LeBlanc champion page at
+          # RIOT_HEAVY=8) hold ~730-760 MiB of *anonymous* memory, and the 768Mi
+          # ceiling killed the whole container three runs in a row
+          # (memory: usage 786432kB, limit 786432kB; anon 754368512; failcnt
+          # 11749). The OOM killed the browser process with its contexts, so
+          # eight sessions reported "browser lost" and the run failed. zram swap
+          # moved ~59 MiB out and did not help: anon cannot be reclaimed.
+          # Headroom above the measured peak, not a new policy: the request above
+          # stays the overcommit lever.
+          memory: 840Mi
       dshmSizeLimit: 512Mi
 
   pools:
