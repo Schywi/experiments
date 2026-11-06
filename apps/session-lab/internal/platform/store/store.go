@@ -79,6 +79,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     workingset_refault_anon INTEGER NOT NULL DEFAULT 0,
     workingset_refault_file INTEGER NOT NULL DEFAULT 0,
     swap_peak_bytes INTEGER NOT NULL DEFAULT 0,
+    swap_allowance_bytes INTEGER NOT NULL DEFAULT 0,
     oom_kill       INTEGER NOT NULL DEFAULT 0,
     mem_pressure_some_usec INTEGER NOT NULL DEFAULT 0,
     samples        INTEGER NOT NULL DEFAULT 0
@@ -153,6 +154,7 @@ func Open(path string) (*Store, error) {
 		"task_duration_us INTEGER NOT NULL DEFAULT 0",
 		"script_duration_us INTEGER NOT NULL DEFAULT 0",
 		"js_heap_bytes INTEGER NOT NULL DEFAULT 0",
+		"swap_allowance_bytes INTEGER NOT NULL DEFAULT 0",
 	} {
 		if _, err := db.Exec("ALTER TABLE sessions ADD COLUMN " + column); err != nil &&
 			!strings.Contains(err.Error(), "duplicate column name") {
@@ -335,7 +337,7 @@ func (s *Store) UpdateSession(session model.Session) error {
 		    throttled_usec = ?, nr_throttled = ?, mem_peak_bytes = ?,
 		    mem_working_set_peak_bytes = ?, mem_inactive_file_bytes = ?, shmem_peak_bytes = ?,
 		    anon_peak_bytes = ?, workingset_refault_anon = ?, workingset_refault_file = ?,
-		    swap_peak_bytes = ?, oom_kill = ?, mem_pressure_some_usec = ?, samples = ?
+		    swap_peak_bytes = ?, swap_allowance_bytes = ?, oom_kill = ?, mem_pressure_some_usec = ?, samples = ?
 		 WHERE id = ?`,
 		session.Instance, string(session.Outcome), session.Error,
 		session.ClaimCreatedNS, session.ReadyNS, session.HoldStartNS, session.HoldEndNS,
@@ -348,7 +350,7 @@ func (s *Store) UpdateSession(session model.Session) error {
 		session.ThrottledUsec, session.NRThrottled, session.MemPeakBytes,
 		session.MemWorkingSetPeak, session.MemInactiveFile, session.ShmemPeak,
 		session.AnonPeak, session.RefaultAnon, session.RefaultFile,
-		session.SwapPeakBytes, session.OOMKill, session.MemPressureSomeUsec, session.Samples,
+		session.SwapPeakBytes, session.SwapAllowanceBytes, session.OOMKill, session.MemPressureSomeUsec, session.Samples,
 		session.ID)
 	if err != nil {
 		return fmt.Errorf("update session %d: %w", session.ID, err)
@@ -421,7 +423,7 @@ func (s *Store) Sessions() ([]model.Session, error) {
 		        task_duration_us, script_duration_us, js_heap_bytes, cpu_usec, cpu_pressure_some_usec, cpu_pressure_full_usec,
 		        throttled_usec, nr_throttled, mem_peak_bytes, mem_working_set_peak_bytes,
 		        mem_inactive_file_bytes, shmem_peak_bytes, anon_peak_bytes,
-		        workingset_refault_anon, workingset_refault_file, swap_peak_bytes, oom_kill,
+		        workingset_refault_anon, workingset_refault_file, swap_peak_bytes, swap_allowance_bytes, oom_kill,
 		        mem_pressure_some_usec, samples
 		 FROM sessions ORDER BY id`)
 	if err != nil {
@@ -443,7 +445,7 @@ func (s *Store) Sessions() ([]model.Session, error) {
 			&s.TaskDurationUS, &s.ScriptDurationUS, &s.JSHeapBytes, &s.CPUUsec, &s.CPUPressureSomeUsec, &s.CPUPressureFullUsec,
 			&s.ThrottledUsec, &s.NRThrottled, &s.MemPeakBytes, &s.MemWorkingSetPeak,
 			&s.MemInactiveFile, &s.ShmemPeak, &s.AnonPeak,
-			&s.RefaultAnon, &s.RefaultFile, &s.SwapPeakBytes, &s.OOMKill,
+			&s.RefaultAnon, &s.RefaultFile, &s.SwapPeakBytes, &s.SwapAllowanceBytes, &s.OOMKill,
 			&s.MemPressureSomeUsec, &s.Samples); err != nil {
 			return nil, err
 		}

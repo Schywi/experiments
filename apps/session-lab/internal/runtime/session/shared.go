@@ -330,14 +330,17 @@ func divideReading(reading Reading, shares int) Reading {
 		NRThrottled:         div(reading.NRThrottled),
 		// Memory is the pod's, exactly like CPU: a session row must not claim the
 		// whole browser's footprint, or 30 sessions look like 10 GiB.
-		MemCurrent:          div(reading.MemCurrent),
-		MemWorkingSet:       div(reading.MemWorkingSet),
-		MemInactiveFile:     div(reading.MemInactiveFile),
-		Shmem:               div(reading.Shmem),
-		Anon:                div(reading.Anon),
-		RefaultAnon:         div(reading.RefaultAnon),
-		RefaultFile:         div(reading.RefaultFile),
-		SwapCurrent:         div(reading.SwapCurrent),
+		MemCurrent:      div(reading.MemCurrent),
+		MemWorkingSet:   div(reading.MemWorkingSet),
+		MemInactiveFile: div(reading.MemInactiveFile),
+		Shmem:           div(reading.Shmem),
+		Anon:            div(reading.Anon),
+		RefaultAnon:     div(reading.RefaultAnon),
+		RefaultFile:     div(reading.RefaultFile),
+		SwapCurrent:     div(reading.SwapCurrent),
+		// The allowance is a limit on the pod, not usage, so it is not divided:
+		// every session in a shared browser was given the same ceiling.
+		SwapMax:             reading.SwapMax,
 		OOMKill:             reading.OOMKill,
 		MemPressureSomeUsec: div(reading.MemPressureSomeUsec),
 	}

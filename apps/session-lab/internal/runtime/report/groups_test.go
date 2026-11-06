@@ -16,9 +16,11 @@ func TestBuildGroupsSplitsByClassPoolAndTier(t *testing.T) {
 	}
 	sessions := []model.Session{
 		{ID: 1, Instance: "cpu-1", Pool: "browser-pool", Outcome: model.OutcomeSuccess,
-			SwapPeakBytes: 64 << 20, CPUUsec: 4_210_000, ClaimCreatedNS: 1e9, ReadyNS: 1.097e9},
+			SwapPeakBytes: 64 << 20, SwapAllowanceBytes: 64 << 20,
+			CPUUsec: 4_210_000, ClaimCreatedNS: 1e9, ReadyNS: 1.097e9},
 		{ID: 2, Instance: "cpu-1", Pool: "browser-pool", Outcome: model.OutcomeSuccess,
-			SwapPeakBytes: 32 << 20, CPUUsec: 4_000_000, ClaimCreatedNS: 1e9, ReadyNS: 1.101e9},
+			SwapPeakBytes: 32 << 20, SwapAllowanceBytes: 64 << 20,
+			CPUUsec: 4_000_000, ClaimCreatedNS: 1e9, ReadyNS: 1.101e9},
 		{ID: 3, Instance: "gpu-1", Pool: "browser-pool-gpu", Outcome: model.OutcomeTimeout,
 			CPUUsec: 8_100_000, ClaimCreatedNS: 1e9, ReadyNS: 1.210e9},
 	}
@@ -41,6 +43,9 @@ func TestBuildGroupsSplitsByClassPoolAndTier(t *testing.T) {
 	}
 	if tiered.CPUCoreSecondsP50 < 4.0 || tiered.CPUCoreSecondsP50 > 4.3 {
 		t.Fatalf("tiered cpu p50 = %.3f core-s, want ~4.1", tiered.CPUCoreSecondsP50)
+	}
+	if tiered.Allowance != "64 MiB" {
+		t.Fatalf("tiered allowance = %q, want %q", tiered.Allowance, "64 MiB")
 	}
 
 	untiered := groups[1]

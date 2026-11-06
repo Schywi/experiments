@@ -12,16 +12,33 @@ import (
 // was given, what it paid in swap, and what it cost in CPU and queue time. It is
 // the answer to "which workload paid for the rebalance" (research/swap-capacity/01).
 type Group struct {
-	Class             string  `json:"class"`
-	Pool              string  `json:"pool"`
-	Tier              string  `json:"tier"`
-	Sessions          int     `json:"sessions"`
-	Swapped           int     `json:"sessions_swapped"`
+	Class    string `json:"class"`
+	Pool     string `json:"pool"`
+	Tier     string `json:"tier"`
+	Sessions int    `json:"sessions"`
+	Swapped  int    `json:"sessions_swapped"`
+	// Allowance is the memory.swap.max the pods in this cell were actually given,
+	// as sampled: "0", a size, or "max" when unconstrained. It is the number the
+	// swap experiment's writer set, recorded rather than assumed.
+	Allowance         string  `json:"swap_allowance"`
 	SwapP95MiB        float64 `json:"swap_p95_mib,omitempty"`
 	SwapMaxMiB        float64 `json:"swap_max_mib,omitempty"`
 	CPUCoreSecondsP50 float64 `json:"cpu_core_seconds_p50,omitempty"`
 	QueueP95Ms        float64 `json:"queue_p95_ms,omitempty"`
 	Failed            int     `json:"failed"`
+}
+
+// allowanceLabel renders a sampled memory.swap.max for a human: -1 is "max",
+// zero is "0", anything else is a size in MiB.
+func allowanceLabel(bytes int64) string {
+	switch {
+	case bytes < 0:
+		return "max"
+	case bytes == 0:
+		return "0"
+	default:
+		return fmt.Sprintf("%.0f MiB", float64(bytes)/(1<<20))
+	}
 }
 
 // tierUnknown is the label a session carries when its instance row is missing or
@@ -40,10 +57,11 @@ func BuildGroups(sessions []model.Session, instances []model.Instance) []Group {
 	}
 
 	type acc struct {
-		group Group
-		swap  []float64
-		cpu   []float64
-		queue []float64
+		group     Group
+		swap      []float64
+		cpu       []float64
+		queue     []float64
+		allowance int64
 	}
 	buckets := map[string]*acc{}
 	order := make([]string, 0, len(sessions))
@@ -77,6 +95,14 @@ func BuildGroups(sessions []model.Session, instances []model.Instance) []Group {
 			entry.group.Swapped++
 			entry.swap = append(entry.swap, float64(session.SwapPeakBytes)/(1<<20))
 		}
+		// The widest allowance any pod in this cell was given. -1 ("max") outranks
+		// every finite value, so one unconstrained pod makes the cell read "max".
+		switch {
+		case session.SwapAllowanceBytes < 0:
+			entry.allowance = -1
+		case entry.allowance >= 0 && session.SwapAllowanceBytes > entry.allowance:
+			entry.allowance = session.SwapAllowanceBytes
+		}
 		if session.CPUUsec > 0 {
 			entry.cpu = append(entry.cpu, float64(session.CPUUsec)/1e6)
 		}
@@ -88,6 +114,7 @@ func BuildGroups(sessions []model.Session, instances []model.Instance) []Group {
 	groups := make([]Group, 0, len(order))
 	for _, key := range order {
 		entry := buckets[key]
+		entry.group.Allowance = allowanceLabel(entry.allowance)
 		if len(entry.swap) > 0 {
 			entry.group.SwapP95MiB = percentile(entry.swap, 95)
 			entry.group.SwapMaxMiB = percentile(entry.swap, 100)
@@ -120,13 +147,16 @@ func (r *Report) printGroups(w io.Writer) {
 		return
 	}
 	fmt.Fprintf(w, "\nper class/pool/tier (tier is the pod annotation session-lab.io/spill)\n")
-	fmt.Fprintf(w, "  %-8s %-12s %-10s %5s %9s %10s %11s %10s %5s\n",
+	fmt.Fprintf(w, "  %-8s %-18s %-10s %5s %9s %10s %11s %10s %5s\n",
 		"class", "pool", "tier", "sess", "swapped", "swap p95", "cpu core-s", "queue p95", "fail")
 	for _, group := range r.Groups {
-		fmt.Fprintf(w, "  %-8s %-12s %-10s %5d %9s %10s %11.2f %10.0f %5d\n",
+		fmt.Fprintf(w, "  %-8s %-18s %-10s %5d %9s %10s %11.2f %10.0f %5d\n",
 			group.Class, group.Pool, group.Tier, group.Sessions,
 			fmt.Sprintf("%d/%d", group.Swapped, group.Sessions),
 			fmt.Sprintf("%.0f MiB", group.SwapP95MiB),
 			group.CPUCoreSecondsP50, group.QueueP95Ms, group.Failed)
+		if group.Allowance != "" {
+			fmt.Fprintf(w, "  %-8s allowance %.10s\n", "", group.Allowance)
+		}
 	}
 }

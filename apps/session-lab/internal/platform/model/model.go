@@ -162,6 +162,10 @@ type Session struct {
 	RefaultAnon         int64 `json:"workingset_refault_anon,omitempty"`
 	RefaultFile         int64 `json:"workingset_refault_file,omitempty"`
 	SwapPeakBytes       int64 `json:"swap_peak_bytes,omitempty"`
+	// SwapAllowanceBytes is the pod's memory.swap.max as sampled: the allowance
+	// the writer actually set, in bytes. -1 means the cgroup said "max" and 0
+	// means the pod could not swap.
+	SwapAllowanceBytes  int64 `json:"swap_allowance_bytes,omitempty"`
 	OOMKill             int64 `json:"oom_kill,omitempty"`
 	MemPressureSomeUsec int64 `json:"mem_pressure_some_usec,omitempty"`
 	Samples             int64 `json:"samples,omitempty"`

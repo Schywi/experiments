@@ -117,6 +117,17 @@ func (s *Sampler) Sample(ctx context.Context, podUID, node string) (Reading, boo
 	if swap, err := readInt(filepath.Join(dir, "memory.swap.current")); err == nil {
 		reading.SwapCurrent = swap
 	}
+	// memory.swap.max is the allowance this pod was actually given, and the only
+	// number that decides whether it can swap at all. "max" means unconstrained,
+	// recorded as -1 so it cannot be mistaken for "no swap" (0).
+	if raw, err := os.ReadFile(filepath.Join(dir, "memory.swap.max")); err == nil {
+		text := strings.TrimSpace(string(raw))
+		if text == "max" {
+			reading.SwapMax = -1
+		} else if allowance, convErr := strconv.ParseInt(text, 10, 64); convErr == nil {
+			reading.SwapMax = allowance
+		}
+	}
 	if events, err := readKV(filepath.Join(dir, "memory.events")); err == nil {
 		reading.OOMKill = events["oom_kill"]
 	}
@@ -237,6 +248,9 @@ type Reading struct {
 	RefaultAnon         int64
 	RefaultFile         int64
 	SwapCurrent         int64
+	// SwapMax is the pod's memory.swap.max: the allowance it was given, in bytes,
+	// or -1 when the cgroup says "max" (unconstrained). Zero means no swap.
+	SwapMax             int64
 	OOMKill             int64
 	MemPressureSomeUsec int64
 }

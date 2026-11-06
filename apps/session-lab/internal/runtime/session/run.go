@@ -735,9 +735,23 @@ func merge(first, next Reading) Reading {
 		RefaultAnon:         next.RefaultAnon,
 		RefaultFile:         next.RefaultFile,
 		SwapCurrent:         max(first.SwapCurrent, next.SwapCurrent),
+		// A limit does not move, so the first reading is the answer; a later
+		// non-zero value covers a pod whose cgroup was written after it started.
+		SwapMax:             carryAllowance(first.SwapMax, next.SwapMax),
 		OOMKill:             max(first.OOMKill, next.OOMKill),
 		MemPressureSomeUsec: next.MemPressureSomeUsec,
 	}
+}
+
+// carryAllowance keeps a swap allowance across samples: the first non-zero value
+// wins, because a limit written by the node-side writer does not change during a
+// session. A pod sampled before the write keeps the later value instead of
+// reporting zero.
+func carryAllowance(first, next int64) int64 {
+	if first != 0 {
+		return first
+	}
+	return next
 }
 
 // applyReading writes the sampled integrals into the session row. The counters
@@ -760,6 +774,9 @@ func applyReading(session *model.Session, reading Reading, sampled bool) {
 	session.RefaultAnon = reading.RefaultAnon
 	session.RefaultFile = reading.RefaultFile
 	session.SwapPeakBytes = reading.SwapCurrent
+	// The allowance is a limit, not usage: it is written once per pod by the swap
+	// experiment's writer and does not grow, so the sampled value is the answer.
+	session.SwapAllowanceBytes = reading.SwapMax
 	session.OOMKill = reading.OOMKill
 	session.MemPressureSomeUsec = reading.MemPressureSomeUsec
 	session.Samples++

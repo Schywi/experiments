@@ -59,7 +59,7 @@ sampled. None of it is a new measurement.
 
 | Gap | Consequence |
 |---|---|
-| No record of the allowance a pod actually received | a run can say which tier a pod was given (below), not the byte value the writer put in `memory.swap.max`; that number belongs to the swap experiment's writer |
+| The allowance is read, not written | `memory.swap.max` is sampled per pod and stored (`swap_allowance_bytes`), so a run reports the value the pod actually had. Writing it stays the swap experiment's job: their writer selects pods on `session-lab.io/spill`. Until it runs, a tiered cell reads `allowance 0` |
 | Two meanings of "class" live in the two studies | `capacity.sh:4-9` calls `swap-off` / `swap-on` a class, while `model.go:52-55` calls `normal` / `batch` / `bulk` a class |
 
 The second row is the one that will corrupt a rerun. Any note, script or report
@@ -77,6 +77,7 @@ Two contract items are built, and the pod shape for a second cell is committed.
 | Tier read back from the template | `internal/infra/sandbox/sandbox.go` (`TemplateLimits.SpillTier`), `internal/infra/kube/kube.go` `Template()` reads `spec.podTemplate.metadata.annotations.session-lab.io/spill` |
 | Tier resolved per pool and recorded per instance | `internal/runtime/session/pool.go` (`resolveTiers`, `tagTier`), `run.go` preflight, `internal/platform/model/model.go` (`Instance.SwapTier`), `internal/platform/store/store.go` (`instances.swap_tier`, with an ALTER migration for older run databases) |
 | Grouping by (class, pool, tier) in the report | `internal/runtime/report/groups.go` (`BuildGroups`, `printGroups`), `report.go` (`Groups` field, printed after the resources block) |
+| The allowance actually applied, recorded per session and per cell | `internal/infra/measure/measure.go` reads `memory.swap.max` (`-1` for `max`, `0` for no swap), carried through `run.go`/`shared.go`, stored as `sessions.swap_allowance_bytes`, and shown per group as `allowance 64 MiB` |
 
 The GPU cell is a chart object now, so an operator raises `browser-pool-gpu` and
 `--pool-by-class` routes a class to it. A pod whose template carries no
