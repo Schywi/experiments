@@ -118,15 +118,13 @@ func (s *Sampler) Sample(ctx context.Context, podUID, node string) (Reading, boo
 		reading.SwapCurrent = swap
 	}
 	// memory.swap.max is the allowance this pod was actually given, and the only
-	// number that decides whether it can swap at all. "max" means unconstrained,
-	// recorded as -1 so it cannot be mistaken for "no swap" (0).
-	if raw, err := os.ReadFile(filepath.Join(dir, "memory.swap.max")); err == nil {
-		text := strings.TrimSpace(string(raw))
-		if text == "max" {
-			reading.SwapMax = -1
-		} else if allowance, convErr := strconv.ParseInt(text, 10, 64); convErr == nil {
-			reading.SwapMax = allowance
-		}
+	// number that decides whether it can swap at all. The value that matters is
+	// the container scope's, not the pod slice's: kubelet writes 0 on the
+	// container and leaves the slice at "max", and a child cannot exceed its
+	// parent, so reading the slice would report an allowance the browser does not
+	// have. "max" at both levels is -1, meaning unconstrained.
+	if allowance, ok := swapAllowance(dir); ok {
+		reading.SwapMax = allowance
 	}
 	if events, err := readKV(filepath.Join(dir, "memory.events")); err == nil {
 		reading.OOMKill = events["oom_kill"]
@@ -182,6 +180,56 @@ func readKV(path string) (map[string]int64, error) {
 		out[fields[0]] = value
 	}
 	return out, scanner.Err()
+}
+
+// swapAllowance reads the memory.swap.max that applies to a pod's processes. The
+// container scopes are what kubelet writes and what the browser actually runs
+// under, so they win over the pod slice. The widest value across scopes is taken:
+// every container in this pod is the browser or its sidecar, and the sidecar's
+// own allowance must not hide the browser's. -1 means "max" at every level read.
+func swapAllowance(podDir string) (int64, bool) {
+	read := func(path string) (int64, bool) {
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			return 0, false
+		}
+		text := strings.TrimSpace(string(raw))
+		if text == "max" {
+			return -1, true
+		}
+		value, convErr := strconv.ParseInt(text, 10, 64)
+		if convErr != nil {
+			return 0, false
+		}
+		return value, true
+	}
+
+	scopes, _ := filepath.Glob(filepath.Join(podDir, "*.scope", "memory.swap.max"))
+	var best int64
+	foundFinite, sawMax := false, false
+	for _, path := range scopes {
+		value, ok := read(path)
+		if !ok {
+			continue
+		}
+		if value < 0 {
+			// A scope that says "max" is not the browser's container: kubelet
+			// writes a number on every container it starts, and the sandbox's
+			// own process shows up here too. Keep it only as a fallback.
+			sawMax = true
+			continue
+		}
+		if !foundFinite || value < best {
+			best, foundFinite = value, true
+		}
+	}
+	if foundFinite {
+		return best, true
+	}
+	if sawMax {
+		return -1, true
+	}
+	return read(filepath.Join(podDir, "memory.swap.max"))
 }
 
 func readInt(path string) (int64, error) {
