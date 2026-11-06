@@ -1,0 +1,31 @@
+# The sandbox Chromium with a Vulkan raster path, for the GPU cell.
+#
+# Same base, same bridge, same ports as Containerfile; the added layer is mesa's
+# Vulkan drivers and the loader, which give Chromium's ANGLE backend a RADV device
+# to rasterise on. The host's kernel side (amdgpu) and the /dev/dri node are the
+# pod's job, not the image's: config/sandbox/values.yaml mounts the render node and
+# sets privileged for the browser-tpl-gpu template.
+FROM mcr.microsoft.com/playwright/python:v1.48.0-jammy
+
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
+    CDP_PORT=9222 \
+    CDP_UPSTREAM_PORT=9223 \
+    CDP_WS_PORT=0 \
+    TARGET_URL=https://example.com/ \
+    WINDOW_SIZE=1280,600 \
+    VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/radeon_icd.x86_64.json
+
+# mesa-vulkan-drivers carries the ICD json and RADV; vulkan-tools is kept because
+# vulkaninfo is how a pod proves which device it was given before a run counts.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends mesa-vulkan-drivers vulkan-tools \
+ && rm -rf /var/lib/apt/lists/*
+
+COPY --chown=root:root entrypoint-vulkan.sh /usr/local/bin/browser-entrypoint
+COPY --chown=root:root cdp-bridge.py /usr/local/bin/cdp-bridge
+COPY --chown=root:root cdp-forward.py /usr/local/bin/cdp-forward
+RUN chmod 0755 /usr/local/bin/browser-entrypoint /usr/local/bin/cdp-bridge /usr/local/bin/cdp-forward
+
+EXPOSE 9222
+
+ENTRYPOINT ["/usr/local/bin/browser-entrypoint"]

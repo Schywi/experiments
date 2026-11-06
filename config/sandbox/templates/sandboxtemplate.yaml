@@ -1,10 +1,12 @@
+{{- range .Values.sandboxes.templates }}
+---
 apiVersion: extensions.agents.x-k8s.io/v1beta1
 kind: SandboxTemplate
 metadata:
-  name: {{ .Values.sandboxes.template.name }}
-  namespace: {{ .Values.sandboxes.namespace }}
+  name: {{ .name }}
+  namespace: {{ $.Values.sandboxes.namespace }}
   labels:
-    {{- include "sandbox.labels" . | nindent 4 }}
+    {{- include "sandbox.labels" $ | nindent 4 }}
 spec:
   # Managed (the default) makes the controller generate one NetworkPolicy per
   # template. That policy is what the isolation badge reports:
@@ -12,28 +14,43 @@ spec:
   #   egress   0.0.0.0/0 except 10/8, 172.16/12, 192.168/16, 169.254/16
   #   dnsPolicy None with public resolvers, no search domain
   #   automountServiceAccountToken false
-  # A bare `kind: Sandbox` gets none of that (experiment 01, H4 caveat), which
-  # is why the console draws tiles from claims only.
+  # A bare `kind: Sandbox` gets none of that (experiment 01, H4 caveat), which is
+  # why the console draws tiles from claims only.
   networkPolicyManagement: Managed
   podTemplate:
     metadata:
       labels:
         app: browser-sandbox
+      {{- with .spill }}
+      # The memory tier this cell's pods are allowed to spill into. Nothing in
+      # Kubernetes reads it; the swap experiment's cgroup writer selects pods by
+      # it, and session-lab records it per instance so a run can report which
+      # tier each class was given (research/swap-capacity/01).
+      annotations:
+        session-lab.io/spill: {{ . | quote }}
+      {{- end }}
     spec:
       restartPolicy: Never
       terminationGracePeriodSeconds: 1
       containers:
         - name: browser
-          image: {{ .Values.sandboxes.template.image }}
-          imagePullPolicy: {{ .Values.sandboxes.template.pullPolicy }}
+          image: {{ .image }}
+          imagePullPolicy: {{ .pullPolicy }}
+          {{- if .privileged }}
+          # The render node is taken the way the Track C probe takes it: the
+          # device plugin advertises amd.com/render as a single node-wide unit,
+          # so the pod mounts the host's /dev/dri directly.
+          securityContext:
+            privileged: true
+          {{- end }}
           ports:
             - name: cdp
-              containerPort: {{ .Values.sandboxes.template.cdpPort }}
+              containerPort: {{ .cdpPort }}
           env:
             - name: CDP_PORT
-              value: {{ .Values.sandboxes.template.cdpPort | quote }}
+              value: {{ .cdpPort | quote }}
             - name: TARGET_URL
-              value: {{ .Values.sandboxes.template.targetUrl | quote }}
+              value: {{ .targetUrl | quote }}
             - name: WINDOW_SIZE
               value: "1280,600"
           # The readiness probe is the whole point of the template: it makes
@@ -46,26 +63,30 @@ spec:
             periodSeconds: 2
             failureThreshold: 30
           resources:
-            {{- toYaml .Values.sandboxes.template.resources | nindent 12 }}
+            {{- toYaml .resources | nindent 12 }}
           volumeMounts:
             - name: shm
               mountPath: /dev/shm
+            {{- with .driMount }}
+            - name: dri
+              mountPath: {{ .mountPath }}
+            {{- end }}
         # Chromium binds DevTools to 127.0.0.1 whatever --remote-debugging-address
         # says, so a client outside the pod cannot reach it. This sidecar shares
         # the pod's network namespace and splices bytes from the pod IP to that
         # loopback port: an HTTP request, a WebSocket upgrade and a raw CDP frame
         # all arrive unchanged.
         - name: cdp-forward
-          image: {{ .Values.sandboxes.template.forwarder.image }}
-          imagePullPolicy: {{ .Values.sandboxes.template.forwarder.pullPolicy }}
+          image: {{ .forwarder.image }}
+          imagePullPolicy: {{ .forwarder.pullPolicy }}
           ports:
             - name: cdp-ws
-              containerPort: {{ .Values.sandboxes.template.forwarder.port }}
+              containerPort: {{ .forwarder.port }}
           env:
             - name: CDP_FORWARD_LISTEN
-              value: ":{{ .Values.sandboxes.template.forwarder.port }}"
+              value: ":{{ .forwarder.port }}"
             - name: CDP_FORWARD_UPSTREAM
-              value: "127.0.0.1:{{ .Values.sandboxes.template.cdpUpstreamPort }}"
+              value: "127.0.0.1:{{ .cdpUpstreamPort }}"
           resources:
             requests:
               cpu: 10m
@@ -82,4 +103,10 @@ spec:
         - name: shm
           emptyDir:
             medium: Memory
-            sizeLimit: {{ .Values.sandboxes.template.dshmSizeLimit }}
+            sizeLimit: {{ .dshmSizeLimit }}
+        {{- with .driMount }}
+        - name: dri
+          hostPath:
+            path: {{ .hostPath }}
+        {{- end }}
+{{- end }}

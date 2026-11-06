@@ -63,58 +63,110 @@ router:
 
 sandboxes:
   namespace: sandbox-demo
-  template:
-    name: browser-tpl
-    # Built by apps/browser-sandbox and pushed to the in-cluster registry.
-    # Always: the in-cluster registry serves a mutable `:local` tag, so a cached
-    # image must not be reused (the same reason the assistant chart says Always).
-    image: 127.0.0.1:5000/browser-sandbox:local
-    pullPolicy: Always
-    targetUrl: https://example.com/
-    # The port Chromium's DevTools answers on inside the pod, and the port the
-    # bridge publishes for HTTP callers.
-    cdpUpstreamPort: 9223
-    cdpPort: 9222
-    # Sidecar that republishes loopback:9223 on the pod IP over raw TCP, so a
-    # CDP client outside the pod can hold a WebSocket to Chromium directly.
-    # Built from apps/cdp-forward and pushed by config/registry/kaniko-build.sh.
-    forwarder:
-      image: 127.0.0.1:5000/session-lab-cdp-forward:local
+  # Two cells, one pod shape each. A cell is (SandboxTemplate, SandboxWarmPool);
+  # session-lab picks one per session through --pool-by-class, so the class
+  # chooses the pool, the pool chooses the template, the template chooses the
+  # pod. The CPU cell is the default and the one the console's tiles use.
+  templates:
+    - name: browser-tpl
+      # Built by apps/browser-sandbox and pushed to the in-cluster registry.
+      # Always: the in-cluster registry serves a mutable `:local` tag, so a cached
+      # image must not be reused (the same reason the assistant chart says Always).
+      image: 127.0.0.1:5000/browser-sandbox:local
       pullPolicy: Always
-      port: 9224
-    resources:
-      requests:
-        # 10m, from 100m: the oversubscription lever under test. A request is
-        # admission, not enforcement — with no CPU limit the browser still bursts
-        # to whatever the node has, so this only changes how many pods the
-        # scheduler will place (66 by the pod cap, not by CPU).
-        cpu: 10m
-        # Measured on this cluster (cgroup memory.peak, no sessions running):
-        # an idle browser pod needs ~190 MiB, and ~360 MiB while carrying eight
-        # real-page contexts. The request is an overcommit lever, not a cap: at
-        # 128Mi the scheduler admits more pods than the node has physical memory
-        # for, which is exactly what the oversubscription study measures. The
-        # 768Mi limit stays as the hard ceiling.
-        memory: 128Mi
-      limits:
-        # POLICY: no CPU limit. A CPU limit is a CFS quota, and a browser that
-        # touches it is throttled even while the node is idle — 248 of 360
-        # measured sessions were throttled at the "1" this field used to set.
-        # CPU is compressible, so a pod without a quota simply competes on
-        # shares; the request above is the scheduling guarantee. See
-        # research/session-lifecycle-elasticity/12-cpu-requests-not-limits.md.
-        #
-        # Memory keeps its limit: memory is incompressible, and without one a
-        # single sandbox grows until the node OOMs.
-        #
-        # The field is commented out rather than deleted so nobody re-adds it
-        # by habit without reading the note.
-        # cpu: "1"
-        memory: 768Mi
-    dshmSizeLimit: 512Mi
-  warmPool:
-    name: browser-pool
-    # 8, not the 12 a full grid draws. Experiment 02 measured ~9.1 *active*
-    # Chromium instances against this host's free CPU; idle memory would allow
-    # ~28, and the difference is what makes a 12-tile grid lag during a demo.
-    replicas: 8
+      # Rendered as the pod annotation session-lab.io/spill. It names the memory
+      # tier the swap study measured (research/swap-capacity/): none, zram-2to1,
+      # zram-5to1, disk. Nothing in Kubernetes acts on it: the swap experiment's
+      # cgroup writer selects pods by this annotation, and session-lab reads it
+      # back so a run reports which tier each class was given. Empty = no
+      # annotation, which the report shows as tier "-".
+      spill: zram-2to1
+      targetUrl: https://example.com/
+      # The port Chromium's DevTools answers on inside the pod, and the port the
+      # bridge publishes for HTTP callers.
+      cdpUpstreamPort: 9223
+      cdpPort: 9222
+      # Sidecar that republishes loopback:9223 on the pod IP over raw TCP, so a
+      # CDP client outside the pod can hold a WebSocket to Chromium directly.
+      # Built from apps/cdp-forward and pushed by config/registry/kaniko-build.sh.
+      forwarder:
+        image: 127.0.0.1:5000/session-lab-cdp-forward:local
+        pullPolicy: Always
+        port: 9224
+      resources:
+        requests:
+          # 10m, from 100m: the oversubscription lever under test. A request is
+          # admission, not enforcement — with no CPU limit the browser still bursts
+          # to whatever the node has, so this only changes how many pods the
+          # scheduler will place (66 by the pod cap, not by CPU).
+          cpu: 10m
+          # Measured on this cluster (cgroup memory.peak, no sessions running):
+          # an idle browser pod needs ~190 MiB, and ~360 MiB while carrying eight
+          # real-page contexts. The request is an overcommit lever, not a cap: at
+          # 128Mi the scheduler admits more pods than the node has physical memory
+          # for, which is exactly what the oversubscription study measures. The
+          # 768Mi limit stays as the hard ceiling.
+          memory: 128Mi
+        limits:
+          # POLICY: no CPU limit. A CPU limit is a CFS quota, and a browser that
+          # touches it is throttled even while the node is idle — 248 of 360
+          # measured sessions were throttled at the "1" this field used to set.
+          # CPU is compressible, so a pod without a quota simply competes on
+          # shares; the request above is the scheduling guarantee. See
+          # research/session-lifecycle-elasticity/12-cpu-requests-not-limits.md.
+          #
+          # Memory keeps its limit: memory is incompressible, and without one a
+          # single sandbox grows until the node OOMs.
+          #
+          # The field is commented out rather than deleted so nobody re-adds it
+          # by habit without reading the note.
+          # cpu: "1"
+          memory: 768Mi
+      dshmSizeLimit: 512Mi
+
+    # GPU cell. Same Chromium, same CDP ports, same readiness probe, same
+    # forwarder; the difference is the image (mesa-vulkan-drivers + RADV ICD) and
+    # the device access the pod needs. The device plugin advertises amd.com/render
+    # as one unit for the whole node, so the pod takes the render node the way the
+    # Track C probe does: privileged, with the host's /dev/dri mounted. That is
+    # the shape the GPU A/B measured (research/session-lifecycle-elasticity/19),
+    # written down here so the arm can be re-run from the repository alone.
+    - name: browser-tpl-gpu
+      # Built by apps/browser-sandbox/Containerfile.vulkan and pushed by
+      # config/sandbox/build/browser-sandbox-vulkan-job.yaml.
+      image: 127.0.0.1:5000/browser-sandbox-vulkan:local
+      pullPolicy: Always
+      spill: zram-2to1
+      targetUrl: https://example.com/
+      cdpUpstreamPort: 9223
+      cdpPort: 9222
+      privileged: true
+      driMount:
+        hostPath: /dev/dri
+        mountPath: /dev/dri
+      forwarder:
+        image: 127.0.0.1:5000/session-lab-cdp-forward:local
+        pullPolicy: Always
+        port: 9224
+      resources:
+        requests:
+          cpu: 10m
+          # ~460 MiB resident was measured for a privileged pod with the RADV
+          # driver loaded (note 19), so the request stays an overcommit lever.
+          memory: 128Mi
+        limits:
+          memory: 768Mi
+      dshmSizeLimit: 512Mi
+
+  pools:
+    - name: browser-pool
+      template: browser-tpl
+      # 8, not the 12 a full grid draws. Experiment 02 measured ~9.1 *active*
+      # Chromium instances against this host's free CPU; idle memory would allow
+      # ~28, and the difference is what makes a 12-tile grid lag during a demo.
+      replicas: 8
+    # GPU cell starts empty: an experiment raises it, so an idle demo never holds
+    # privileged pods with the render node attached.
+    - name: browser-pool-gpu
+      template: browser-tpl-gpu
+      replicas: 0

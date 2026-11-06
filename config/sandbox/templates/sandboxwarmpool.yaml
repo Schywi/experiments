@@ -1,11 +1,14 @@
+{{- range .Values.sandboxes.pools }}
+---
 apiVersion: extensions.agents.x-k8s.io/v1beta1
 kind: SandboxWarmPool
 metadata:
-  name: {{ .Values.sandboxes.warmPool.name }}
-  namespace: {{ .Values.sandboxes.namespace }}
+  name: {{ .name }}
+  namespace: {{ $.Values.sandboxes.namespace }}
   labels:
-    {{- include "sandbox.labels" . | nindent 4 }}
+    {{- include "sandbox.labels" $ | nindent 4 }}
 spec:
-  replicas: {{ .Values.sandboxes.warmPool.replicas }}
+  replicas: {{ .replicas }}
   sandboxTemplateRef:
-    name: {{ .Values.sandboxes.template.name }}
+    name: {{ .template }}
+{{- end }}
