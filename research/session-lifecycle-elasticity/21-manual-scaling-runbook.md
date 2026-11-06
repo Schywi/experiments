@@ -174,6 +174,57 @@ Arrival above ~2 sessions/s has been the control plane's limit in earlier runs, 
 the claim watch has failed above ~8 concurrent claims. Both show up as refusals
 rather than as capacity boundaries, so a run that hits them measures the harness.
 
+## Pod swap: the two pieces, both committed
+
+The node swaps (zram0, 8 GiB). Pods did not, and kubelet is why: its config had no
+`memorySwap` block, so it wrote `memory.swap.max = 0` on every container scope.
+Both halves are now files:
+
+```
+config/k3s/kubelet-swap.conf          KubeletConfiguration drop-in:
+                                      failSwapOn: false,
+                                      memorySwap.swapBehavior: LimitedSwap
+config/k3s/install-k3s.sh:52-58       installs it to
+                                      /var/lib/rancher/k3s/agent/etc/kubelet.conf.d/90-swap.conf
+scripts/swap-allowance.sh             writes a per-pod allowance, selected by
+                                      the pod annotation session-lab.io/spill
+```
+
+Applying them needs root, and this session has none (`sudo -n` refuses with "no new
+privileges"). The commands, for whoever does have it:
+
+```bash
+# 1. kubelet: lets Burstable pods swap at all. Restarting k3s kills every sandbox
+#    pod (restartPolicy: Never), so this is a deliberate act.
+sudo config/k3s/install-k3s.sh          # installs the drop-in and restarts k3s
+
+# 2. per-pod allowance, on the host, after the restart
+sudo scripts/swap-allowance.sh --dry-run
+sudo scripts/swap-allowance.sh --verify
+sudo scripts/swap-allowance.sh --bytes 67108864      # 64 MiB, the measured peak
+sudo scripts/swap-allowance.sh --tier zram-2to1
+sudo scripts/swap-allowance.sh --revoke              # back to 0
+```
+
+What each mode does: `--dry-run` lists the cgroup files it would write, `--verify`
+prints the current value of every one of them, the write mode sets the pod slice
+and every container scope (a child cannot exceed its parent, so writing only the
+slice leaves kubelet's container-level value in force) and reads each back, failing
+if the kernel kept something else. `--revoke` writes 0.
+
+Measured before any of it ran, on a live browser pod in the CPU cell:
+
+```
+pod slice                     max
+browser container scope       0
+sidecar container scope       0
+another scope in the pod      max
+```
+
+That is why `apps/session-lab` reads the container scopes rather than the slice
+(commit `27620c5`): the slice's `max` describes the parent, and the browser cannot
+swap.
+
 ## What this leaves manual
 
 ```

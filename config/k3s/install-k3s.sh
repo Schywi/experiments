@@ -24,6 +24,13 @@ resolv_dst="/etc/rancher/k3s/resolv.conf"
   echo "resolver file not found: ${resolv_src}" >&2
   exit 1
 }
+swap_src="${script_dir}/kubelet-swap.conf"
+swap_dropin_dir="/var/lib/rancher/k3s/agent/etc/kubelet.conf.d"
+swap_dst="${swap_dropin_dir}/90-swap.conf"
+[[ -f "${swap_src}" ]] || {
+  echo "kubelet swap drop-in not found: ${swap_src}" >&2
+  exit 1
+}
 
 if [[ "${EUID}" -ne 0 ]]; then
   echo "install-k3s.sh must run as root (use sudo)" >&2
@@ -44,6 +51,11 @@ fi
 install -d -m 0755 /etc/rancher/k3s
 install -m 0644 "${config_src}" "${config_dst}"
 install -m 0644 "${resolv_src}" "${resolv_dst}"
+# Pod swap: the node's zram device is not enough, kubelet is what decides whether
+# a pod may use it (config/k3s/kubelet-swap.conf).
+install -d -m 0755 "${swap_dropin_dir}"
+install -m 0644 "${swap_src}" "${swap_dst}"
+echo "kubelet: installed ${swap_dst} (failSwapOn: false, memorySwap.swapBehavior: LimitedSwap)"
 
 if [[ -x /usr/local/bin/k3s ]]; then
   echo "k3s already installed; restarting to apply ${config_dst}"
