@@ -203,10 +203,14 @@ apps/session-lab/session-lab --sessions 24 --fixed-arrival --rate 1 \
   --pool browser-pool-gpu --class normal --contexts-per-browser 1 \
   --out "$OUT/arm-b"
 
-# arm D: one run, two cells
+# arm D: one run, two cells. The class-to-pool mapping is the operator's choice;
+# nothing about the GPU cell makes it the "bulk" tier, and nothing about the CPU
+# cell makes it "interactive". Here the GPU cell carries the normal class, so the
+# report ends up with two normal rows that differ only by pool and tier.
 apps/session-lab/session-lab --sessions 48 --fixed-arrival --rate 1 \
-  --pool browser-pool --pool-by-class normal=browser-pool \
-  --pool-by-class bulk=browser-pool-gpu --class bulk --contexts-per-browser 1 \
+  --pool browser-pool \
+  --pool-by-class normal=browser-pool-gpu \
+  --class normal --contexts-per-browser 1 \
   --out "$OUT/arm-d"
 ```
 
