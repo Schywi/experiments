@@ -56,6 +56,32 @@ Decide with one question: **does this work require `/dev/dri/renderD128`?**
   declaratively in the future, use Sealed Secrets (or another reviewed secret
   encryption mechanism) and commit only the encrypted manifest.
 
+## Cluster Changes Are Declarative, or They Did Not Happen
+
+Live edits are how a result becomes unreproducible. The GPU experiment is the
+worked example: its sandbox arm ran from a `kubectl patch` on the live
+`SandboxTemplate` (privileged pod, `/dev/dri` hostPath, `browser-sandbox-vulkan`
+image) and that patch was never written back — so today the repository has the
+probe Pods and the device plugin, but no GPU `SandboxTemplate` and no GPU image
+build. The measurement exists; the configuration does not.
+
+- **Never `kubectl patch`, `kubectl edit`, `kubectl apply`, `kubectl create`,
+  `kubectl scale`, `kubectl delete`, `kubectl label`, `kubectl annotate`,
+  `kubectl set`, or `kubectl rollout` against a cluster as part of delivering a
+  change.** Not with `--dry-run=server` as a substitute for a manifest either.
+  The only sanctioned path is: write the manifest, commit it, let it be applied.
+- **Anything applied must exist as a committed file first.** If a value comes out
+  of a live object, read it (`kubectl get -o yaml`), put it in the chart/manifest,
+  and commit that. A cluster that is ahead of the repository is a defect.
+- **A change made by hand must be reported as hand-made.** If you cannot avoid an
+  imperative operation (emergency, or a one-off measurement that genuinely cannot
+  be expressed declaratively), say so explicitly, record the exact command and
+  the exact object state it produced, and note that the repository does not
+  reproduce it. Never let it pass as done.
+- **Experiments that need a different pod shape get a file, not a patch.** A
+  variant template belongs in `config/<area>/` with its own `SandboxTemplate`
+  and pool, so the arm can be re-run from the repository alone.
+
 ## Every Change Lands as an Atomic Commit
 
 - **Every change to this repository is committed before the task ends.** A change
