@@ -83,6 +83,10 @@ type Report struct {
 	CleanupFailures int                `json:"cleanup_failures"`
 	AcquireByLaunch map[string]Latency `json:"acquire_by_launch_type,omitempty"`
 	ActiveAtCutoff  int                `json:"active_at_cutoff"`
+	// Groups is the per (class, pool, memory tier) breakdown: who was given which
+	// tier, who actually swapped, and what it cost. Empty when the run stored no
+	// sessions.
+	Groups []Group `json:"groups,omitempty"`
 }
 
 // Latency is a distribution in milliseconds.
@@ -362,6 +366,10 @@ func Build(cfg model.RunConfig, plan schedule.Plan, st *store.Store) (*Report, e
 		}
 	}
 	rep.ActiveAtCutoff = rep.Outcomes[string(model.OutcomeWaiting)] + rep.Outcomes[string(model.OutcomePending)]
+	// The per-cell breakdown: class and tier come from the instance that served the
+	// session, the pool from the session row. Computed here so both stored and
+	// printed output carry the same numbers.
+	rep.Groups = BuildGroups(sessions, instances)
 
 	if replicas, err := st.RunReplicas(cfg.RunID); err == nil {
 		rep.Replicas = replicas
@@ -495,6 +503,7 @@ func (r *Report) Print(w io.Writer) {
 		fmt.Fprintf(w, "swap peak         p50 %.0f MiB  max %.0f MiB\n",
 			r.Resources.SwapPeakP50MiB, r.Resources.SwapPeakMaxMiB)
 	}
+	r.printGroups(w)
 	if r.Autoscaler != nil {
 		scalerState := "none"
 		if r.Autoscaler.PoolScaler != nil && *r.Autoscaler.PoolScaler {
