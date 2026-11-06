@@ -217,3 +217,22 @@ apps/session-lab/session-lab --sessions 48 --fixed-arrival --rate 1 \
 The report prints one row per (class, pool, tier). A row reading `tier -` means
 the pod's template carried no annotation, and `swapped 0/N` with `swap p95 0 MiB`
 means the writer never gave that cell an allowance.
+
+The riot workload runs as a Go test, not as a CLI invocation
+(`apps/session-lab/test/riot_live_test.go`, build tag `integration`). It reads its
+cell from the environment, so the same test measures either pool:
+
+```bash
+# CPU cell (defaults: browser-pool / browser-tpl / normal)
+SESSION_LAB_INTEGRATION=1 go test -tags integration -count=1 -timeout 900s \
+  ./test/ -run TestRiotLive -v
+
+# GPU cell
+RIOT_POOL=browser-pool-gpu RIOT_TEMPLATE=browser-tpl-gpu \
+SESSION_LAB_INTEGRATION=1 go test -tags integration -count=1 -timeout 900s \
+  ./test/ -run TestRiotLive -v
+```
+
+`RIOT_CLASS` picks the queue class (default `normal`). The GPU cell only serves
+sessions once `browser-pool-gpu` is above `replicas: 0` and the chart carrying
+`browser-tpl-gpu` is applied.

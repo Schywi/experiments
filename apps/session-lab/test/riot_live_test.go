@@ -51,12 +51,18 @@ func TestRiotLive(t *testing.T) {
 	heavy := envInt("RIOT_HEAVY", 1)
 	// RIOT_BOOT caps simultaneous startups: the CPU spike convergence knob.
 	boot := envInt("RIOT_BOOT", 0)
+	// Which cell the run lands in. Defaults are the CPU cell, so the historical
+	// command measures what it always did; RIOT_POOL/RIOT_TEMPLATE point the same
+	// workload at the GPU cell (browser-pool-gpu / browser-tpl-gpu).
+	pool := envString("RIOT_POOL", "browser-pool")
+	template := envString("RIOT_TEMPLATE", "browser-tpl")
+	class := model.Class(envString("RIOT_CLASS", string(model.ClassNormal)))
 	urls := riotURLsWithHeavy(sessions, heavy)
 
 	cfg := model.RunConfig{
 		RunID:     "riot-" + time.Now().UTC().Format("20060102t150405"),
-		Namespace: "sandbox-demo", Pool: "browser-pool", Template: "browser-tpl",
-		Policy: model.PolicyReuse, Class: model.ClassNormal, FixedArrival: true, Rate: rate,
+		Namespace: "sandbox-demo", Pool: pool, Template: template,
+		Policy: model.PolicyReuse, Class: class, FixedArrival: true, Rate: rate,
 		ContextsPerBrowser: 8, CDPTransport: "ws", CDPPort: 9224, BootConcurrency: boot,
 		TargetURLs: urls, SampleSeconds: 1, Sessions: sessions,
 		Mix: []model.Bucket{{Label: hold.String(), Hold: hold, Count: sessions}},
@@ -232,6 +238,14 @@ func repoRunsDir(t *testing.T) string {
 		dir = filepath.Dir(dir)
 	}
 	return filepath.Join(os.TempDir(), "session-lab-runs")
+}
+
+// envString reads a string knob, falling back to a default.
+func envString(key, fallback string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return fallback
 }
 
 // envInt reads an integer knob, falling back to a default.
