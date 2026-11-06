@@ -225,6 +225,58 @@ That is why `apps/session-lab` reads the container scopes rather than the slice
 (commit `27620c5`): the slice's `max` describes the parent, and the browser cannot
 swap.
 
+## The autoscaler was crashlooping: two causes, both fixed
+
+Found on the cluster after the GPU cell was raised by hand:
+
+```
+deployment/session-lab-autoscaler args
+  --pool=browser-pool-gpu --min=2 --max=80 --interval=5S    <- capital S
+pod 0/1 CrashLoopBackOff, 21 restarts
+log  flag provided but not defined: -contexts-per-browser
+```
+
+Two separate faults. The first was the value: `--interval=5S` is not a duration
+Go accepts, so the process exited on flag parsing. The second only showed after
+that was corrected: the running image was older than the source, and its binary
+has no `--contexts-per-browser` flag at all, so every start died on an undefined
+flag while the previous ReplicaSet kept running with the old pool flag.
+
+Fixes, in the order they were needed:
+
+```bash
+# 1. a valid duration, against the GPU pool
+helm upgrade session-lab config/session-lab -n sandbox-demo \
+  --set sandbox.pool=browser-pool-gpu \
+  --set autoscaler.minReplicas=2 \
+  --set autoscaler.maxReplicas=80 \
+  --set autoscaler.interval=5s
+
+# 2. rebuild the image so the binary matches the chart's flags. buildah cannot
+#    run in this sandbox (/run/user/1000 is read-only), so the build is Kaniko in
+#    the cluster, from git, with the app directory as the context:
+kubectl apply -f config/session-lab/build/autoscaler-job.yaml
+
+# 3. re-pull the new image
+kubectl -n sandbox-demo rollout restart deploy/session-lab-autoscaler
+```
+
+Result:
+
+```
+pod session-lab-autoscaler-7787cfbb5f-b7dqc  1/1 Running
+log autoscaler: pool sandbox-demo/browser-pool-gpu min=2 max=80 every 5s
+log scale up: desired 1 -> 2 (pending 0, ready 0, max 80)
+configmap settings: pool browser-pool-gpu, min 2, max 80, interval_s 5, desired 2
+warm pools: browser-pool 2/2, browser-pool-gpu 2/2
+```
+
+`config/session-lab/build/autoscaler-job.yaml` is committed, so the image can be
+rebuilt from the repository. It uses a git context plus
+`--context-sub-path=apps/session-lab`; without the sub-path Kaniko looks for
+`go.mod` at the repository root and the build fails with
+`lstat /kaniko/buildcontext/go.mod: no such file or directory`.
+
 ## What this leaves manual
 
 ```

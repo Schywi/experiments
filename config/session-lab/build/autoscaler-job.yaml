@@ -1,0 +1,41 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: kaniko-session-lab-autoscaler
+  namespace: registry
+  labels:
+    app.kubernetes.io/name: kaniko
+    app.kubernetes.io/part-of: session-lab
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 1800
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: kaniko
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: kaniko
+          image: gcr.io/kaniko-project/executor:v1.23.2
+          args:
+            # Git context, not a ConfigMap: the autoscaler's build needs the whole
+            # Go module (go.mod, cmd/, internal/), which does not fit a ConfigMap.
+            - "--context=git://github.com/Schywi/experiments.git#refs/heads/docs-site"
+            # The Dockerfile's COPY paths are relative to the app directory, so the
+            # build context is that sub-path, not the repository root.
+            - "--context-sub-path=apps/session-lab"
+            - "--dockerfile=Containerfile"
+            - "--destination=192.168.0.28:5000/session-lab-autoscaler:local"
+            - "--insecure"
+            - "--cache=true"
+            - "--cache-repo=192.168.0.28:5000/kaniko-cache-session-lab"
+            - "--force"
+            - "--verbosity=info"
+          resources:
+            requests:
+              cpu: 200m
+              memory: 512Mi
+            limits:
+              cpu: "2"
+              memory: 2Gi
