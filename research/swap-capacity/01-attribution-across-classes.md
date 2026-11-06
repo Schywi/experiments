@@ -1,11 +1,11 @@
 ---
 title: 'Attribution: which workload class paid when memory was rebalanced'
 kind: design
-state: hypothesis
+state: implemented
 date: 2026-11-05
 branch: 'docs-site'
-commits: [eca9963, c757981, 77cc684, 3a4069e]
-tags: [swap, session-lifecycle, attribution, state-hypothesis]
+commits: [eca9963, c757981, 77cc684, 3a4069e, 4285593, 6a50dca]
+tags: [swap, session-lifecycle, attribution, state-implemented]
 ---
 
 # Attribution: which workload class paid when memory was rebalanced
@@ -20,7 +20,7 @@ contract a run has to satisfy before that question can be answered.
 
 | | |
 |---|---|
-| Status | Contract written, nothing built |
+| Status | Contract items 1 and 4 built (carrier, grouping); item 2 is the swap experiment's writer; item 5 partially built |
 | Date | 2026-11-05 (note), 2026-11-02 / 11-03 (runs cited) |
 | Phase | session lifecycle |
 | Branch | `docs-site` |
@@ -59,13 +59,28 @@ sampled. None of it is a new measurement.
 
 | Gap | Consequence |
 |---|---|
-| No field or annotation marks a workload as spillable. A grep for `spill`, `isSwappable` or `swappable` across `.md`, `.go` and `.yaml` returns nothing | the allowance is applied namespace-wide by `config/vm-swap-lab/swap-limit.sh`, so every pod in a run has the same number and no class can be given a different one |
-| No record of the allowance a pod received | a run cannot say "class bulk had 64 MiB and class normal had 0" because nobody wrote the number down |
-| The report has no class or pool dimension: `grep -n 'Class\|Pool' report.go` returns only the autoscaler-presence flag (`:144`, `:500`) and the policy named in the header (`:448`) | swap and refault numbers exist per session and are reported per run, so two classes in one run are indistinguishable |
+| No record of the allowance a pod actually received | a run can say which tier a pod was given (below), not the byte value the writer put in `memory.swap.max`; that number belongs to the swap experiment's writer |
 | Two meanings of "class" live in the two studies | `capacity.sh:4-9` calls `swap-off` / `swap-on` a class, while `model.go:52-55` calls `normal` / `batch` / `bulk` a class |
 
-The last row is the one that will corrupt a rerun. Any note, script or report
+The second row is the one that will corrupt a rerun. Any note, script or report
 field that says "class" needs the qualifier.
+
+## What shipped
+
+Two contract items are built, and the pod shape for a second cell is committed.
+
+| Item | Where |
+|---|---|
+| Tier carrier: `session-lab.io/spill` on `podTemplate.metadata.annotations` | `config/sandbox/values.yaml` (`sandboxes.templates[].spill`), rendered by `config/sandbox/templates/sandboxtemplate.yaml` |
+| Second cell: `browser-tpl-gpu` + `browser-pool-gpu`, privileged with `/dev/dri` | `config/sandbox/values.yaml`, rendered by the same two templates (which now range over `templates[]` and `pools[]`) |
+| GPU image build | `apps/browser-sandbox/Containerfile.vulkan`, `apps/browser-sandbox/entrypoint-vulkan.sh`, `config/sandbox/build/browser-sandbox-vulkan-job.yaml` |
+| Tier read back from the template | `internal/infra/sandbox/sandbox.go` (`TemplateLimits.SpillTier`), `internal/infra/kube/kube.go` `Template()` reads `spec.podTemplate.metadata.annotations.session-lab.io/spill` |
+| Tier resolved per pool and recorded per instance | `internal/runtime/session/pool.go` (`resolveTiers`, `tagTier`), `run.go` preflight, `internal/platform/model/model.go` (`Instance.SwapTier`), `internal/platform/store/store.go` (`instances.swap_tier`, with an ALTER migration for older run databases) |
+| Grouping by (class, pool, tier) in the report | `internal/runtime/report/groups.go` (`BuildGroups`, `printGroups`), `report.go` (`Groups` field, printed after the resources block) |
+
+The GPU cell is a chart object now, so an operator raises `browser-pool-gpu` and
+`--pool-by-class` routes a class to it. A pod whose template carries no
+annotation still appears in the table, as tier `-`.
 
 ## The contract
 
@@ -98,8 +113,9 @@ admissible.
                    swap p95 61 MiB, cpu 6.38 core-s/session, capacity rung 7"
 ```
 
-Items 3 is built. Item 4 is aggregation over stored rows. Items 1, 2 and 5 do not
-exist anywhere in the repository.
+Items 2 is the swap experiment's writer. Items 1, 3 and 4 are built: the template
+carries the tier, the runner samples and stores it per instance, and the report
+groups by it.
 
 ## Why the tier matters: 2:1 is a CPU purchase
 
@@ -157,15 +173,17 @@ that survives.
 ## How to check this note
 
 ```bash
-# the per-session swap number and its two companions in the stored row
-grep -n "SwapPeakBytes\|RefaultAnon\|MemPressureSomeUsec" \
-  apps/session-lab/internal/platform/model/model.go
+# the tier reaches the pod: one annotation, rendered from values
+helm template config/sandbox --show-only templates/sandboxtemplate.yaml | grep -B2 -A1 "session-lab.io/spill"
 
-# the report has no class or pool grouping
-grep -n "Class\|Pool" apps/session-lab/internal/runtime/report/report.go
+# session-lab reads it from the template, per pool, and stores it per instance
+grep -n "SpillTier" apps/session-lab/internal/infra/sandbox/sandbox.go apps/session-lab/internal/infra/kube/kube.go
+grep -n "resolveTiers\|tagTier" apps/session-lab/internal/runtime/session/pool.go
+grep -n "swap_tier" apps/session-lab/internal/platform/store/store.go
 
-# nothing carries a spill property
-grep -rn "spill\|isSwappable" --include=*.go --include=*.yaml --include=*.md . | wc -l   # 0
+# the report groups by (class, pool, tier) instead of averaging the run
+grep -n "BuildGroups\|printGroups" apps/session-lab/internal/runtime/report/groups.go
+cd apps/session-lab && go test ./internal/runtime/report/ -run Groups -v
 
 # the allowance writer that exists today, keyed on namespace rather than class
 sed -n 1,12p config/vm-swap-lab/swap-limit.sh

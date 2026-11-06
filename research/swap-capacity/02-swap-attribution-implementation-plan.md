@@ -169,3 +169,47 @@ git diff --check
 
 Two commits: phases 1-2 as `feat(session-lab)`, phase 3 as `feat(report)`, each
 citing the bd issue.
+
+## Running the arms
+
+Written here so the sequence is reviewable; none of it was executed by this
+change. The chart is the only thing an operator applies (helm or Argo CD), and
+the swap allowance is set by the swap experiment's writer, which selects pods on
+`session-lab.io/spill`.
+
+| Arm | Pool | Class | Tier (from the template) | What it answers |
+|---|---|---|---|---|
+| A | `browser-pool` | `normal` | `zram-2to1` | CPU cell, tiered, baseline |
+| B | `browser-pool-gpu` | `normal` | `zram-2to1` | GPU cell, same tier, same class |
+| C | `browser-pool` | `bulk` | `zram-2to1` | same cell as A, lower queue priority |
+| D | both pools in one run | `normal` | `zram-2to1` each | the attribution table with two cells at once |
+
+```bash
+# apply the chart (browser-tpl, browser-tpl-gpu, browser-pool, browser-pool-gpu)
+helm upgrade --install sandbox config/sandbox -n sandbox-demo
+
+# raise the GPU cell for arms B and D (a values change or an Argo sync;
+# no kubectl scale: live edits are how a result stops being reproducible)
+#   sandboxes.pools[browser-pool-gpu].replicas: 4
+
+# arm A
+apps/session-lab/session-lab --sessions 24 --fixed-arrival --rate 1 \
+  --pool browser-pool --class normal --contexts-per-browser 1 \
+  --out "$OUT/arm-a"
+# expect a report row: class=normal pool=browser-pool tier=zram-2to1
+
+# arm B
+apps/session-lab/session-lab --sessions 24 --fixed-arrival --rate 1 \
+  --pool browser-pool-gpu --class normal --contexts-per-browser 1 \
+  --out "$OUT/arm-b"
+
+# arm D: one run, two cells
+apps/session-lab/session-lab --sessions 48 --fixed-arrival --rate 1 \
+  --pool browser-pool --pool-by-class normal=browser-pool \
+  --pool-by-class bulk=browser-pool-gpu --class bulk --contexts-per-browser 1 \
+  --out "$OUT/arm-d"
+```
+
+The report prints one row per (class, pool, tier). A row reading `tier -` means
+the pod's template carried no annotation, and `swapped 0/N` with `swap p95 0 MiB`
+means the writer never gave that cell an allowance.
