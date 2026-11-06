@@ -43,6 +43,10 @@ type Instance struct {
 	// BootCPUPeakCores is the highest CPU this instance used while starting, read
 	// from its cgroup between sandbox binding and browser Ready.
 	BootCPUPeakCores float64
+	// SpillTier is the memory tier this instance's template allows it to swap
+	// into, read from the pod annotation session-lab.io/spill. Recorded per
+	// instance because one run can draw from two pools with two tiers.
+	SpillTier string
 }
 
 // BrowserSession is one session's own browsing context inside a Chromium. It
@@ -90,6 +94,10 @@ type TemplateLimits struct {
 	CPULimitMilli   int64  `json:"cpu_limit_milli"`
 	MemRequestBytes int64  `json:"mem_request_bytes"`
 	MemLimitBytes   int64  `json:"mem_limit_bytes"`
+	// SpillTier is the memory tier the template's pod annotation names
+	// (session-lab.io/spill): none, zram-2to1, zram-5to1 or disk. It is empty
+	// when the template carries no annotation, which the report prints as "-".
+	SpillTier string `json:"spill_tier,omitempty"`
 }
 
 // ClaimStats is the demand signal a pool autoscaler needs: claims waiting for an

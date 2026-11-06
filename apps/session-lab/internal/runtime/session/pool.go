@@ -84,3 +84,44 @@ func classKey(class model.Class) string {
 	}
 	return string(class)
 }
+
+// resolveTiers reads the memory tier every pool in this run declares, keyed by
+// pool name. One lookup per pool, done once in preflight: a run that draws from
+// a CPU pool and a GPU pool gets one tier per pool, and the instance row records
+// which one it came from.
+func (r *Runner) resolveTiers(ctx context.Context) map[string]string {
+	tiers := make(map[string]string, len(r.cfg.PoolByClass)+1)
+	for _, name := range r.poolNames() {
+		pool, err := r.ad.Pool(ctx, r.cfg.Namespace, name)
+		if err != nil {
+			r.log.Printf("preflight: pool %s template unavailable: %v", name, err)
+			continue
+		}
+		template := pool.Template
+		if template == "" && name == r.cfg.Pool {
+			template = r.cfg.Template
+		}
+		if template == "" {
+			continue
+		}
+		limits, err := r.ad.Template(ctx, r.cfg.Namespace, template)
+		if err != nil {
+			r.log.Printf("preflight: template %s tier unavailable: %v", template, err)
+			continue
+		}
+		if limits.SpillTier != "" {
+			tiers[name] = limits.SpillTier
+		}
+	}
+	return tiers
+}
+
+// tagTier stamps the tier of the pool an instance came from onto the instance, so
+// the instance row records what its template declared and the report can group by
+// it. A pool with no annotation leaves the field empty, which reads as tier "-".
+func (r *Runner) tagTier(instance *sandbox.Instance, pool string) {
+	if instance == nil || r.tiers == nil {
+		return
+	}
+	instance.SpillTier = r.tiers[pool]
+}

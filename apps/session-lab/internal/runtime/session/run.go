@@ -131,6 +131,11 @@ type Runner struct {
 	spools      map[string]*slots.Pool
 	instanceSeq int
 
+	// tiers maps a warm pool name to the memory tier its template declares. It is
+	// read once in preflight, so an instance records the tier of the pool it came
+	// from and a two-cell run attributes swap per cell.
+	tiers map[string]string
+
 	// browsers holds one direct CDP connection per instance, used when the run
 	// asks for the ws transport.
 	browsers map[string]*browser.Conn
@@ -538,7 +543,9 @@ func (r *Runner) session(ctx context.Context, planned schedule.Planned) {
 		session.AdmissionWaitNS = r.now().Sub(admitStart).Nanoseconds()
 
 		name := claimName(r.cfg.RunID, planned.ID)
-		acquired, err := r.ad.Acquire(ctx, r.cfg.Namespace, r.poolFor(planned), name, r.cfg.Class)
+		pool := r.poolFor(planned)
+		acquired, err := r.ad.Acquire(ctx, r.cfg.Namespace, pool, name, r.cfg.Class)
+		r.tagTier(acquired, pool)
 		r.gate.Release()
 		if err != nil {
 			outcome := model.OutcomeAcquisitionFailed

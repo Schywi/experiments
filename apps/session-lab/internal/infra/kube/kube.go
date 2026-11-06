@@ -531,6 +531,12 @@ func (k *Kube) Template(ctx context.Context, namespace, name string) (sandbox.Te
 		return sandbox.TemplateLimits{}, fmt.Errorf("template %s has no containers", name)
 	}
 	limits := sandbox.TemplateLimits{}
+	// The memory tier lives on the pod template's annotations, not on the
+	// resource block: it is the string the swap experiment keys its cgroup
+	// writer on, and what this run records per instance.
+	if tier, _, _ := unstructured.NestedString(template.Object, "spec", "podTemplate", "metadata", "annotations", "session-lab.io/spill"); tier != "" {
+		limits.SpillTier = tier
+	}
 	for _, raw := range containers {
 		container, ok := raw.(map[string]any)
 		if !ok {

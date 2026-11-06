@@ -102,7 +102,8 @@ CREATE TABLE IF NOT EXISTS instances (
     sessions   INTEGER NOT NULL DEFAULT 0,
     boot_cpu_peak_cores REAL NOT NULL DEFAULT 0,
     class      TEXT NOT NULL DEFAULT '',
-    contexts_per_browser INTEGER NOT NULL DEFAULT 1
+    contexts_per_browser INTEGER NOT NULL DEFAULT 1,
+    swap_tier  TEXT NOT NULL DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS events (
@@ -158,6 +159,13 @@ func Open(path string) (*Store, error) {
 			db.Close()
 			return nil, fmt.Errorf("migrate %s (%s): %w", path, column, err)
 		}
+	}
+	// The instance table grows independently: swap_tier arrived with the
+	// attribution work, and a database written before it must still open.
+	if _, err := db.Exec("ALTER TABLE instances ADD COLUMN swap_tier TEXT NOT NULL DEFAULT ''"); err != nil &&
+		!strings.Contains(err.Error(), "duplicate column name") {
+		db.Close()
+		return nil, fmt.Errorf("migrate %s (instances.swap_tier): %w", path, err)
 	}
 	return &Store{db: db}, nil
 }
@@ -352,19 +360,20 @@ func (s *Store) UpdateSession(session model.Session) error {
 func (s *Store) SaveInstance(instance model.Instance) error {
 	_, err := s.db.Exec(
 		`INSERT INTO instances (id, kind, namespace, node, pod_uid, created_ns, ready_ns, deleted_ns,
-		     suspends, resumes, resets, sessions, boot_cpu_peak_cores, class, contexts_per_browser)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		     suspends, resumes, resets, sessions, boot_cpu_peak_cores, class, contexts_per_browser, swap_tier)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(id) DO UPDATE SET
 		     kind = excluded.kind, namespace = excluded.namespace, node = excluded.node,
 		     pod_uid = excluded.pod_uid, created_ns = excluded.created_ns, ready_ns = excluded.ready_ns,
 		     deleted_ns = excluded.deleted_ns, suspends = excluded.suspends, resumes = excluded.resumes,
 		     resets = excluded.resets, sessions = excluded.sessions,
 		     boot_cpu_peak_cores = excluded.boot_cpu_peak_cores,
-		     class = excluded.class, contexts_per_browser = excluded.contexts_per_browser`,
+		     class = excluded.class, contexts_per_browser = excluded.contexts_per_browser,
+		     swap_tier = excluded.swap_tier`,
 		instance.ID, instance.Kind, instance.Namespace, instance.Node, instance.PodUID,
 		instance.CreatedNS, instance.ReadyNS, instance.DeletedNS,
 		instance.Suspends, instance.Resumes, instance.Resets, instance.Sessions,
-		instance.BootCPUPeakCores, instance.Class, instance.ContextsPerBrowser)
+		instance.BootCPUPeakCores, instance.Class, instance.ContextsPerBrowser, instance.SwapTier)
 	return err
 }
 
@@ -449,7 +458,8 @@ func (s *Store) Sessions() ([]model.Session, error) {
 // Instances returns every instance row.
 func (s *Store) Instances() ([]model.Instance, error) {
 	rows, err := s.db.Query(`SELECT id, kind, namespace, node, pod_uid, created_ns, ready_ns,
-	    deleted_ns, suspends, resumes, resets, sessions, boot_cpu_peak_cores, class, contexts_per_browser
+	    deleted_ns, suspends, resumes, resets, sessions, boot_cpu_peak_cores, class, contexts_per_browser,
+	    swap_tier
 	    FROM instances ORDER BY created_ns`)
 	if err != nil {
 		return nil, err
@@ -460,7 +470,7 @@ func (s *Store) Instances() ([]model.Instance, error) {
 		var i model.Instance
 		if err := rows.Scan(&i.ID, &i.Kind, &i.Namespace, &i.Node, &i.PodUID, &i.CreatedNS,
 			&i.ReadyNS, &i.DeletedNS, &i.Suspends, &i.Resumes, &i.Resets, &i.Sessions,
-			&i.BootCPUPeakCores, &i.Class, &i.ContextsPerBrowser); err != nil {
+			&i.BootCPUPeakCores, &i.Class, &i.ContextsPerBrowser, &i.SwapTier); err != nil {
 			return nil, err
 		}
 		out = append(out, i)

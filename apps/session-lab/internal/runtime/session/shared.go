@@ -70,6 +70,7 @@ func (r *Runner) acquireWithRetry(ctx context.Context, name, pool string) (*sand
 	for attempt := 1; attempt <= 5; attempt++ {
 		instance, err := r.ad.Acquire(ctx, r.cfg.Namespace, pool, name, r.cfg.Class)
 		if err == nil {
+			r.tagTier(instance, pool)
 			if attempt > 1 {
 				r.lg.Info("claim created after retry", logging.F("claim", name),
 					logging.F("attempt", attempt))

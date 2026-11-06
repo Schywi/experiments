@@ -191,6 +191,10 @@ type Instance struct {
 	// only trust peaks from the same class and packing.
 	Class              string `json:"class,omitempty"`
 	ContextsPerBrowser int    `json:"contexts_per_browser,omitempty"`
+	// SwapTier is the memory tier this instance carried, copied from the pod
+	// annotation the template renders. Two pools in one run can carry two tiers,
+	// which is why it lives here and not on the run.
+	SwapTier string `json:"swap_tier,omitempty"`
 }
 
 // Event is one lifecycle transition, kept alongside the session row so a run can
@@ -241,9 +245,9 @@ type RunConfig struct {
 	// a CPU tier and a GPU tier: the class chooses the pool, the pool chooses
 	// the template, the template carries the pod spec.
 	PoolByClass  map[string]string `json:"pool_by_class,omitempty"`
-	PoolReplicas *int32   `json:"pool_replicas,omitempty"`
-	Workers      int      `json:"workers"`
-	Admit        int      `json:"admit,omitempty"`
+	PoolReplicas *int32            `json:"pool_replicas,omitempty"`
+	Workers      int               `json:"workers"`
+	Admit        int               `json:"admit,omitempty"`
 	// ContextsPerBrowser is how many sessions one Chromium serves. One keeps
 	// the historical one-claim-per-session shape; more turns each session into
 	// an isolated browser context inside a shared browser.
