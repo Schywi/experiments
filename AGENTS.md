@@ -55,8 +55,26 @@ Decide with one question: **does this work require `/dev/dri/renderD128`?**
 - Keep potential secret-bearing local files ignored. If a secret must be managed
   declaratively in the future, use Sealed Secrets (or another reviewed secret
   encryption mechanism) and commit only the encrypted manifest.
-- Make atomic commits: each commit must contain one coherent, independently
-  reviewable change and include the related `bd` issue identifier in its message.
+
+## Every Change Lands as an Atomic Commit
+
+- **Every change to this repository is committed before the task ends.** A change
+  that exists only in the working tree does not exist: it is lost at the next
+  checkout, invisible in review, and absent from the branch a reader or Argo CD
+  reads. Uncommitted work at the end of a task is a defect in that task.
+- **One coherent change per commit.** A commit carries one reviewable intent plus
+  the code, tests, manifests and notes that belong to it. Related edits land
+  together; unrelated edits never share a commit. A behaviour change does not
+  travel with a reformat, and one intent does not span several commits.
+- **Every commit names its `bd` issue.** The subject reads
+  `type(scope): what changed`; the body carries the issue identifier and one to
+  three lines of what changed and why. No secrets, no hostnames, no personal
+  paths, nothing from an ignored directory.
+- **Nothing untracked is left behind.** A file that must stay out of the
+  repository goes into `.gitignore` with its reason, in the same commit. The
+  working tree is clean when the task ends, and `git status` proves it.
+- **Verification precedes the commit.** The command that proves the change runs in
+  the same session, and the report quotes its result.
 
 ## Repository Layout
 
