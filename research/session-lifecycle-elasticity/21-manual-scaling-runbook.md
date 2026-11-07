@@ -174,6 +174,26 @@ Arrival above ~2 sessions/s has been the control plane's limit in earlier runs, 
 the claim watch has failed above ~8 concurrent claims. Both show up as refusals
 rather than as capacity boundaries, so a run that hits them measures the harness.
 
+## Two knobs to set before a load run
+
+Both exist because a cold Chromium spikes and a full pool hides what happened.
+
+`--boot-concurrency` bounds the startups in flight. Unset, it is unbounded, and
+run B shows the cost: 43 instances came up during the run, `boot_cpu_peak_max`
+recorded 15.6 "cores" on a 6-core node, and the only measurement of that overlap is
+a number that cannot be true. **Use `--boot-concurrency 2`** (or `RIOT_BOOT=2`),
+which is what the paced command above does, and the boot spikes stop colliding.
+
+`--health-interval` (default 5s) is how long a browser's probe result is trusted
+before `/json/version` is read again on the port the run uses. It is what stops a
+dead browser from being handed the queue. Set it to 0 only when the run has no
+cluster behind it.
+
+A run that runs out of usable capacity records a `slot_starvation` boundary: every
+instance was full or unhealthy and creating another failed. Seeing that in
+`first_boundary` is the saturation signal; seeing only `reset_failed` is the bug
+this work exists to remove.
+
 ## Pod swap: the two pieces, both committed
 
 The node swaps (zram0, 8 GiB). Pods did not, and kubelet is why: its config had no

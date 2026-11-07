@@ -190,6 +190,10 @@ func (r *Runner) sessionSharedAttempt(ctx context.Context, planned schedule.Plan
 		if ctx.Err() != nil {
 			outcome = model.OutcomeWaiting
 		}
+		// No slot and nothing that could be created: the pool is out of healthy
+		// capacity, which is a boundary worth naming rather than leaving to be
+		// inferred from a pile of acquisition failures.
+		r.noteStarved(ctx, pool, err)
 		r.settle(session.ID, outcome, "slot: "+err.Error(), nil)
 		return
 	}
@@ -328,6 +332,27 @@ func (r *Runner) sessionSharedAttempt(ctx context.Context, planned schedule.Plan
 	session.Error = ""
 	r.settle(session.ID, model.OutcomeSuccess, "", &session)
 	return false
+}
+
+// noteStarved records that the pool ran out of usable capacity: every instance it
+// held was full or unhealthy, and creating another one failed. It is the signal
+// saturation is meant to leave behind, so a run does not have to be read as a pile
+// of acquisition failures to see it.
+func (r *Runner) noteStarved(ctx context.Context, pool string, cause error) {
+	if ctx.Err() != nil {
+		// The run is ending; a cancelled acquisition is not starvation.
+		return
+	}
+	if r.rec != nil {
+		r.rec.Boundary("slot_starvation")
+	}
+	if err := r.st.AddEvent(model.Event{
+		AtNS: r.now().UnixNano(), Kind: "boundary:slot_starvation",
+		Detail: "pool " + pool + ": " + cause.Error(),
+	}); err != nil {
+		r.log.Printf("event slot_starvation: %v", err)
+	}
+	r.log.Printf("slot starvation in %s: %v", pool, cause)
 }
 
 // browserUnusable reports whether an error means the browser on the other end is
