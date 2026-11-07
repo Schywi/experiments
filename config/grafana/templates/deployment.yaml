@@ -19,7 +19,8 @@ spec:
         checksum/datasources: {{ include (print $.Template.BasePath "/configmap-datasources.yaml") . | sha256sum }}
         checksum/dashboard-provider: {{ include (print $.Template.BasePath "/configmap-dashboard-provider.yaml") . | sha256sum }}
         {{- if .Values.dashboards.enabled }}
-        checksum/dashboards: {{ include (print $.Template.BasePath "/configmap-dashboards.yaml") . | sha256sum }}
+        checksum/dashboards-cilium: {{ include (print $.Template.BasePath "/configmap-dashboards-cilium.yaml") . | sha256sum }}
+        checksum/dashboards-session-lab: {{ include (print $.Template.BasePath "/configmap-dashboards-session-lab.yaml") . | sha256sum }}
         {{- end }}
     spec:
       securityContext:
@@ -106,8 +107,11 @@ spec:
               mountPath: /etc/grafana/provisioning/dashboards
               readOnly: true
             {{- if .Values.dashboards.enabled }}
-            - name: dashboards
-              mountPath: /var/lib/grafana/dashboards
+            - name: dashboards-cilium
+              mountPath: /var/lib/grafana/dashboards/cilium
+              readOnly: true
+            - name: dashboards-session-lab
+              mountPath: /var/lib/grafana/dashboards/session-lab
               readOnly: true
             {{- end }}
             - name: data
@@ -122,9 +126,12 @@ spec:
           configMap:
             name: {{ include "grafana.fullname" . }}-dashboard-provider
         {{- if .Values.dashboards.enabled }}
-        - name: dashboards
+        - name: dashboards-cilium
           configMap:
-            name: {{ include "grafana.fullname" . }}-dashboards
+            name: {{ include "grafana.fullname" . }}-dashboards-cilium
+        - name: dashboards-session-lab
+          configMap:
+            name: {{ include "grafana.fullname" . }}-dashboards-session-lab
         {{- end }}
         - name: data
           persistentVolumeClaim:

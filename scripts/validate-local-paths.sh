@@ -183,7 +183,9 @@ validate_observability_path() {
   local vm_deployment="${repo_root}/config/victoriametrics/templates/deployment.yaml"
   local vm_values="${repo_root}/config/victoriametrics/values.yaml"
   local grafana_values="${repo_root}/config/grafana/values.yaml"
-  local grafana_dashboards="${repo_root}/config/grafana/templates/configmap-dashboards.yaml"
+  local grafana_cilium="${repo_root}/config/grafana/templates/configmap-dashboards-cilium.yaml"
+  local grafana_session_lab="${repo_root}/config/grafana/templates/configmap-dashboards-session-lab.yaml"
+  local grafana_provider="${repo_root}/config/grafana/templates/configmap-dashboard-provider.yaml"
 
   # Both Cilium profiles must export the Hubble flow metrics and the agent,
   # operator, and relay datapath metrics that the dashboards consume.
@@ -210,12 +212,18 @@ validate_observability_path() {
   require_text "${vm_values}" 'retentionPeriod' 'VictoriaMetrics values do not pin retention'
   require_text "${vm_deployment}" 'storageDataPath' 'VictoriaMetrics deployment does not pin the data path'
 
-  # Grafana provisions the VictoriaMetrics datasource and the Cilium dashboards.
+  # Grafana provisions the VictoriaMetrics datasource, the Cilium dashboards in
+  # their own folder, and the session-lab dashboard in its own: it measures a host
+  # runner and an in-cluster autoscaler, not the Cilium datapath.
   require_text "${grafana_values}" 'uid: victoriametrics' 'Grafana datasource UID is not victoriametrics'
-  require_text "${grafana_dashboards}" '.Files.Get "dashboards/cilium-dashboard.json"' \
+  require_text "${grafana_cilium}" '.Files.Get "dashboards/cilium-dashboard.json"' \
     'Grafana does not provision the official Cilium dashboard'
-  require_text "${grafana_dashboards}" '.Files.Get "dashboards/hubble-dashboard.json"' \
+  require_text "${grafana_cilium}" '.Files.Get "dashboards/hubble-dashboard.json"' \
     'Grafana does not provision the official Hubble dashboard'
+  require_text "${grafana_session_lab}" '.Files.Get "dashboards/session-lab.json"' \
+    'Grafana does not provision the session-lab dashboard'
+  require_text "${grafana_provider}" 'foldersFromFilesStructure: true' \
+    'Grafana dashboard provider does not derive folders from the directory layout'
 
   # Argo CD owns both observability charts in a single namespace.
   require_text "${vm_app}" 'path: config/victoriametrics' 'VictoriaMetrics Argo Application path is wrong'

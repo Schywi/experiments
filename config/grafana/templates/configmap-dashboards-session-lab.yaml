@@ -1,0 +1,14 @@
+{{- if .Values.dashboards.enabled }}
+# The session-lab dashboard. It measures a host process and an in-cluster
+# autoscaler, not the Cilium datapath, so it gets its own folder instead of
+# appearing next to the network dashboards.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "grafana.fullname" . }}-dashboards-session-lab
+  labels:
+    {{- include "grafana.labels" . | nindent 4 }}
+data:
+  session-lab.json: |-
+{{ .Files.Get "dashboards/session-lab.json" | indent 4 }}
+{{- end }}

@@ -8,13 +8,16 @@ data:
   dashboards.yaml: |
     apiVersion: 1
     providers:
-      - name: cilium
+      - name: cilium-and-session-lab
         orgId: 1
-        folder: Cilium
         type: file
         disableDeletion: false
         allowUiUpdates: true
         updateIntervalSeconds: 30
         options:
           path: /var/lib/grafana/dashboards
-          foldersFromFilesStructure: false
+          # Each subdirectory is its own folder: cilium/ and session-lab/. The
+          # session-lab dashboard measures a host runner and an in-cluster
+          # autoscaler, so it does not belong in the Cilium folder with the
+          # datapath dashboards.
+          foldersFromFilesStructure: true
