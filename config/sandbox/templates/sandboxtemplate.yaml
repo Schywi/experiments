@@ -87,6 +87,18 @@ spec:
               value: ":{{ .forwarder.port }}"
             - name: CDP_FORWARD_UPSTREAM
               value: "127.0.0.1:{{ .cdpUpstreamPort }}"
+          # The ws transport dials this port, and until this probe existed the
+          # SandboxTemplate only covered 9222 on the browser container: a dead
+          # forwarder read as Ready while every ws session was refused (run B,
+          # 1378 reset failures on one instance). The path is spliced straight
+          # through to Chromium, so a 200 proves the sidecar and the browser
+          # behind it, not just that a socket is open.
+          readinessProbe:
+            httpGet:
+              path: /json/version
+              port: cdp-ws
+            periodSeconds: 2
+            failureThreshold: 30
           resources:
             requests:
               cpu: 10m
