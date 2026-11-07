@@ -80,7 +80,7 @@ sandboxes:
       # cgroup writer selects pods by this annotation, and session-lab reads it
       # back so a run reports which tier each class was given. Empty = no
       # annotation, which the report shows as tier "-".
-      spill: zram-2to1
+      spill: zram-5to1
       targetUrl: https://example.com/
       # The port Chromium's DevTools answers on inside the pod, and the port the
       # bridge publishes for HTTP callers.
@@ -136,7 +136,7 @@ sandboxes:
       # config/sandbox/build/browser-sandbox-vulkan-job.yaml.
       image: 127.0.0.1:5000/browser-sandbox-vulkan:local
       pullPolicy: Always
-      spill: zram-2to1
+      spill: zram-5to1
       targetUrl: https://example.com/
       cdpUpstreamPort: 9223
       cdpPort: 9222
