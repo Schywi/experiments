@@ -128,6 +128,34 @@ func (p *Pool) Give(lease Lease) (idle bool) {
 	return false
 }
 
+// RetireAndGive removes an instance and settles the slot it was holding in one
+// lock. It is the failure path: a browser that could not answer on its CDP port
+// must leave the pool, or the next Take hands its free slots to the next session
+// and that session fails the same way. Safe to call twice, and safe on an
+// instance the pool no longer holds.
+func (p *Pool) RetireAndGive(lease Lease) (idle bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if lease.Instance == nil {
+		return false
+	}
+	for i, entry := range p.entries {
+		if entry.Instance.ID != lease.Instance.ID {
+			continue
+		}
+		p.inUse -= entry.InUse
+		if p.inUse < 0 {
+			p.inUse = 0
+		}
+		p.entries = append(p.entries[:i], p.entries[i+1:]...)
+		p.notifyLocked()
+		return true
+	}
+	// Already retired: the lease is stale, and the counters were settled by the
+	// call that removed the entry.
+	return false
+}
+
 // Retire removes an instance from the pool. Used by the destroy policy, and by
 // the runner when an instance is unusable.
 func (p *Pool) Retire(instance *sandbox.Instance) {

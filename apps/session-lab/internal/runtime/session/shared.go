@@ -190,7 +190,10 @@ func (r *Runner) sessionShared(ctx context.Context, planned schedule.Planned) {
 		r.lg.Error("isolate failed", logging.F("session", session.ID),
 			logging.F("instance", lease.Instance.ID), logging.F("transport", r.cfg.CDPTransport),
 			logging.F("error", err))
-		spool.Give(lease)
+		// The browser did not answer on the port the run uses. Returning its slot
+		// keeps it in the pool as the instance with the most free capacity, so the
+		// next session is handed the same broken browser: retire it instead.
+		spool.RetireAndGive(lease)
 		r.settle(session.ID, model.OutcomeResetFailed, "browser context: "+err.Error(), &session)
 		return
 	}
@@ -265,6 +268,11 @@ func (r *Runner) sessionShared(ctx context.Context, planned schedule.Planned) {
 		r.mu.Lock()
 		delete(r.all, lease.Instance.ID)
 		r.mu.Unlock()
+	} else if closeErr != nil && browserUnusable(closeErr) {
+		// The browser stopped answering while this session held it. Its other
+		// contexts are dead too, so the instance leaves the pool here rather than
+		// being offered to the next session.
+		spool.RetireAndGive(lease)
 	} else {
 		// Reuse keeps the browser: an idle instance is exactly what the next
 		// session needs, and deleting it would make every session a cold start.
@@ -290,6 +298,30 @@ func (r *Runner) sessionShared(ctx context.Context, planned schedule.Planned) {
 	session.Outcome = model.OutcomeSuccess
 	session.Error = ""
 	r.settle(session.ID, model.OutcomeSuccess, "", &session)
+}
+
+// browserUnusable reports whether an error means the browser on the other end is
+// gone or no longer answering on its CDP port. It is the wider test than
+// browserLost: run B's failure was "connection refused" at the dial, which the
+// EOF markers do not cover, and an instance that answers that way must leave the
+// pool rather than be handed the next session.
+func browserUnusable(err error) bool {
+	if err == nil {
+		return false
+	}
+	if browserLost(err) {
+		return true
+	}
+	message := strings.ToLower(err.Error())
+	for _, marker := range []string{
+		"connection refused", "no route to host", "connection reset",
+		"i/o timeout", "timeout", "deadline exceeded", "temporarily unavailable",
+	} {
+		if strings.Contains(message, marker) {
+			return true
+		}
+	}
+	return false
 }
 
 // browserLost reports whether an error means the Chromium connection ended: the
