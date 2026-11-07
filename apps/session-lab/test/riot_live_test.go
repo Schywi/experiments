@@ -6,17 +6,24 @@ package test
 // the URLs are handed straight to the runner, which treats them as an opaque
 // per-session list.
 //
-//	SESSION_LAB_INTEGRATION=1 go test -tags integration -count=1 -timeout 900s \
+//	SESSION_LAB_INTEGRATION=1 go test -tags integration -count=1 -timeout 0 \
 //	  ./test/ -run TestRiotLive -v
+//
+// -timeout 0 is deliberate: the run's own budget is derived from the workload
+// and from any harness deadline that does exist, and it always stops short of
+// the watchdog so cleanup and the report still happen. A -timeout smaller than
+// the workload killed a 1200-session run mid-flight and left its claims behind.
 
 import (
 	"context"
 	"log"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -28,6 +35,17 @@ import (
 	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/runtime/report"
 	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/runtime/schedule"
 	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/runtime/session"
+)
+
+const (
+	// acquireAllowance is how long a browser may take to appear and become
+	// usable before the run's own budget stops describing anything real. A cold
+	// Chromium on a saturated node has been measured at 100-140s, so five
+	// minutes is generous and still keeps a broken cluster from hanging forever.
+	acquireAllowance = 5 * time.Minute
+	// harnessMargin is how far before testing's own -timeout the run must stop
+	// itself, so that cleanup and the report happen before the watchdog panics.
+	harnessMargin = 90 * time.Second
 )
 
 func TestRiotLive(t *testing.T) {
@@ -94,31 +112,10 @@ func TestRiotLive(t *testing.T) {
 	defer st.Close()
 	sampler, _ := measure.New(measure.Options{CgroupRoot: "/sys/fs/cgroup"})
 
-	runner := session.New(cfg, session.Options{
-		Adapter: adapter, Store: st, Plan: plan, Sampler: sampler,
-		Log: log.New(os.Stderr, "riot: ", log.LstdFlags),
-		// Info level so the boot lines (peak cores per instance) are visible: that
-		// number is what the CPU study is about.
-		Logger: logging.New(os.Stderr, logging.LevelInfo),
-	})
-	// Bound the run by what it is meant to take, not by a constant: a ten-minute
-	// window plus one hold plus teardown.
-	window := time.Duration(float64(sessions)/rate) * time.Second
-	ctx, cancel := context.WithTimeout(context.Background(), window+hold+5*time.Minute)
-	defer cancel()
-	if err := runner.Run(ctx); err != nil {
-		t.Fatalf("run: %v", err)
-	}
-
-	rows, err := st.Sessions()
-	if err != nil {
-		t.Fatalf("sessions: %v", err)
-	}
-
 	// The database is written as the run goes (every transition, WAL), so it always
 	// exists. The JSON is a snapshot built from it, and this is the one place that
-	// writes it: called here, and again from a cleanup so a failing or panicking
-	// test still leaves the file.
+	// writes it: after the run, again from a cleanup, and again from the recover
+	// below, so a run that ends badly still leaves something to read.
 	writeReport := func() string {
 		built, err := report.Build(cfg, plan, st)
 		if err != nil {
@@ -133,6 +130,56 @@ func TestRiotLive(t *testing.T) {
 		built.Print(os.Stdout)
 		return jsonPath
 	}
+	// A panic below must not take the report with it. The panic is not swallowed:
+	// the facts go to disk and then it continues, so a crash stays a crash.
+	defer func() {
+		if rec := recover(); rec != nil {
+			if path := writeReport(); path != "" {
+				t.Logf("report (written after a panic): %s", path)
+			}
+			panic(rec)
+		}
+	}()
+
+	runner := session.New(cfg, session.Options{
+		Adapter: adapter, Store: st, Plan: plan, Sampler: sampler,
+		Log: log.New(os.Stderr, "riot: ", log.LstdFlags),
+		// Info level so the boot lines (peak cores per instance) are visible: that
+		// number is what the CPU study is about.
+		Logger: logging.New(os.Stderr, logging.LevelInfo),
+	})
+
+	// The run's own budget, which is why this test no longer depends on `-timeout`
+	// being guessed right:
+	//
+	//   * Ctrl-C and SIGTERM cancel the run, so cleanup and the report still happen.
+	//     A signal used to kill the process outright and leave its claims behind.
+	//   * When the harness does carry a deadline, stop harnessMargin before it, so
+	//     the run cancels itself, releases its claims and writes the report instead
+	//     of dying in testing's timer goroutine with neither.
+	//   * Otherwise the budget is the workload's own worst case: the arrival window,
+	//     one hold, and the time a browser may need to appear and be usable.
+	window := time.Duration(float64(sessions)/rate) * time.Second
+	budget := window + hold + acquireAllowance
+	base, stopSignals := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stopSignals()
+	if deadline, ok := t.Deadline(); ok {
+		if remaining := time.Until(deadline) - harnessMargin; remaining > 0 && remaining < budget {
+			budget = remaining
+		}
+	}
+	ctx, cancel := context.WithTimeout(base, budget)
+	defer cancel()
+	runErr := runner.Run(ctx)
+	if ctx.Err() != nil {
+		t.Logf("run stopped after %s (%v); the report is written regardless", budget.Round(time.Second), ctx.Err())
+	}
+
+	rows, err := st.Sessions()
+	if err != nil {
+		t.Fatalf("sessions: %v", err)
+	}
+
 	jsonPath := writeReport()
 	t.Logf("database: %s", dbPath)
 	t.Logf("report:   %s", jsonPath)
@@ -145,6 +192,9 @@ func TestRiotLive(t *testing.T) {
 			}
 		}
 	})
+	if runErr != nil {
+		t.Errorf("run: %v (report: %s)", runErr, jsonPath)
+	}
 
 	t.Logf("workload: %d sessions at %.2f/s, hold %s, window ~%s, offered %.1f, heavy %d, boot concurrency %d",
 		sessions, rate, hold, window.Round(time.Second), float64(sessions)/window.Seconds()*hold.Seconds(), heavy, boot)
