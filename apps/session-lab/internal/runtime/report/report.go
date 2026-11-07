@@ -87,6 +87,10 @@ type Report struct {
 	// tier, who actually swapped, and what it cost. Empty when the run stored no
 	// sessions.
 	Groups []Group `json:"groups,omitempty"`
+	// InstanceStats is the per-browser breakdown: how many sessions each instance
+	// carried, how many it failed, and what its boot cost. Run B's 1378 failures
+	// were all on one instance, which this table says outright.
+	InstanceStats []InstanceStat `json:"instance_stats,omitempty"`
 }
 
 // Latency is a distribution in milliseconds.
@@ -370,6 +374,9 @@ func Build(cfg model.RunConfig, plan schedule.Plan, st *store.Store) (*Report, e
 	// session, the pool from the session row. Computed here so both stored and
 	// printed output carry the same numbers.
 	rep.Groups = BuildGroups(sessions, instances)
+	// And the per-browser table: one row per instance, so a browser that never
+	// served a session is visible instead of being averaged into the run.
+	rep.InstanceStats = BuildInstanceStats(sessions, instances)
 
 	if replicas, err := st.RunReplicas(cfg.RunID); err == nil {
 		rep.Replicas = replicas
@@ -504,6 +511,7 @@ func (r *Report) Print(w io.Writer) {
 			r.Resources.SwapPeakP50MiB, r.Resources.SwapPeakMaxMiB)
 	}
 	r.printGroups(w)
+	r.printInstanceStats(w)
 	if r.Autoscaler != nil {
 		scalerState := "none"
 		if r.Autoscaler.PoolScaler != nil && *r.Autoscaler.PoolScaler {

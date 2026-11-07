@@ -7,12 +7,28 @@ package session
 
 import (
 	"context"
+	"runtime"
 	"time"
 
 	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/infra/sandbox"
 	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/platform/logging"
 	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/platform/store"
 )
+
+// bootPeakCores turns a cpu.stat delta into cores for one sample window, clamped
+// to the node's core count. A single pod cannot use more cores than the machine
+// has: run B recorded a 15.6-core boot peak on a 6-core node, which is the sampler
+// measuring its own interval rather than the browser.
+func bootPeakCores(deltaUsec int64, elapsedSeconds float64, limit int) float64 {
+	if deltaUsec <= 0 || elapsedSeconds <= 0 {
+		return 0
+	}
+	cores := float64(deltaUsec) / 1e6 / elapsedSeconds
+	if limit > 0 && cores > float64(limit) {
+		return float64(limit)
+	}
+	return cores
+}
 
 // sampleBoot watches one instance while it boots. done is closed by the caller when
 // the instance is Ready or the attempt failed.
@@ -67,11 +83,9 @@ func (r *Runner) sampleBoot(ctx context.Context, instance *sandbox.Instance, don
 			now := r.now()
 			if lastCPU > 0 && !lastAt.IsZero() {
 				elapsed := now.Sub(lastAt).Seconds()
-				if elapsed > 0 {
-					cores := float64(reading.CPUUsec-lastCPU) / 1e6 / elapsed
-					if cores > peakCores {
-						peakCores = cores
-					}
+				cores := bootPeakCores(reading.CPUUsec-lastCPU, elapsed, runtime.NumCPU())
+				if cores > peakCores {
+					peakCores = cores
 				}
 			}
 			lastCPU, lastAt = reading.CPUUsec, now
