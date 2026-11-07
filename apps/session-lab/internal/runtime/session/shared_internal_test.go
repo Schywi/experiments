@@ -108,3 +108,58 @@ func TestBrowserLossIsClassifiedAsLost(t *testing.T) {
 		t.Fatalf("nil error classified as a lost browser")
 	}
 }
+
+// The run must be told what the node can host before it starts, not after ten
+// minutes of watching sessions queue. The two numbers that bind are physical
+// memory against the template's limit, and the pod cap minus the node's own
+// workload; CPU is not one of them, because this template carries no CPU limit.
+func TestCapacityCeilingUsesMemoryAndPodCap(t *testing.T) {
+	const (
+		mib          = 1 << 20
+		sixteenGiB   = 16 << 30
+		eightFortyMi = 840 * mib
+	)
+	cases := []struct {
+		name       string
+		mem        int64
+		pods       int64
+		limit      int64
+		offered    float64
+		contexts   int
+		wantMem    int
+		wantPods   int
+		wantCeil   int
+		wantNeeded int
+	}{
+		{
+			name: "memory binds", mem: sixteenGiB, pods: 110, limit: eightFortyMi,
+			offered: 3000, contexts: 8,
+			wantMem: 19, wantPods: 98, wantCeil: 19, wantNeeded: 375,
+		},
+		{
+			name: "pod cap binds", mem: sixteenGiB, pods: 20, limit: eightFortyMi,
+			offered: 160, contexts: 8,
+			wantMem: 19, wantPods: 8, wantCeil: 8, wantNeeded: 20,
+		},
+		{
+			name: "no limit means no memory ceiling", mem: sixteenGiB, pods: 110, limit: 0,
+			offered: 80, contexts: 8,
+			wantMem: 0, wantPods: 98, wantCeil: 98, wantNeeded: 10,
+		},
+		{
+			name: "a pod cap smaller than the system reservation is zero, not negative",
+			mem:  sixteenGiB, pods: 6, limit: eightFortyMi,
+			offered: 0, contexts: 0,
+			wantMem: 19, wantPods: 0, wantCeil: 19, wantNeeded: 0,
+		},
+	}
+	for _, c := range cases {
+		got := capacityCeiling(c.mem, c.pods, c.limit, c.offered, c.contexts)
+		if got.BrowsersByMemory != c.wantMem || got.BrowsersByPods != c.wantPods ||
+			got.Browsers != c.wantCeil || got.NeededBrowsers != c.wantNeeded {
+			t.Fatalf("%s: got memory=%d pods=%d ceiling=%d needed=%d, want %d/%d/%d/%d",
+				c.name, got.BrowsersByMemory, got.BrowsersByPods, got.Browsers, got.NeededBrowsers,
+				c.wantMem, c.wantPods, c.wantCeil, c.wantNeeded)
+		}
+	}
+}

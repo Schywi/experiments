@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math"
 	"strings"
 	"sync"
 	"time"
@@ -221,14 +222,40 @@ func (r *Runner) Run(ctx context.Context) error {
 	r.inRun = true
 	r.mu.Unlock()
 	stopSampling := r.sampleReplicas(ctx)
+
+	// A panic anywhere below must not leave claims behind: the platform reads a
+	// leftover claim as demand, so the pool grows for a run that no longer
+	// exists. Teardown runs first and the panic then continues — swallowing it
+	// here would hide the failure that the teardown exists to survive.
+	torn := false
+	defer func() {
+		if rec := recover(); rec != nil {
+			stopSampling()
+			if !torn {
+				torn = true
+				if err := r.teardown(ctx); err != nil {
+					r.log.Printf("teardown after panic: %v", err)
+				}
+			}
+			panic(rec)
+		}
+	}()
+
 	dispatchErr := r.dispatch(ctx)
 	stopSampling()
 	if dispatchErr != nil && ctx.Err() == nil {
 		r.log.Printf("dispatch: %v", dispatchErr)
 	}
+	torn = true
+	return r.teardown(ctx)
+}
 
-	// Cleanup runs on a context that survives a cancelled run, so a SIGINT leaves
-	// no orphaned claims behind for the next experiment to trip over.
+// teardown releases every claim the run made and closes its record. It runs on a
+// context that survives a cancelled run, so a SIGINT, an expired budget or a
+// panic still leaves no orphaned claims behind for the next experiment to trip
+// over. It is the only place that closes a run, so the panic path and the normal
+// path cannot each do half of it.
+func (r *Runner) teardown(ctx context.Context) error {
 	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Minute)
 	defer cancel()
 	r.mu.Lock()
@@ -343,6 +370,7 @@ func (r *Runner) preflight(ctx context.Context) error {
 			if r.rec != nil {
 				r.rec.Template(float64(limits.CPULimitMilli)/1000, float64(limits.MemLimitBytes))
 			}
+			r.reportCeiling(node, limits)
 		}
 	}
 
@@ -399,6 +427,86 @@ func (r *Runner) preflight(ctx context.Context) error {
 			return ctx.Err()
 		case <-time.After(2 * time.Second):
 		}
+	}
+}
+
+// systemPods is the node's own workload: k3s, Cilium, the sandbox controller and
+// its router. The kubelet's pod cap counts those, so a ceiling computed from the
+// cap alone over-states what a run may create.
+const systemPods = 12
+
+// ceiling is what a node can host, in browsers, from the two numbers that bind
+// here: physical memory against the template's memory *limit*, and the pod cap.
+//
+// CPU is deliberately absent. This template carries no CPU limit, so a browser
+// bursts to whatever the node has and the scheduler gates on requests, not on
+// cores; quoting a CPU ceiling would invent a constraint the platform does not
+// enforce. Memory is incompressible and has a hard limit, so it is the real one.
+type ceiling struct {
+	BrowsersByMemory int
+	BrowsersByPods   int
+	Browsers         int
+	NeededBrowsers   int
+}
+
+// capacityCeiling does the arithmetic. A zero or absent memory limit is not a
+// ceiling the node can compute, so it contributes nothing rather than dividing by
+// zero.
+func capacityCeiling(memBytes, pods, memLimitBytes int64, offered float64, contexts int) ceiling {
+	if contexts < 1 {
+		contexts = 1
+	}
+	var c ceiling
+	if memBytes > 0 && memLimitBytes > 0 {
+		c.BrowsersByMemory = int(memBytes / memLimitBytes)
+	}
+	if pods > 0 {
+		c.BrowsersByPods = int(pods) - systemPods
+		if c.BrowsersByPods < 0 {
+			c.BrowsersByPods = 0
+		}
+	}
+	switch {
+	case c.BrowsersByMemory > 0 && c.BrowsersByPods > 0:
+		c.Browsers = min(c.BrowsersByMemory, c.BrowsersByPods)
+	case c.BrowsersByMemory > 0:
+		c.Browsers = c.BrowsersByMemory
+	default:
+		c.Browsers = c.BrowsersByPods
+	}
+	if offered > 0 {
+		c.NeededBrowsers = int(math.Ceil(offered / float64(contexts)))
+	}
+	return c
+}
+
+// reportCeiling says what the node can host next to what the run is about to ask
+// for. It is a statement, not a refusal: the operator decides what to run, and
+// the runner still tries everything it is asked for. But a run that offers many
+// times the ceiling does not measure the browser — it measures the ramp — and the
+// 1200-session attempt spent ten minutes and 26 leaked claims discovering that
+// nobody had compared the two numbers.
+func (r *Runner) reportCeiling(node sandbox.NodeCapacity, limits sandbox.TemplateLimits) {
+	offered := r.plan.PeakOffered()
+	c := capacityCeiling(node.MemBytes, node.Pods, limits.MemLimitBytes, offered, r.cfg.ContextsPerBrowser)
+	if c.Browsers == 0 {
+		return
+	}
+	r.log.Printf("preflight: ceiling ~%d browsers (%d by memory: %dMiB / %dMiB each; %d by pod cap: %d pods - %d system)",
+		c.Browsers, c.BrowsersByMemory, node.MemBytes/(1<<20), limits.MemLimitBytes/(1<<20),
+		c.BrowsersByPods, node.Pods, systemPods)
+	r.log.Printf("preflight: offered %.0f contexts at %d per browser needs ~%d browsers, %d slots",
+		offered, r.cfg.ContextsPerBrowser, c.NeededBrowsers, c.Browsers*r.cfg.ContextsPerBrowser)
+	if c.NeededBrowsers <= c.Browsers {
+		return
+	}
+	r.log.Printf("preflight: WARNING offered load is %.1fx the node's ceiling: sessions after the first %d will wait, "+
+		"and the report will show a capacity boundary rather than a load result",
+		float64(c.NeededBrowsers)/float64(c.Browsers), c.Browsers*r.cfg.ContextsPerBrowser)
+	if err := r.st.AddEvent(model.Event{AtNS: r.now().UnixNano(), Kind: "preflight_ceiling",
+		Detail: fmt.Sprintf("needs %d browsers, ceiling %d (memory %d, pods %d) for %d slots",
+			c.NeededBrowsers, c.Browsers, c.BrowsersByMemory, c.BrowsersByPods, c.Browsers*r.cfg.ContextsPerBrowser)}); err != nil {
+		r.log.Printf("preflight: record ceiling: %v", err)
 	}
 }
 
