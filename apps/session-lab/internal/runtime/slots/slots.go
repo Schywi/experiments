@@ -10,15 +10,43 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/infra/sandbox"
 )
+
+// Health is what the pool knows about a browser's ability to answer on its CDP
+// port. An instance starts Unknown: nothing has asked it yet.
+type Health int
+
+const (
+	HealthUnknown Health = iota
+	HealthHealthy
+	HealthUnhealthy
+)
+
+func (h Health) String() string {
+	switch h {
+	case HealthHealthy:
+		return "healthy"
+	case HealthUnhealthy:
+		return "unhealthy"
+	default:
+		return "unknown"
+	}
+}
 
 // Instance is one Chromium the pool can hand out slots from.
 type Instance struct {
 	Instance *sandbox.Instance
 	Capacity int
 	InUse    int
+	// Health is what the last probe said, and CheckedNS is when it said it. A
+	// browser that cannot answer must not receive work, whatever its Kubernetes
+	// phase says.
+	Health    Health
+	Failures  int
+	CheckedNS int64
 }
 
 // Idle reports whether nothing is running in this instance.
@@ -39,12 +67,33 @@ type Lease struct {
 // free, which is the only path from the demand plane into the capacity plane.
 type Provider func(ctx context.Context) (*sandbox.Instance, error)
 
+// Checker asks a browser whether it can still serve work. It is called before a
+// slot is handed out, at most once per health interval per instance.
+type Checker func(ctx context.Context, instance *sandbox.Instance) error
+
+// Options configures a pool. New covers the case that needs none of this.
+type Options struct {
+	PerInstance int
+	Provide     Provider
+	// Check is the health probe. Nil disables probing, which is the behaviour of
+	// a pool built with New.
+	Check Checker
+	// HealthInterval is how long a probe result stays valid. Zero means every
+	// assignment probes when Check is set.
+	HealthInterval time.Duration
+	// Now is the clock, for tests.
+	Now func() time.Time
+}
+
 // Pool allocates slots, creating instances on demand. It has no ceiling: the
 // platform's refusal is the ceiling, and it is recorded when it happens.
 type Pool struct {
 	mu          sync.Mutex
 	perInstance int
 	provide     Provider
+	check       Checker
+	interval    time.Duration
+	now         func() time.Time
 	entries     []*Instance
 	inUse       int
 	// provisioning counts instance creations in flight, and wait is closed and
@@ -54,24 +103,51 @@ type Pool struct {
 	wait         chan struct{}
 }
 
-// New builds a pool. perInstance below one is treated as one, so a zero-value
-// configuration still means one session per instance.
+// New builds a pool with no health probe.
 func New(perInstance int, provide Provider) *Pool {
+	return NewWithOptions(Options{PerInstance: perInstance, Provide: provide})
+}
+
+// NewWithOptions builds a pool. perInstance below one is treated as one, so a
+// zero-value configuration still means one session per instance.
+func NewWithOptions(opts Options) *Pool {
+	perInstance := opts.PerInstance
 	if perInstance < 1 {
 		perInstance = 1
 	}
-	return &Pool{perInstance: perInstance, provide: provide, wait: make(chan struct{})}
+	now := opts.Now
+	if now == nil {
+		now = time.Now
+	}
+	return &Pool{
+		perInstance: perInstance, provide: opts.Provide, check: opts.Check,
+		interval: opts.HealthInterval, now: now,
+		wait: make(chan struct{}),
+	}
 }
 
 // Take blocks until this session has a slot, creating an instance if none is
 // free. It never refuses: waiting is the only outcome when capacity is short,
-// and the caller's context decides when to stop waiting.
+// and the caller's context decides when to stop waiting. An instance whose
+// health is unknown or stale is probed before its slot is handed out; one that
+// fails the probe is skipped, and a second failure removes it.
 func (p *Pool) Take(ctx context.Context) (Lease, error) {
 	for {
 		p.mu.Lock()
 		if lease, ok := p.takeFreeLocked(); ok {
 			p.mu.Unlock()
 			return lease, nil
+		}
+		if candidate, ok := p.probeCandidateLocked(); ok {
+			p.mu.Unlock()
+			err := p.check(ctx, candidate.Instance)
+			p.mu.Lock()
+			p.recordProbeLocked(candidate, err)
+			p.mu.Unlock()
+			if ctx.Err() != nil {
+				return Lease{}, ctx.Err()
+			}
+			continue
 		}
 		if p.provisioning > 0 {
 			// Someone else is already creating an instance: wait for it and
@@ -97,16 +173,13 @@ func (p *Pool) Take(ctx context.Context) (Lease, error) {
 			p.mu.Unlock()
 			return Lease{}, err
 		}
-		entry := &Instance{Instance: instance, Capacity: p.perInstance}
-		p.entries = append(p.entries, entry)
-		entry.InUse++
-		p.inUse++
+		// The new entry is Unknown: the loop probes it before it serves work.
+		p.entries = append(p.entries, &Instance{Instance: instance, Capacity: p.perInstance})
 		p.mu.Unlock()
 
 		if ctx.Err() != nil {
 			return Lease{}, ctx.Err()
 		}
-		return Lease{Instance: instance, Index: 0, Shared: p.perInstance > 1}, nil
 	}
 }
 
@@ -173,12 +246,16 @@ func (p *Pool) Retire(instance *sandbox.Instance) {
 	}
 }
 
-// Snapshot describes the pool: instances, slots and slots in use.
+// Snapshot describes the pool: instances, slots and slots in use, plus the health
+// split, which is what says whether the pool can still serve work.
 type Snapshot struct {
 	Instances     int
 	Slots         int
 	InUse         int
 	IdleInstances int
+	Healthy       int
+	Unhealthy     int
+	Unknown       int
 }
 
 // Snapshot reads the current shape.
@@ -190,6 +267,14 @@ func (p *Pool) Snapshot() Snapshot {
 		snap.Slots += entry.Capacity
 		if entry.Idle() {
 			snap.IdleInstances++
+		}
+		switch entry.Health {
+		case HealthHealthy:
+			snap.Healthy++
+		case HealthUnhealthy:
+			snap.Unhealthy++
+		default:
+			snap.Unknown++
 		}
 	}
 	return snap
@@ -227,17 +312,10 @@ func (p *Pool) notifyLocked() {
 func (p *Pool) Capacity() int { return p.perInstance }
 
 // takeFreeLocked finds a slot, preferring an instance that already has sessions
-// so idle instances are drained to zero before new ones are filled.
+// so idle instances are drained to zero before new ones are filled. An entry
+// whose health is unknown or stale is not eligible: it has to be probed first.
 func (p *Pool) takeFreeLocked() (Lease, bool) {
-	var chosen *Instance
-	for _, entry := range p.entries {
-		if entry.InUse >= entry.Capacity {
-			continue
-		}
-		if chosen == nil || entry.InUse > chosen.InUse {
-			chosen = entry
-		}
-	}
+	chosen := p.pickLocked()
 	if chosen == nil {
 		return Lease{}, false
 	}
@@ -245,6 +323,87 @@ func (p *Pool) takeFreeLocked() (Lease, bool) {
 	chosen.InUse++
 	p.inUse++
 	return Lease{Instance: chosen.Instance, Index: index, Shared: p.perInstance > 1}, true
+}
+
+// pickLocked returns the instance a slot should come from, or nil. Only entries
+// that are free, not unhealthy, and (when a checker exists) freshly probed are
+// candidates.
+func (p *Pool) pickLocked() *Instance {
+	var chosen *Instance
+	for _, entry := range p.entries {
+		if entry.InUse >= entry.Capacity || entry.Health == HealthUnhealthy {
+			continue
+		}
+		if p.check != nil && !p.freshLocked(entry) {
+			continue
+		}
+		if chosen == nil || entry.InUse > chosen.InUse {
+			chosen = entry
+		}
+	}
+	return chosen
+}
+
+// probeCandidateLocked returns the instance that has to be probed before it can
+// serve work, if any.
+func (p *Pool) probeCandidateLocked() (*Instance, bool) {
+	if p.check == nil {
+		return nil, false
+	}
+	var candidate *Instance
+	for _, entry := range p.entries {
+		if entry.InUse >= entry.Capacity || entry.Health == HealthUnhealthy {
+			continue
+		}
+		if p.freshLocked(entry) {
+			continue
+		}
+		if candidate == nil || entry.InUse > candidate.InUse {
+			candidate = entry
+		}
+	}
+	return candidate, candidate != nil
+}
+
+// freshLocked reports whether a healthy probe result is still inside the
+// interval. With no interval, every assignment probes.
+func (p *Pool) freshLocked(entry *Instance) bool {
+	if entry.Health != HealthHealthy {
+		return false
+	}
+	if p.interval <= 0 {
+		return false
+	}
+	return p.now().UnixNano()-entry.CheckedNS < int64(p.interval)
+}
+
+// recordProbeLocked remembers the outcome of a probe. One failure takes the
+// instance out of assignment; a second removes it, because a browser that has
+// failed twice is not coming back on its own.
+func (p *Pool) recordProbeLocked(entry *Instance, err error) {
+	entry.CheckedNS = p.now().UnixNano()
+	if err == nil {
+		entry.Health = HealthHealthy
+		entry.Failures = 0
+		return
+	}
+	entry.Failures++
+	entry.Health = HealthUnhealthy
+	if entry.Failures < 2 {
+		return
+	}
+	for i, candidate := range p.entries {
+		if candidate != entry {
+			continue
+		}
+		p.inUse -= entry.InUse
+		if p.inUse < 0 {
+			p.inUse = 0
+		}
+		p.entries = append(p.entries[:i], p.entries[i+1:]...)
+		p.notifyLocked()
+		return
+	}
 }
 
 // String describes the pool for a log line.

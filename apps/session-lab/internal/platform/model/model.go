@@ -271,6 +271,10 @@ type RunConfig struct {
 	BootConcurrency int           `json:"boot_concurrency,omitempty"`
 	OverloadFactor  float64       `json:"overload_factor,omitempty"`
 	SessionDeadline time.Duration `json:"session_deadline_ns,omitempty"`
+	// HealthInterval is how long a browser's health probe result stays valid. A
+	// slot is only handed out to an instance whose health is known and fresh, so
+	// this bounds how often /json/version is read per instance.
+	HealthInterval time.Duration `json:"health_interval_ns,omitempty"`
 	// Window is the intended arrival window when the operator asked for one.
 	Window        time.Duration `json:"arrival_window_ns,omitempty"`
 	SampleSeconds float64       `json:"sample_seconds"`

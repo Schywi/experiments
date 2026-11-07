@@ -79,6 +79,8 @@ func Parse(args []string) (*Config, error) {
 	fs.IntVar(&cfg.Workers, "workers", 0, "concurrent workers; 0 means one goroutine per live session")
 	fs.Float64Var(&cfg.OverloadFactor, "overload-factor", 1, "offered load as a multiple of one instance's throughput")
 	fs.DurationVar(&deadline, "session-deadline", 0, "per-session deadline; 0 means none")
+	fs.DurationVar(&cfg.RunConfig.HealthInterval, "health-interval", 5*time.Second,
+		"how long a browser health probe result stays valid; 0 probes before every slot")
 	fs.Float64Var(&cfg.SampleSeconds, "sample-seconds", 10, "interval between resource samples")
 	fs.StringVar(&cfg.CgroupRoot, "cgroup-root", "", "cgroup v2 root for the sampler; read from the node when empty")
 	fs.StringVar(&cfg.OutDir, "out", "", "output directory (required)")

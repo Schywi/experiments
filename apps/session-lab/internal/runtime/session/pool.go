@@ -59,11 +59,29 @@ func (r *Runner) spoolFor(pool string) *slots.Pool {
 	if spool, ok := r.spools[pool]; ok {
 		return spool
 	}
-	spool := slots.New(r.cfg.ContextsPerBrowser, func(ctx context.Context) (*sandbox.Instance, error) {
-		return r.acquireInstance(ctx, pool)
+	spool := slots.NewWithOptions(slots.Options{
+		PerInstance: r.cfg.ContextsPerBrowser,
+		Provide: func(ctx context.Context) (*sandbox.Instance, error) {
+			return r.acquireInstance(ctx, pool)
+		},
+		// A slot is handed out only after the browser behind it answered
+		// /json/version on the port this run uses. Run B lost 1378 sessions to a
+		// browser that never answered and was re-offered anyway. Zero disables
+		// the check, which is what a unit test with a fake adapter wants.
+		Check:          r.healthCheck(),
+		HealthInterval: r.cfg.HealthInterval,
 	})
 	r.spools[pool] = spool
 	return spool
+}
+
+// healthCheck returns the probe to wire into a slot pool, or nil when the run did
+// not ask for health checking.
+func (r *Runner) healthCheck() slots.Checker {
+	if r.cfg.HealthInterval <= 0 {
+		return nil
+	}
+	return r.probeInstance
 }
 
 // retireEverywhere drops a dead browser from every slot pool that may hold it.
