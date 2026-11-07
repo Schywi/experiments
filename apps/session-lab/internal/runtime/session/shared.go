@@ -114,14 +114,35 @@ func transient(err error) bool {
 	return false
 }
 
-// sessionShared runs one session inside a browser context on a shared Chromium.
+// sessionShared runs one session inside a browser context on a shared Chromium,
+// retrying on a different instance when the browser's transport fails.
 func (r *Runner) sessionShared(ctx context.Context, planned schedule.Planned) {
+	attempts := r.cfg.Retries + 1
+	for attempt := 1; attempt <= attempts; attempt++ {
+		if !r.sessionSharedAttempt(ctx, planned, attempt) {
+			return
+		}
+		if ctx.Err() != nil {
+			// The run is ending; the session is recorded as waiting by the caller.
+			return
+		}
+		r.lg.Warn("session retrying on another instance",
+			logging.F("session", planned.ID), logging.F("attempt", attempt+1),
+			logging.F("of", attempts))
+	}
+}
+
+// sessionSharedAttempt is one attempt. It reports whether the attempt failed in a
+// way that is worth repeating on a different instance; the failed instance has
+// already left the pool when it returns true.
+func (r *Runner) sessionSharedAttempt(ctx context.Context, planned schedule.Planned, attempt int) (retry bool) {
 	pool := r.poolFor(planned)
 	spool := r.spoolFor(pool)
 	session := model.Session{
 		ID: planned.ID, Bucket: planned.Bucket, Policy: r.cfg.Policy,
 		Namespace: r.cfg.Namespace, Template: r.cfg.Template, Pool: pool,
 		Outcome: model.OutcomePending, ArrivalNS: r.start.Add(planned.Offset).UnixNano(),
+		Attempts: attempt,
 	}
 
 	// Admission first: the class decides the queue order and whether this
@@ -194,6 +215,9 @@ func (r *Runner) sessionShared(ctx context.Context, planned schedule.Planned) {
 		// keeps it in the pool as the instance with the most free capacity, so the
 		// next session is handed the same broken browser: retire it instead.
 		spool.RetireAndGive(lease)
+		if attempt < r.cfg.Retries+1 && browserUnusable(err) {
+			return true
+		}
 		r.settle(session.ID, model.OutcomeResetFailed, "browser context: "+err.Error(), &session)
 		return
 	}
@@ -292,12 +316,18 @@ func (r *Runner) sessionShared(ctx context.Context, planned schedule.Planned) {
 			r.lg.Error("context close failed", logging.F("session", session.ID),
 				logging.F("instance", lease.Instance.ID), logging.F("error", closeErr))
 		}
+		// The hold completed on this browser, so a transport failure here is worth
+		// one more attempt somewhere else rather than a lost session.
+		if attempt < r.cfg.Retries+1 && browserUnusable(closeErr) {
+			return true
+		}
 		r.settle(session.ID, outcome, "close context: "+closeErr.Error(), &session)
 		return
 	}
 	session.Outcome = model.OutcomeSuccess
 	session.Error = ""
 	r.settle(session.ID, model.OutcomeSuccess, "", &session)
+	return false
 }
 
 // browserUnusable reports whether an error means the browser on the other end is

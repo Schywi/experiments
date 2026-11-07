@@ -169,6 +169,9 @@ type Session struct {
 	OOMKill             int64 `json:"oom_kill,omitempty"`
 	MemPressureSomeUsec int64 `json:"mem_pressure_some_usec,omitempty"`
 	Samples             int64 `json:"samples,omitempty"`
+	// Attempts is how many times this session tried to get a working browser
+	// context. One means no retry happened.
+	Attempts int `json:"attempts,omitempty"`
 }
 
 // Instance is one sandbox the run created or adopted, keyed to the session that
@@ -275,6 +278,9 @@ type RunConfig struct {
 	// slot is only handed out to an instance whose health is known and fresh, so
 	// this bounds how often /json/version is read per instance.
 	HealthInterval time.Duration `json:"health_interval_ns,omitempty"`
+	// Retries is how many times a session may start over on a different instance
+	// after a transport-level failure. Zero means one attempt.
+	Retries int `json:"retries,omitempty"`
 	// Window is the intended arrival window when the operator asked for one.
 	Window        time.Duration `json:"arrival_window_ns,omitempty"`
 	SampleSeconds float64       `json:"sample_seconds"`

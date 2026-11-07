@@ -82,7 +82,8 @@ CREATE TABLE IF NOT EXISTS sessions (
     swap_allowance_bytes INTEGER NOT NULL DEFAULT 0,
     oom_kill       INTEGER NOT NULL DEFAULT 0,
     mem_pressure_some_usec INTEGER NOT NULL DEFAULT 0,
-    samples        INTEGER NOT NULL DEFAULT 0
+    samples        INTEGER NOT NULL DEFAULT 0,
+    attempts       INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE INDEX IF NOT EXISTS sessions_outcome ON sessions(outcome);
@@ -154,6 +155,7 @@ func Open(path string) (*Store, error) {
 		"task_duration_us INTEGER NOT NULL DEFAULT 0",
 		"script_duration_us INTEGER NOT NULL DEFAULT 0",
 		"js_heap_bytes INTEGER NOT NULL DEFAULT 0",
+		"attempts INTEGER NOT NULL DEFAULT 0",
 		"swap_allowance_bytes INTEGER NOT NULL DEFAULT 0",
 	} {
 		if _, err := db.Exec("ALTER TABLE sessions ADD COLUMN " + column); err != nil &&
@@ -337,7 +339,8 @@ func (s *Store) UpdateSession(session model.Session) error {
 		    throttled_usec = ?, nr_throttled = ?, mem_peak_bytes = ?,
 		    mem_working_set_peak_bytes = ?, mem_inactive_file_bytes = ?, shmem_peak_bytes = ?,
 		    anon_peak_bytes = ?, workingset_refault_anon = ?, workingset_refault_file = ?,
-		    swap_peak_bytes = ?, swap_allowance_bytes = ?, oom_kill = ?, mem_pressure_some_usec = ?, samples = ?
+		    swap_peak_bytes = ?, swap_allowance_bytes = ?, oom_kill = ?, mem_pressure_some_usec = ?, samples = ?,
+		    attempts = ?
 		 WHERE id = ?`,
 		session.Instance, string(session.Outcome), session.Error,
 		session.ClaimCreatedNS, session.ReadyNS, session.HoldStartNS, session.HoldEndNS,
@@ -351,6 +354,7 @@ func (s *Store) UpdateSession(session model.Session) error {
 		session.MemWorkingSetPeak, session.MemInactiveFile, session.ShmemPeak,
 		session.AnonPeak, session.RefaultAnon, session.RefaultFile,
 		session.SwapPeakBytes, session.SwapAllowanceBytes, session.OOMKill, session.MemPressureSomeUsec, session.Samples,
+		session.Attempts,
 		session.ID)
 	if err != nil {
 		return fmt.Errorf("update session %d: %w", session.ID, err)
@@ -424,7 +428,7 @@ func (s *Store) Sessions() ([]model.Session, error) {
 		        throttled_usec, nr_throttled, mem_peak_bytes, mem_working_set_peak_bytes,
 		        mem_inactive_file_bytes, shmem_peak_bytes, anon_peak_bytes,
 		        workingset_refault_anon, workingset_refault_file, swap_peak_bytes, swap_allowance_bytes, oom_kill,
-		        mem_pressure_some_usec, samples
+		        mem_pressure_some_usec, samples, attempts
 		 FROM sessions ORDER BY id`)
 	if err != nil {
 		return nil, err
@@ -446,7 +450,7 @@ func (s *Store) Sessions() ([]model.Session, error) {
 			&s.ThrottledUsec, &s.NRThrottled, &s.MemPeakBytes, &s.MemWorkingSetPeak,
 			&s.MemInactiveFile, &s.ShmemPeak, &s.AnonPeak,
 			&s.RefaultAnon, &s.RefaultFile, &s.SwapPeakBytes, &s.SwapAllowanceBytes, &s.OOMKill,
-			&s.MemPressureSomeUsec, &s.Samples); err != nil {
+			&s.MemPressureSomeUsec, &s.Samples, &s.Attempts); err != nil {
 			return nil, err
 		}
 		s.Policy = model.Policy(policy)
