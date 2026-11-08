@@ -259,6 +259,19 @@ func (r *Runner) sessionSharedAttempt(ctx context.Context, planned schedule.Plan
 		return
 	}
 
+	// A session that persists writes its state here, before the context is
+	// disposed: closeIsolated below is what destroys it. Only the ws transport
+	// exposes a context's storage, so a run on the in-pod bridge captures
+	// nothing. A session whose hold was interrupted returns above and captures
+	// nothing, and neither does one whose context never opened.
+	if r.persist != nil && !isolatedState.viaHTTP {
+		if err := r.persist.Capture(ctx, isolatedState.conn, isolatedState.session,
+			isolatedState.context, session.ID); err != nil {
+			r.lg.Warn("persist capture failed", logging.F("session", session.ID),
+				logging.F("error", err.Error()))
+		}
+	}
+
 	// Closing the context replaces the old blank-page reset: the next session on
 	// this browser starts with no cookies, storage or cache from this one.
 	session.ResetStartNS = r.now().UnixNano()

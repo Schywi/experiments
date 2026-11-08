@@ -7,16 +7,21 @@ import (
 	"testing"
 )
 
-func TestWantsIsDeterministic(t *testing.T) {
+func TestWantsSelectsTheRequestedFraction(t *testing.T) {
+	// Ids arrive as 1, 2, 3… so the selector has to hold the fraction on a short
+	// run as well as a long one: `id % 100` gave 38 % of a 50-session run at a
+	// 20 % rate, which is what this test exists to prevent.
 	cases := []struct {
-		rate float64
-		want int // sessions out of 0..99 that should persist
+		rate  float64
+		total int
+		want  int
+		tol   int
 	}{
-		{rate: 0, want: 0},
-		{rate: 0.01, want: 1},
-		{rate: 0.2, want: 20},
-		{rate: 0.5, want: 50},
-		{rate: 1, want: 100},
+		{rate: 0, total: 50, want: 0, tol: 0},
+		{rate: 0.2, total: 50, want: 10, tol: 4},
+		{rate: 0.2, total: 1000, want: 200, tol: 20},
+		{rate: 0.5, total: 1000, want: 500, tol: 30},
+		{rate: 1, total: 50, want: 50, tol: 0},
 	}
 	for _, tc := range cases {
 		dir, err := NewDir(Options{Dir: t.TempDir(), Rate: tc.rate})
@@ -24,13 +29,30 @@ func TestWantsIsDeterministic(t *testing.T) {
 			t.Fatalf("rate %v: %v", tc.rate, err)
 		}
 		got := 0
-		for id := int64(0); id < 100; id++ {
+		for id := int64(1); id <= int64(tc.total); id++ {
 			if dir.Wants(id) {
 				got++
 			}
 		}
-		if got != tc.want {
-			t.Errorf("rate %v: %d of 100 sessions persist, want %d", tc.rate, got, tc.want)
+		if got < tc.want-tc.tol || got > tc.want+tc.tol {
+			t.Errorf("rate %v over %d sessions: %d persist, want %d ±%d",
+				tc.rate, tc.total, got, tc.want, tc.tol)
+		}
+	}
+}
+
+func TestWantsIsDeterministic(t *testing.T) {
+	first, err := NewDir(Options{Dir: t.TempDir(), Rate: 0.2})
+	if err != nil {
+		t.Fatalf("new dir: %v", err)
+	}
+	second, err := NewDir(Options{Dir: t.TempDir(), Rate: 0.2})
+	if err != nil {
+		t.Fatalf("new dir: %v", err)
+	}
+	for id := int64(1); id <= 200; id++ {
+		if first.Wants(id) != second.Wants(id) {
+			t.Fatalf("session %d persists in one run and not the other", id)
 		}
 	}
 }
@@ -79,14 +101,91 @@ func TestDecodeRefusesGarbage(t *testing.T) {
 	}
 }
 
-func TestBudgetIsReservedNotOverrun(t *testing.T) {
+func TestBudgetRefusesTheWrite(t *testing.T) {
 	dir, err := NewDir(Options{Dir: t.TempDir(), Rate: 1, Budget: 100})
 	if err != nil {
 		t.Fatalf("new dir: %v", err)
 	}
-	dir.reserve(60)
-	dir.reserve(30)
-	dir.reserve(30) // would cross the budget
+	// put, not commit: the defect this replaces was a budget that refused in the
+	// counter and wrote the file anyway, and only put reaches the write.
+	for id, size := range map[int64]int{1: 60, 2: 30, 3: 30} {
+		if err := dir.put(id, make([]byte, size)); err != nil {
+			t.Fatalf("put session %d: %v", id, err)
+		}
+	}
+	stats := dir.Stats()
+	if stats.Bytes != 90 {
+		t.Errorf("booked %d bytes, want 90", stats.Bytes)
+	}
+	if stats.Refused != 1 {
+		t.Errorf("%d refusals, want 1", stats.Refused)
+	}
+	if stats.Blobs != 2 {
+		t.Errorf("%d blobs counted, want 2", stats.Blobs)
+	}
+	entries, err := os.ReadDir(dir.dir)
+	if err != nil {
+		t.Fatalf("read dir: %v", err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("%d files on disk, want 2: a refused blob was written anyway", len(entries))
+	}
+	var total int64
+	for _, entry := range entries {
+		info, err := entry.Info()
+		if err != nil {
+			t.Fatalf("stat %s: %v", entry.Name(), err)
+		}
+		total += info.Size()
+	}
+	if total != 90 {
+		t.Errorf("%d bytes on disk, want 90", total)
+	}
+}
+
+func TestGenerationIncrements(t *testing.T) {
+	dir, err := NewDir(Options{Dir: t.TempDir(), Rate: 1})
+	if err != nil {
+		t.Fatalf("new dir: %v", err)
+	}
+	if err := dir.put(7, []byte("first")); err != nil {
+		t.Fatalf("put first: %v", err)
+	}
+	if err := dir.put(7, []byte("second")); err != nil {
+		t.Fatalf("put second: %v", err)
+	}
+	entries, err := os.ReadDir(dir.dir)
+	if err != nil {
+		t.Fatalf("read dir: %v", err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("%d files, want 2: a second capture of one session overwrote the first", len(entries))
+	}
+	names := map[string]bool{}
+	for _, entry := range entries {
+		names[entry.Name()] = true
+	}
+	for _, want := range []string{"000007-g1.json.gz", "000007-g2.json.gz"} {
+		if !names[want] {
+			t.Errorf("missing %s, got %v", want, names)
+		}
+	}
+	if got := dir.Stats().Bytes; got != 11 {
+		t.Errorf("booked %d bytes, want 11 (both generations)", got)
+	}
+}
+
+func TestCommitAndRelease(t *testing.T) {
+	dir, err := NewDir(Options{Dir: t.TempDir(), Rate: 1, Budget: 100})
+	if err != nil {
+		t.Fatalf("new dir: %v", err)
+	}
+	if !dir.commit(60) || !dir.commit(30) {
+		t.Fatal("a booking inside the budget was refused")
+	}
+	if dir.commit(30) {
+		t.Fatal("a booking that crosses the budget was accepted")
+	}
 	stats := dir.Stats()
 	if stats.Bytes != 90 {
 		t.Errorf("booked %d bytes, want 90", stats.Bytes)
