@@ -24,6 +24,7 @@ import (
 	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/platform/logging"
 	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/platform/model"
 	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/platform/store"
+	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/persist"
 	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/runtime/admission"
 	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/runtime/browser"
 	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/runtime/schedule"
@@ -82,6 +83,10 @@ type Options struct {
 	HostMemory func() (total, available, swapTotal, swapFree int64)
 	// Recorder exports run progress; nil disables the export.
 	Recorder Recorder
+	// Persist captures a session's browser state before its context is
+	// disposed. Nil disables persistence, which is what every run that does
+	// not ask for it gets: the runner's behaviour is unchanged.
+	Persist persist.Writer
 	// AutoscalerInfo returns what autoscaling exists for this run, as JSON. The
 	// runner records it rather than being told what to assume.
 	AutoscalerInfo func(ctx context.Context) (string, error)
@@ -112,6 +117,9 @@ type Runner struct {
 	hostMemory func() (total, available, swapTotal, swapFree int64)
 	rec        Recorder
 	autoscaler func(ctx context.Context) (string, error)
+
+	// persist is the optional capture path; nil means nothing is captured.
+	persist persist.Writer
 
 	// minAvailable and memTotal are the node memory extremes the run saw.
 	minAvailable   int64
@@ -184,6 +192,7 @@ func New(cfg model.RunConfig, opts Options) *Runner {
 		hostMemory: opts.HostMemory,
 		rec:        opts.Recorder,
 		autoscaler: opts.AutoscalerInfo,
+		persist:    opts.Persist,
 	}
 	if cfg.ContextsPerBrowser > 1 {
 		runner.spools = map[string]*slots.Pool{}

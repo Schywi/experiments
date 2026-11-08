@@ -23,6 +23,9 @@ type isolated struct {
 	conn    *browser.Conn
 	viaHTTP bool
 	before  browser.Usage
+	// sessionID is the run's session number, carried here so the capture path
+	// can key a blob without the closing code knowing about the plan.
+	sessionID int64
 }
 
 // openIsolated gives a session its own state on an instance, using whichever
@@ -34,7 +37,7 @@ func (r *Runner) openIsolated(ctx context.Context, instance *sandbox.Instance, s
 		if err != nil {
 			return isolated{}, err
 		}
-		return isolated{context: browser.ContextID(session.ContextID), target: browser.TargetID(session.TargetID), viaHTTP: true}, nil
+		return isolated{context: browser.ContextID(session.ContextID), target: browser.TargetID(session.TargetID), viaHTTP: true, sessionID: sessionID}, nil
 	}
 
 	conn, err := r.browserConn(ctx, instance)
@@ -57,7 +60,7 @@ func (r *Runner) openIsolated(ctx context.Context, instance *sandbox.Instance, s
 		_ = conn.DisposeContext(ctx, contextID)
 		return isolated{}, err
 	}
-	opened := isolated{context: contextID, target: targetID, session: session, conn: conn}
+	opened := isolated{context: contextID, target: targetID, session: session, conn: conn, sessionID: sessionID}
 	// Page events (load) and Performance counters are only emitted for a session
 	// that enabled their domains.
 	if err := session.EnablePage(ctx); err != nil {
@@ -91,6 +94,14 @@ func (r *Runner) closeIsolated(ctx context.Context, instance *sandbox.Instance, 
 
 	var cost browser.Usage
 	var firstErr error
+	// A capture has to happen before the calls below, because they are what
+	// destroys the state. Only the ws transport exposes the context's storage,
+	// so a run on the in-pod bridge captures nothing.
+	if r.persist != nil && opened.session != nil {
+		if err := r.persist.Capture(ctx, opened.conn, opened.session, opened.context, opened.sessionID); err != nil {
+			r.log.Printf("persist: session %d: %v", opened.sessionID, err)
+		}
+	}
 	if opened.session != nil {
 		usage, err := opened.session.Metrics(ctx)
 		if err == nil {
