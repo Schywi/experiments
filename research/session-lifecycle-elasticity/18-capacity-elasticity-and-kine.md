@@ -10,6 +10,12 @@ tags: [session-lifecycle, control-plane, state-research]
 
 # Note 18 — Capacity, elasticity, and why kine is the ceiling
 
+> **Partly superseded.** The 168-slot ceiling in §2 was measured at
+> `requests.cpu: 100m`. The template now asks for 10m and the scheduler no longer
+> binds there: the newest run served 306 concurrent contexts over 352 slots with
+> 2986/3000 sessions successful. Current ceiling numbers live in
+> [note 24](24-capacity-ledger.md); the kine finding below still stands.
+
 | | |
 |---|---|
 | Status | Analysis with live evidence, 2026-10-31 |
@@ -59,14 +65,18 @@ in `ae04cf4`):
 
 | Constraint | Limit on this host | Evidence in that run |
 |---|---|---|
-| Scheduler (CPU requests) | ~21 browsers × 8 = **168 slots**; 27 if browsers had no neighbours | `FailedScheduling … Insufficient cpu` at 23:59 with 21 instances |
+| Scheduler (CPU requests) | ~21 browsers × 8 = **168 slots** at `requests.cpu: 100m` — historical; see [note 24](24-capacity-ledger.md) | `FailedScheduling … Insufficient cpu` at 23:59 with 21 instances |
 | Node memory | 15.9 GiB; 21 browsers ≈ 7.3 GiB + system | `min available 2846 MiB (17.9%)`, swap 4137 MiB |
 | Control plane (kine) | ~2 sessions/s of write churn | apiserver `connection refused` ×4, then `apiserver not ready` |
 | The runner's own bug | acquisition p95 **266 s** | 335 sessions in flight against 150 offered |
 
-So the honest statement is: **168 concurrent contexts is the slot ceiling on this node,
-~2 sessions/s is what the control plane survives, and 600-in-10-minutes was a workload that
-exceeded both.**
+So the statement for *that configuration* was: 168 concurrent contexts at 100m
+requests, ~2 sessions/s from the control plane. The slot part no longer holds:
+the template asks for 10m, the scheduler stopped binding there, and the newest run
+served **306 concurrent contexts over 352 slots with 2986/3000 sessions successful**
+(`20261107T235847Z`, [note 24](24-capacity-ledger.md)). The control-plane part is
+still the constraint that showed up in that run — 14 sessions were refused at claim
+creation — so kine remains the open ceiling.
 
 ### The arithmetic, for a 24-hour run
 
@@ -78,7 +88,8 @@ sessions/s = concurrent slots / mean hold
 
 | Bound | Concurrency | sessions/s | sessions / 24 h |
 |---|---|---|---|
-| Slots | 168 | 2.24 | 193 500 |
+| Slots at 100m requests (historical) | 168 | 2.24 | 193 500 |
+| Slots at 10m requests, measured ([note 24](24-capacity-ledger.md)) | 352 | 4.69 **[I]** | 405 000 |
 | CPU, measured 2.0 core-seconds per session over ~2.7 free cores | 135 | 1.35 | 116 600 |
 | Control plane (what actually broke) | — | ~2 | ~170 000 theoretical, **0 observed** |
 | A defensible soak target | 75 | 1.0 | 86 400 |
@@ -166,8 +177,9 @@ Options, in increasing cost:
 
 ## 6. One-line answers
 
-- **600 sessions in 10 minutes is a workload, not a limit.** The node's slot ceiling is ~168
-  contexts; the control plane's is ~2 sessions/s.
+- **600 sessions in 10 minutes is a workload, not a limit.** The control plane's ceiling is
+  ~2 sessions/s; the slot ceiling was 168 at 100m requests and is **352 slots / 306
+  concurrent contexts measured** at the current 10m ([note 24](24-capacity-ledger.md)).
 - **CPU is elastic per browser** (no limits, bursty) but **the node is not**, and the pool cannot
   see CPU at all.
 - **kine/SQLite is the binding constraint**, with 1–3 s commits under load and a measurable

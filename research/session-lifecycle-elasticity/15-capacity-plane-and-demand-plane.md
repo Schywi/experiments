@@ -180,15 +180,18 @@ becomes meaningful once one Chromium serves several sessions.
 
 ## 7. Parallel research that may decide the class question
 
-A separate experiment, run by another agent under the `report` area, is measuring what happens to
+A separate experiment, run by another agent under the `report` area, measured what happens to
 the *cost* of a session when its memory is compressed or swapped: whether a suspended or idle
 sandbox pays a latency tax when it wakes, and whether `batch` and `bulk` traffic can be parked in
 swap/zram instead of holding resident capacity.
 
-If that holds up, it answers the batch/bulk question better than an admission class can: a class
-that only reorders a queue keeps the capacity reserved, while compressed or swapped idle state
-releases it. None of it is production evidence yet, so this note does not depend on it — the classes
-in §2 stand on their own and are the smaller change.
+That work now has a measured point to stand on: the largest run on this node served 306
+concurrent contexts with zram at 5:1 in use — 16.46 MiB allowance per pod, 2919 of 2986
+sessions swapping, 11.7 GiB of node swap occupied, no OOM kills, no throttled sessions
+([ledger](24-capacity-ledger.md)). It answers the batch/bulk question better than an
+admission class can: a class that only reorders a queue keeps the capacity reserved, while
+compressed or swapped idle state releases it. The classes in §2 stand on their own and are
+still the smaller change.
 
 ## 8. What this deliberately leaves out
 

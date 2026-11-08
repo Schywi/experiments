@@ -240,7 +240,9 @@ only triggers once claims pile up, i.e. at exactly the concurrency the capacity 
 is about.
 
 **Therefore the earlier "ceiling = 6, breaks at 8" reading was wrong** — 8 was the watch
-bug, not capacity. No capacity ceiling has been measured.
+bug, not capacity. No ceiling was measured *in this lab*; the ceiling measured on the
+host is in the [ledger](../session-lifecycle-elasticity/24-capacity-ledger.md): 352 slots,
+306 concurrent contexts, with zram in use and no OOM kills.
 
 ### 5.3 What the box *can* be said to hold, with caveats
 
@@ -517,6 +519,23 @@ arms unchanged, `rung_timeout` caps a failing rung at 6 minutes, and
 ---
 
 ## 6. Upstream: swap is not capacity, by design
+
+The KEP is right about the scheduler, and the measured runs add what it does not say:
+swap is not *accounted* capacity, but it is capacity in practice when the node is
+configured for it.
+
+```
+20261107T235847Z   306 concurrent contexts served with zram at 5:1 in use
+                   allowance 16.46 MiB per pod, 2919/2986 sessions swapping,
+                   node swap used 11992 MiB, memory floor 16.3%, oom 0, throttled 0
+                   the constraint was the API server (14 claim refusals), not memory
+```
+
+So the sentence to keep is narrow: **the scheduler cannot see swap, so swap cannot be
+requested and will not protect a neighbour.** The sentence to drop is "swap is not
+capacity" as a statement about what a node can hold — the ledger
+([note 24](../session-lifecycle-elasticity/24-capacity-ledger.md)) is where that number
+lives.
 
 **[D]** KEP-2400 (NodeSwap), the authority for what Kubernetes does here:
 

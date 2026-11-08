@@ -21,6 +21,12 @@ Labels used throughout, the same four as `research/swap-capacity/`: **[M]** meas
 with a named artefact, **[D]** documented upstream, **[I]** inferred from a measurement or from
 arithmetic over one, **[U]** unknown — no evidence produced yet.
 
+**Sizing caveat.** The 168-slot and 336-slot figures these notes are built on come from
+[a 100m-request run](../session-lifecycle-elasticity/18-capacity-elasticity-and-kine.md).
+The measured ceiling at the current 128Mi/10m template is **352 slots / 306 concurrent
+contexts** ([ledger](../session-lifecycle-elasticity/24-capacity-ledger.md)); re-derive the
+sizing before relying on it.
+
 Every number in these notes is either arithmetic over a figure already recorded elsewhere in this
 repository (named at the point of use) or a vendor statement about JuiceFS. The snapshot sizes are
 **[U]** until E0 in note 03 runs, and the whole plan is built so that a wrong size assumption

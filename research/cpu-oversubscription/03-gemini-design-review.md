@@ -27,7 +27,7 @@ would prove it?**
 | Proposed | Why it is wrong here |
 |---|---|
 | **Resting CPU 3–10 mCPU per session** | Measured: 19–42 mCPU per session as a share of a shared pod, and 1.26–4.67 core-seconds per session over a 30–75 s hold. A density model built on 5 m over-promises by 4–8× |
-| **`N = 6000/200 = 30` or `N = 300–500` sessions** | Both ignore memory requests (256Mi per pod) and the 110-pod cap. On this node the ceiling is ~52–66 browsers, i.e. 168–528 contexts at 8 each |
+| **`N = 6000/200 = 30` or `N = 300–500` sessions** | Both ignore memory requests (256Mi per pod) and the 110-pod cap. The `168–528` figures here are arithmetic at a 256Mi request, not a measurement: measured ceilings are in [note 24](../session-lifecycle-elasticity/24-capacity-ledger.md) (352 slots / 306 concurrent at a 128Mi request) |
 | **Redis two-phase provisional leases, TTL, CAS** | We have one scheduler, one node, one process. `slots.Pool` already serialises provisioning (`slots.go:74-100`). A distributed ledger solves contention we cannot have |
 | **Predictive headroom with exponential decay** | Requires `C_spike`, `C_rest`, `T_init`, `λ_decay` per page class. We have none of them yet; the ladder produces them before any decay model is justified |
 | **Firecracker microVMs + snapshot restore** | Not a scheduler change: it replaces the sandbox runtime. Our cold start is 12–80 s and dominated by image + Chromium boot, not by namespace setup. Out of scope, and the platform under test is `agent-sandbox`, not a KVM VMM |

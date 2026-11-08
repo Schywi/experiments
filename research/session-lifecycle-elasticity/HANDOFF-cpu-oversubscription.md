@@ -105,7 +105,7 @@ is bursty, which is precisely the case oversubscription is supposed to exploit.
 
 | Constraint | Limit | Evidence |
 |---|---|---|
-| Scheduler (CPU requests) | ~21 browsers = **168 contexts**; 27 if nothing else ran | `FailedScheduling … Insufficient cpu` in `20261031T024806Z` at 21 instances |
+| Scheduler (CPU requests) | ~21 browsers = **168 contexts** at 100m requests — historical; at 10m the scheduler placed 44 browsers | `FailedScheduling … Insufficient cpu` in `20261031T024806Z` at 21 instances; 352 slots / 306 concurrent measured in `20261107T235847Z` ([note 24](24-capacity-ledger.md)) |
 | Node memory | 16 GiB; 21 browsers ≈ 7.3 GiB plus system | `min available 17.9%`, swap 4.1 GiB |
 | Control plane (kine/SQLite) | **~2 sessions/s** of write churn | apiserver `connection refused`; see [note 18](18-capacity-elasticity-and-kine.md) §4 |
 | Pool scaling | 5 s tick, claim-count driven, **blind to CPU** | `experiments-wnj` |

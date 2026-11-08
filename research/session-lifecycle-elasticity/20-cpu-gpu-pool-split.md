@@ -20,10 +20,15 @@ tags: [session-lifecycle, gpu, state-hypothesis]
 
 ## 0. Why this split survives note 19
 
-[19](19-gpu-pool-a-b.md) settled the capacity question this note was originally motivated by: at 30
-concurrent sessions, node CPU was **1.53 cores against 1.58 of 6** with and without acceleration,
-because `session-lab`'s hold samples cgroups and never requests a frame. A GPU tier therefore buys
-**no extra sessions per node**, and nothing below depends on it doing so.
+[19](19-gpu-pool-a-b.md) settled the *raster* question this note was originally motivated by:
+at 30 concurrent sessions, node CPU was **1.53 cores against 1.58 of 6** with and without
+acceleration, because `session-lab`'s hold samples cgroups and never requests a frame. A GPU
+tier therefore buys no CPU per browser for that workload.
+
+It does not follow that a GPU tier buys no density. The largest run on this node was served
+by `browser-tpl-gpu`: **44 browsers, 352 slots, 306 concurrent contexts, 2986/3000 sessions
+successful** (`20261107T235847Z`, [note 24](24-capacity-ledger.md)). Density and per-browser
+raster cost are separate numbers; only the second was measured in [19](19-gpu-pool-a-b.md).
 
 What the split is still for:
 

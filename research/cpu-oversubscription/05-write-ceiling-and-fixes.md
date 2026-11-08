@@ -236,7 +236,9 @@ Then this stops, and not because of the datastore:
 
 ```
 CPU    2.0 core-seconds per session (note 18) over ~2.7 free cores  = 1.35 sessions/s, heavy pages
-slots  168 contexts / 75 s mean hold                                = 2.24 sessions/s
+slots  168 contexts at 100m requests / 75 s mean hold              = 2.24 sessions/s
+       352 contexts at 10m requests, measured                      = 4.69 sessions/s
+       (ledger: research/session-lifecycle-elasticity/24-capacity-ledger.md)
 memory ~38 browsers × 8 contexts at 360 MiB each                    = ~304 concurrent
 pods   110 − 44 system ÷ 1 browser                                  = 66 browsers
 ```

@@ -24,13 +24,28 @@ Labels used throughout: **measured** (a run recorded it), **configured** (a file
 
 ## 1. Verdict
 
-GPU acceleration does **not** raise concurrent session capacity on this node for the
-workload `session-lab` actually generates. The runner's hold is a sleep that samples
-cgroups; it never requests a frame, so headless Chromium renders nothing and the GPU has
-nothing to relieve. Measured node CPU was identical across arms: **1.53 vs 1.58 cores
-out of 6** at 30 concurrent sessions.
+**For a workload that never requests a frame, GPU acceleration changes nothing about
+how many sessions a node can hold; it is nonetheless the cell the largest run has been
+served on.** The runner's hold is a sleep that samples cgroups; it never requests a
+frame, so headless Chromium renders nothing and the accelerator has nothing to relieve.
+Measured node CPU was identical across arms: **1.53 vs 1.58 cores out of 6** at 30
+concurrent sessions.
 
-The only case where the GPU moved a number is a forced render loop (40
+Two different numbers kept being collapsed into that verdict:
+
+```
+density   how many sessions a node holds      browser-tpl-gpu, 44 browsers, 352 slots,
+                                              306 concurrent contexts, 2986/3000 successful
+                                              (20261107T235847Z, note 24)
+raster    CPU per browser while rendering     1.53 vs 1.58 cores at 30 sessions here;
+                                              2.13 -> 1.57 cores with a screenshot loop
+```
+
+So "a GPU tier buys no extra sessions per node" is wrong as written — the GPU cell is
+what carried 352 slots and 306 concurrent contexts. What the A/B settled is the raster
+column, and its answer is that acceleration pays only when a session captures frames.
+
+The one case where the GPU moved a number is a forced render loop (40
 `Page.captureScreenshot` calls per session), which `session-lab` does not implement
 ([08 §9.2](08.2-gpu-offload-feasibility.md) calls this the missing "drive phase"). There the
 GPU cut CPU per browser **2.13 → 1.57 cores (−26%)** while screenshot latency rose
