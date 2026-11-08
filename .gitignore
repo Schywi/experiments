@@ -41,6 +41,10 @@ commit_message.sh
 
 # Handoff notes for a specialised agent; never published.
 handoff/
+docs/handoff/
+
+# Exported session transcript (markdown, written by the agent host); local only.
+session-*.md
 
 # Archives: sandbox-console ships as a tracked directory; the zip is a stale duplicate.
 *.zip
