@@ -281,14 +281,3 @@ func (c *s3Client) Remove(ctx context.Context, key string) error {
 }
 
 func (c *s3Client) String() string { return "s3://" + c.bucket }
-
-// wants is the shared selector, so both arms pick the same sessions at one rate.
-func wants(rate float64, sessionID int64) bool {
-	if rate <= 0 {
-		return false
-	}
-	if rate >= 1 {
-		return true
-	}
-	return spread(sessionID) < int64(rate*100+0.5)
-}

@@ -34,12 +34,11 @@ storage:
 service:
   port: 9000
   consolePort: 9001
-  # What persist-lab can reach from where it runs. ClusterIP when the runner runs
-  # inside the cluster; NodePort or LoadBalancer when it runs on the host, which
-  # is how the current experiments run.
-  type: ClusterIP
-  # Only used when type is NodePort.
-  nodePort: null
+  # NodePort with a fixed port, because persist-lab runs on the host and the
+  # runner derives its endpoint from this Service. Pinned here rather than passed
+  # with --set at install time, so the repository describes what the cluster runs.
+  type: NodePort
+  nodePort: 30900
 
 resources:
   requests:

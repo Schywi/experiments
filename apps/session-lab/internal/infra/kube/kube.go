@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -16,6 +17,7 @@ import (
 
 	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/infra/sandbox"
 	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/platform/model"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -669,6 +671,71 @@ func (k *Kube) Node(ctx context.Context, namespace string) (sandbox.NodeCapacity
 		MemBytes: allocatable.Memory().Value(),
 		Pods:     allocatable.Pods().Value(),
 	}, nil
+}
+
+// SecretData returns a Secret's keys. The persist arm reads the MinIO
+// credentials from the cluster it already talks to, so the runner carries no
+// password on a command line and keeps no secret on disk.
+func (k *Kube) SecretData(ctx context.Context, namespace, name string) (map[string][]byte, error) {
+	secret, err := k.core.CoreV1().Secrets(namespace).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("secret %s/%s: %w", namespace, name, err)
+	}
+	return secret.Data, nil
+}
+
+// ServiceEndpoint is host:port at which a Service is reachable from the runner.
+// A NodePort or LoadBalancer is reached on the node's InternalIP, because the
+// runner is a host process and not a pod; a ClusterIP is used as it stands.
+func (k *Kube) ServiceEndpoint(ctx context.Context, namespace, name string, servicePort int32) (string, error) {
+	service, err := k.core.CoreV1().Services(namespace).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return "", fmt.Errorf("service %s/%s: %w", namespace, name, err)
+	}
+	port := servicePort
+	if port == 0 {
+		for _, candidate := range service.Spec.Ports {
+			port = candidate.Port
+			break
+		}
+	}
+	if service.Spec.Type != corev1.ServiceTypeNodePort && service.Spec.Type != corev1.ServiceTypeLoadBalancer {
+		if service.Spec.ClusterIP == "" || service.Spec.ClusterIP == corev1.ClusterIPNone {
+			return "", fmt.Errorf("service %s/%s has no cluster IP", namespace, name)
+		}
+		return net.JoinHostPort(service.Spec.ClusterIP, strconv.Itoa(int(port))), nil
+	}
+	nodePort := int32(0)
+	for _, candidate := range service.Spec.Ports {
+		if candidate.Port == port {
+			nodePort = candidate.NodePort
+			break
+		}
+	}
+	if nodePort == 0 {
+		return "", fmt.Errorf("service %s/%s exposes no node port for %d", namespace, name, port)
+	}
+	ip, err := k.nodeInternalIP(ctx)
+	if err != nil {
+		return "", err
+	}
+	return net.JoinHostPort(ip, strconv.Itoa(int(nodePort))), nil
+}
+
+// nodeInternalIP is the address a host process reaches this cluster on.
+func (k *Kube) nodeInternalIP(ctx context.Context) (string, error) {
+	nodes, err := k.core.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return "", fmt.Errorf("list nodes: %w", err)
+	}
+	for _, node := range nodes.Items {
+		for _, address := range node.Status.Addresses {
+			if address.Type == corev1.NodeInternalIP && address.Address != "" {
+				return address.Address, nil
+			}
+		}
+	}
+	return "", fmt.Errorf("no node reports an InternalIP")
 }
 
 // Boundaries reports refusals and degradations from the event stream.

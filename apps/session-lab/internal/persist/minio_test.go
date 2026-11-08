@@ -106,8 +106,6 @@ func TestS3EvictsTheOldestFirst(t *testing.T) {
 	}
 }
 
-// TestS3RefusesOneBlobOverBudget covers the case eviction cannot solve: nothing
-// is stored, the refusal is counted, and the run continues.
 func TestS3RefusesOneBlobOverBudget(t *testing.T) {
 	ctx := context.Background()
 	writer, store := newTestS3(t, 10)
@@ -123,7 +121,33 @@ func TestS3RefusesOneBlobOverBudget(t *testing.T) {
 		t.Errorf("%d bytes retained and %d ingested, want 0 and 0", stats.Bytes, stats.IngestBytes)
 	}
 	if len(store.keys()) != 0 {
-		t.Errorf("bucket holds %v, want nothing", store.keys())
+		t.Errorf("bucket holds %v, want nothing: a refused blob reached the store", store.keys())
+	}
+}
+
+// TestS3GenerationIncrements covers a session that persists twice: both blobs
+// stay, and both are counted, so a second write cannot overwrite the first.
+func TestS3GenerationIncrements(t *testing.T) {
+	ctx := context.Background()
+	writer, store := newTestS3(t, 0)
+
+	if err := writer.Put(ctx, 7, []byte("first")); err != nil {
+		t.Fatalf("put first: %v", err)
+	}
+	if err := writer.Put(ctx, 7, []byte("second")); err != nil {
+		t.Fatalf("put second: %v", err)
+	}
+	keys := store.keys()
+	if len(keys) != 2 {
+		t.Fatalf("%d blobs, want 2: a second capture overwrote the first: %v", len(keys), keys)
+	}
+	for _, want := range []string{"runs/r1/000007-g1.json.gz", "runs/r1/000007-g2.json.gz"} {
+		if got, err := store.Get(ctx, want); err != nil || len(got) == 0 {
+			t.Errorf("missing %s: %v", want, err)
+		}
+	}
+	if got := writer.Stats().IngestBytes; got != 11 {
+		t.Errorf("ingested %d bytes, want 11 (both generations)", got)
 	}
 }
 
@@ -160,21 +184,20 @@ func TestS3GetReadsBackABlob(t *testing.T) {
 	}
 }
 
-func TestS3WantsMatchesTheLocalArm(t *testing.T) {
-	dir, err := NewDir(Options{Dir: t.TempDir(), Rate: 0.2})
-	if err != nil {
-		t.Fatalf("new dir: %v", err)
-	}
-	writer, _ := newTestS3WithRate(t, 0.2)
-	for id := int64(1); id <= 200; id++ {
-		if dir.Wants(id) != writer.Wants(id) {
-			t.Fatalf("session %d: the two arms disagree on whether it persists", id)
+func TestS3BudgetRefusesTheWrite(t *testing.T) {
+	ctx := context.Background()
+	writer, store := newTestS3(t, 100)
+	for id, size := range map[int64]int{1: 60, 2: 30, 3: 30} {
+		if err := writer.Put(ctx, id, make([]byte, size)); err != nil {
+			t.Fatalf("put session %d: %v", id, err)
 		}
 	}
-}
-
-func newTestS3WithRate(t *testing.T, rate float64) (*S3, *fakeStore) {
-	t.Helper()
-	store := newFakeStore()
-	return NewS3WithStore(S3Options{Bucket: "sessions", Rate: rate}, store), store
+	stats := writer.Stats()
+	if stats.IngestBytes != 120 || stats.EvictedBytes != 60 || stats.Bytes != 60 {
+		t.Errorf("ingested %d, evicted %d, retained %d; want 120, 60, 60",
+			stats.IngestBytes, stats.EvictedBytes, stats.Bytes)
+	}
+	if len(store.keys()) != 2 {
+		t.Errorf("%d blobs held, want 2: %v", len(store.keys()), store.keys())
+	}
 }

@@ -16,13 +16,10 @@
 #   scripts/persist-experiment.sh --sessions 200 --rate 2 --hold 20s \
 #       --persist-rate 0.5 --persist-budget 1048576
 #
-# Blobs go to a local directory under --out by default. To send them to the
-# MinIO this chart deploys instead, set the endpoint and the credentials read
-# from the Secret:
-#   PERSIST_S3_ENDPOINT=192.168.0.150:30900 \
-#   PERSIST_S3_ACCESS_KEY=... PERSIST_S3_SECRET_KEY=... \
-#       scripts/persist-experiment.sh --sessions 50 --rate 1 --hold 20s \
-#           --persist-rate 0.2 --restore-rate 0.2
+# Blobs go to the MinIO this cluster runs (config/minio). The runner finds its
+# endpoint and credentials in the cluster, so there is nothing to pass here:
+#   scripts/persist-experiment.sh --sessions 50 --rate 1 --hold 20s \
+#       --persist-rate 0.2 --restore-rate 0.2
 #
 # --restore-rate boots that fraction of the stored blobs on a fresh claim after
 # the run, which is the "a session starts from a stored blob" claim.
@@ -64,37 +61,11 @@ main() {
   echo "==> build"
   ( cd "${app}" && go build -o "${out}/persist-lab" ./cmd/persist-lab )
 
-  # The blob directory is per run, so its size answers "how much did this run
-  # write" without opening the report.
-  persist_dir="${out}/persist-blobs"
-
-  # Where the blobs go: MinIO when PERSIST_S3_ENDPOINT is set, the local
-  # directory otherwise. The directory arm is the control the MinIO arm is
-  # compared against.
-  store_args=()
-  if [[ -n "${PERSIST_S3_ENDPOINT:-}" ]]; then
-    store_args+=(--persist-s3-endpoint "${PERSIST_S3_ENDPOINT}")
-    store_args+=(--persist-s3-bucket "${PERSIST_S3_BUCKET:-session-lab}")
-    # Explicit ifs, not `[[ ]] && append`: a false test is the last command of
-    # the line and would abort the script under set -e.
-    if [[ -n "${PERSIST_S3_ACCESS_KEY:-}" ]]; then
-      store_args+=(--persist-s3-access-key "${PERSIST_S3_ACCESS_KEY}")
-    fi
-    if [[ -n "${PERSIST_S3_SECRET_KEY:-}" ]]; then
-      store_args+=(--persist-s3-secret-key "${PERSIST_S3_SECRET_KEY}")
-    fi
-    say "blobs: s3://${PERSIST_S3_BUCKET:-session-lab} at ${PERSIST_S3_ENDPOINT}"
-  else
-    store_args+=(--persist-dir "${persist_dir}")
-    say "blobs: ${persist_dir}"
-  fi
-
   echo "==> run"
   say "command: persist-lab $*"
   "${out}/persist-lab" "$@" \
       --namespace "${namespace}" --pool "${pool}" \
-      --kubeconfig "${kubeconfig}" --out "${out}" \
-      "${store_args[@]}"
+      --kubeconfig "${kubeconfig}" --out "${out}"
 
   echo "==> artefacts"
   newest_report=$(ls -t "${out}"/*.json 2>/dev/null | head -1 || true)
@@ -108,10 +79,6 @@ main() {
   if [[ -n "${newest_restore}" ]]; then
     say "restore: ${newest_restore}"
     cat "${newest_restore}"
-  fi
-  if [[ -z "${PERSIST_S3_ENDPOINT:-}" ]]; then
-    say "blob directory: $(du -sh "${persist_dir}" 2>/dev/null | cut -f1) in ${persist_dir}"
-    say "blob count: $(find "${persist_dir}" -name '*.json.gz' 2>/dev/null | wc -l)"
   fi
 
   echo "==> cleanup"

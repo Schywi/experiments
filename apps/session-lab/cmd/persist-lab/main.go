@@ -9,8 +9,7 @@
 // is disposed.
 //
 //	persist-lab --sessions 50 --rate 1 --hold 20s --contexts-per-browser 8 \
-//	            --persist-rate 0.2 --persist-dir /tmp/persist --out /tmp/runs \
-//	            --kubeconfig ~/.kube/config
+//	            --persist-rate 0.2 --out /tmp/runs --kubeconfig ~/.kube/config
 //
 // The capture needs a direct DevTools connection, so this command always asks for
 // the ws transport. On the in-pod bridge a context's storage is not reachable.
@@ -30,7 +29,6 @@ import (
 
 	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/infra/kube"
 	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/infra/measure"
-	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/persist"
 	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/platform/model"
 	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/platform/store"
 	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/runtime/report"
@@ -52,14 +50,7 @@ func run() error {
 		hold          = flag.Duration("hold", 20*time.Second, "session length")
 		contexts      = flag.Int("contexts-per-browser", 8, "sessions one Chromium serves")
 		persistRate   = flag.Float64("persist-rate", 0.2, "fraction of sessions that persist, 0 to 1")
-		persistDir    = flag.String("persist-dir", "", "blob directory; defaults to <out>/persist")
-		persistBudget = flag.Int64("persist-budget", 0, "bytes the blob store may hold; 0 is unbounded")
-		s3Endpoint    = flag.String("persist-s3-endpoint", "", "S3/MinIO endpoint host:port; set it to store blobs in the cluster's MinIO instead of a directory")
-		s3Bucket      = flag.String("persist-s3-bucket", "session-lab", "bucket the blobs go to")
-		s3Access      = flag.String("persist-s3-access-key", os.Getenv("PERSIST_S3_ACCESS_KEY"), "access key; defaults to PERSIST_S3_ACCESS_KEY")
-		s3Secret      = flag.String("persist-s3-secret-key", os.Getenv("PERSIST_S3_SECRET_KEY"), "secret key; defaults to PERSIST_S3_SECRET_KEY")
-		s3Secure      = flag.Bool("persist-s3-secure", false, "use TLS for the endpoint")
-		s3Prefix      = flag.String("persist-s3-prefix", "", "key prefix; defaults to runs/<run-id>")
+		persistBudget = flag.Int64("persist-budget", 0, "bytes the bucket may hold; 0 is unbounded")
 		restoreRate   = flag.Float64("restore-rate", 0, "fraction of stored blobs to boot after the run, 0 to 1")
 		out           = flag.String("out", "", "output directory for the run database and report (required)")
 		kubeconfig    = flag.String("kubeconfig", "", "kubeconfig path; empty uses the default")
@@ -128,29 +119,11 @@ func run() error {
 		return err
 	}
 
-	// The blob store: MinIO over S3 when an endpoint is given, a local directory
-	// otherwise. The directory stays the control arm for the comparison.
-	var blobs persist.Store
-	if *s3Endpoint != "" {
-		prefix := *s3Prefix
-		if prefix == "" {
-			prefix = "runs/" + cfg.RunID
-		}
-		blobs, err = persist.NewS3(context.Background(), persist.S3Options{
-			Endpoint: *s3Endpoint, Secure: *s3Secure,
-			AccessKey: *s3Access, SecretKey: *s3Secret,
-			Bucket: *s3Bucket, Prefix: prefix,
-			Rate: *persistRate, Budget: *persistBudget, Log: logger,
-		})
-	} else {
-		dir := *persistDir
-		if dir == "" {
-			dir = filepath.Join(abs, "persist")
-		}
-		blobs, err = persist.NewDir(persist.Options{
-			Dir: dir, Rate: *persistRate, Budget: *persistBudget, Log: logger,
-		})
-	}
+	// The blob store is the MinIO this cluster runs. Its address and credentials
+	// come from the cluster the runner already talks to, so there is no flag to
+	// point it elsewhere and no second destination to fall back to.
+	blobs, err := openBlobStore(context.Background(), adapter, *namespace, cfg.RunID,
+		*persistRate, *persistBudget, logger)
 	if err != nil {
 		return err
 	}

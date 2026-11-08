@@ -127,6 +127,13 @@ writes is the path under test. The hook move has no test: the `session` package 
 DevTools browser to fail a context open against, so it is verified by the call-site
 inspection and the existing suite.
 
+One follow-up changed the shape of the arm, so the file references above no longer exist:
+the local directory writer was deleted and `internal/persist/store.go` became
+`internal/persist/persist.go` holding only the interfaces and the selector. MinIO is the
+only store, its endpoint and credentials are read from the cluster, and the budget,
+generation and eviction tests now run against the `S3` writer through an in-memory
+`objectStore`.
+
 ## 9. The store is a bounded queue: send, count, evict the oldest
 
 Three steps, three numbers.
