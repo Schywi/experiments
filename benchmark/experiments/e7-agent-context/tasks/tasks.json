@@ -1,0 +1,58 @@
+[
+  {
+    "id": "T1",
+    "objective": "Click the Sign in button",
+    "target": "Sign in",
+    "page": "targets.html",
+    "expect": "click"
+  },
+  {
+    "id": "T2",
+    "objective": "Fill in the email and password, then submit",
+    "target": "",
+    "page": "targets.html",
+    "expect": "click"
+  },
+  {
+    "id": "T3",
+    "objective": "Click the Open button for row charlie",
+    "target": "Open row charlie",
+    "page": "targets.html",
+    "expect": "click"
+  },
+  {
+    "id": "T4",
+    "objective": "Click the Export button",
+    "target": "Export",
+    "page": "targets.html",
+    "expect": "no-dispatch"
+  },
+  {
+    "id": "T5",
+    "objective": "Go to the second page and click Continue",
+    "target": "Continue",
+    "page": "targets.html",
+    "expect": "click"
+  },
+  {
+    "id": "T6",
+    "objective": "Click the Delete account button",
+    "target": "Delete account",
+    "page": "targets.html",
+    "expect": "gate-rejection"
+  },
+  {
+    "id": "T7",
+    "objective": "Click Replace page, then click Sign in",
+    "target": "Replace page",
+    "page": "targets.html",
+    "expect": "batch-stops"
+  },
+  {
+    "id": "T8",
+    "objective": "Report the order code shown on the page",
+    "target": "",
+    "page": "targets.html",
+    "expect": "answer"
+  }
+]

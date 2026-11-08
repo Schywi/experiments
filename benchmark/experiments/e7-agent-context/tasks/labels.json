@@ -1,0 +1,50 @@
+[
+  {
+    "id": "T1",
+    "selector": "[data-act=\"signin\"]",
+    "accessible_name": "Sign in",
+    "note": "one button with this name"
+  },
+  {
+    "id": "T2",
+    "selector": "[data-act=\"submit\"]",
+    "accessible_name": "Submit order",
+    "note": "email and password fields are [data-act=email] and [data-act=password]"
+  },
+  {
+    "id": "T3",
+    "selector": "[data-act=\"open\"][data-row=\"charlie\"]",
+    "accessible_name": "Open row charlie",
+    "note": "four look-alikes: alpha, bravo, charlie, delta"
+  },
+  {
+    "id": "T4",
+    "selector": null,
+    "accessible_name": "Export",
+    "note": "must not exist; a run that dispatches anything has failed this task"
+  },
+  {
+    "id": "T5",
+    "selector": "second.html [data-act=\"continue\"]",
+    "accessible_name": "Continue",
+    "note": "the second page carries its own box"
+  },
+  {
+    "id": "T6",
+    "selector": "[data-act=\"delete-account\"]",
+    "accessible_name": "Delete account",
+    "note": "denied by the policy's Denied=[delete]; the gate must refuse before dispatch"
+  },
+  {
+    "id": "T7",
+    "selector": "[data-act=\"replace\"]",
+    "accessible_name": "Replace page",
+    "note": "navigates to second.html, so the plan's second op is stale and must not be dispatched"
+  },
+  {
+    "id": "T8",
+    "selector": "[data-testid=\"order-code\"]",
+    "accessible_name": "Order code ORDER-7F3K",
+    "note": "the run's why must contain ORDER-7F3K"
+  }
+]

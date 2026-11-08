@@ -1,0 +1,111 @@
+# The fixture page, served from inside the cluster.
+#
+# The sandbox reaches it by ClusterIP: E6 recorded that a sandbox cannot resolve a
+# cluster DNS name (`cal-page.vlm-e6.svc.cluster.local` produced a chromewebdata
+# error page) while the ClusterIP works, and sandbox egress already allows any pod
+# in the cluster. run_e7.sh resolves the address and passes it as --url.
+#
+# The image is the stock python one because the page is two static files; a pod that
+# cannot pull it will say so at admission, which is the honest failure.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: e7-page
+  namespace: agent-e7
+  labels: {app.kubernetes.io/part-of: agent-e7}
+data:
+  targets.html: |
+    <!doctype html>
+    <html lang="en">
+    <head><meta charset="utf-8"><title>E7 fixture page</title>
+    <style>
+      body { font: 16px/1.4 system-ui, sans-serif; margin: 24px; color: #111; }
+      section { margin-bottom: 28px; }
+      button, input { font-size: 15px; padding: 6px 10px; }
+      .row { display: flex; gap: 12px; align-items: center; margin: 6px 0; }
+      .row span { min-width: 160px; }
+      #code { font-family: ui-monospace, monospace; background: #f3f3f3; padding: 6px 10px; }
+    </style></head>
+    <body>
+    <h1>E7 fixture page</h1>
+    <section><h2>Single control</h2>
+      <button data-act="signin" aria-label="Sign in">Sign in</button></section>
+    <section><h2>Form</h2>
+      <label>Email <input data-act="email" aria-label="Email" type="text"></label>
+      <label>Password <input data-act="password" aria-label="Password" type="password"></label>
+      <button data-act="submit" aria-label="Submit order">Submit order</button></section>
+    <section><h2>Four look-alike rows</h2>
+      <div class="row"><span>Order alpha</span><button data-act="open" data-row="alpha" aria-label="Open row alpha">Open</button></div>
+      <div class="row"><span>Order bravo</span><button data-act="open" data-row="bravo" aria-label="Open row bravo">Open</button></div>
+      <div class="row"><span>Order charlie</span><button data-act="open" data-row="charlie" aria-label="Open row charlie">Open</button></div>
+      <div class="row"><span>Order delta</span><button data-act="open" data-row="delta" aria-label="Open row delta">Open</button></div></section>
+    <section><h2>Denied and destructive</h2>
+      <button data-act="delete-account" aria-label="Delete account">Delete account</button>
+      <button data-act="replace" aria-label="Replace page" onclick="location.assign('second.html')">Replace page</button></section>
+    <section><h2>Value to report</h2>
+      <p>Order code <code id="code" data-testid="order-code" aria-label="Order code ORDER-7F3K">ORDER-7F3K</code></p></section>
+    </body></html>
+  second.html: |
+    <!doctype html>
+    <html lang="en">
+    <head><meta charset="utf-8"><title>E7 second page</title>
+    <style>body { font: 16px/1.4 system-ui, sans-serif; margin: 24px; color: #111; }
+      button { font-size: 15px; padding: 6px 10px; }</style></head>
+    <body>
+    <h1>Second page</h1>
+    <p>Reached from <code>targets.html</code> by the Replace page button.</p>
+    <section>
+      <button data-act="continue" aria-label="Continue">Continue</button>
+      <button data-act="signin" aria-label="Sign in">Sign in</button></section>
+    </body></html>
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: page-server
+  namespace: agent-e7
+  labels: {app.kubernetes.io/part-of: agent-e7}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: page-server}
+  template:
+    metadata:
+      labels: {app: page-server, app.kubernetes.io/part-of: agent-e7}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: page
+          image: python:3.13-alpine
+          imagePullPolicy: IfNotPresent
+          command: ["python3", "-m", "http.server", "8000", "--directory", "/page"]
+          ports:
+            - {name: http, containerPort: 8000}
+          readinessProbe:
+            httpGet: {path: /targets.html, port: http}
+            periodSeconds: 5
+            failureThreshold: 12
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: ["ALL"]}
+          resources:
+            requests: {cpu: 10m, memory: 32Mi}
+            limits: {cpu: 200m, memory: 128Mi}
+          volumeMounts:
+            - {name: page, mountPath: /page, readOnly: true}
+      volumes:
+        - name: page
+          configMap: {name: e7-page}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: page-server
+  namespace: agent-e7
+  labels: {app.kubernetes.io/part-of: agent-e7}
+spec:
+  selector: {app: page-server}
+  ports:
+    - {name: http, port: 8000, targetPort: http}

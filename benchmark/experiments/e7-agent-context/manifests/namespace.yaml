@@ -1,0 +1,57 @@
+# The E7 namespace, the quota that keeps one model resident, and the claim the
+# run's events are written to.
+#
+# Same shape as E5's and E6's: `amd.com/render` is capped at 1 in both requests and
+# limits, so a second model pod cannot be admitted while the first holds the node's
+# single render device. Here that matters because A1..A3 each scale the model up and
+# back down, and a leftover replica from a crashed run would otherwise be joined by
+# a new one.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: agent-e7
+  labels:
+    app.kubernetes.io/part-of: agent-e7
+    pod-security.kubernetes.io/enforce: baseline
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: one-model-at-a-time
+  namespace: agent-e7
+spec:
+  hard:
+    requests.amd.com/render: "1"
+    limits.amd.com/render: "1"
+    requests.cpu: "6"
+    requests.memory: 12Gi
+    pods: "8"
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: qwen-models-e7
+  namespace: agent-e7
+  labels: {app.kubernetes.io/part-of: agent-e7}
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 6Gi
+---
+# events.jsonl is written while a run is still going, so it cannot live on an
+# emptyDir. The runtime is a host process in this iteration; the claim exists so the
+# Job-based runner of the next iteration writes to the same place.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: e7-results
+  namespace: agent-e7
+  labels: {app.kubernetes.io/part-of: agent-e7}
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 1Gi

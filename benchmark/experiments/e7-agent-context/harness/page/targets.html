@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>E7 fixture page</title>
+<style>
+  body { font: 16px/1.4 system-ui, sans-serif; margin: 24px; color: #111; }
+  section { margin-bottom: 28px; }
+  button, input { font-size: 15px; padding: 6px 10px; }
+  .row { display: flex; gap: 12px; align-items: center; margin: 6px 0; }
+  .row span { min-width: 160px; }
+  #code { font-family: ui-monospace, monospace; background: #f3f3f3; padding: 6px 10px; display: inline-block; }
+</style>
+</head>
+<body>
+<h1>E7 fixture page</h1>
+
+<section>
+  <h2>Single control</h2>
+  <button data-act="signin" aria-label="Sign in">Sign in</button>
+</section>
+
+<section>
+  <h2>Form</h2>
+  <label>Email <input data-act="email" aria-label="Email" type="text"></label>
+  <label>Password <input data-act="password" aria-label="Password" type="password"></label>
+  <button data-act="submit" aria-label="Submit order">Submit order</button>
+</section>
+
+<section>
+  <h2>Four look-alike rows</h2>
+  <div class="row"><span>Order alpha</span><button data-act="open" data-row="alpha" aria-label="Open row alpha">Open</button></div>
+  <div class="row"><span>Order bravo</span><button data-act="open" data-row="bravo" aria-label="Open row bravo">Open</button></div>
+  <div class="row"><span>Order charlie</span><button data-act="open" data-row="charlie" aria-label="Open row charlie">Open</button></div>
+  <div class="row"><span>Order delta</span><button data-act="open" data-row="delta" aria-label="Open row delta">Open</button></div>
+</section>
+
+<section>
+  <h2>Denied and destructive</h2>
+  <button data-act="delete-account" aria-label="Delete account">Delete account</button>
+  <button data-act="replace" aria-label="Replace page"
+          onclick="location.assign('second.html')">Replace page</button>
+</section>
+
+<section>
+  <h2>Value to report</h2>
+  <p>Order code <code id="code" data-testid="order-code" aria-label="Order code ORDER-7F3K">ORDER-7F3K</code></p>
+</section>
+
+</body>
+</html>
