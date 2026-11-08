@@ -15,10 +15,10 @@ app.kubernetes.io/component: object-store
 {{- $existing := lookup "v1" "Secret" .Release.Namespace $name -}}
 {{- $access := randAlphaNum 20 | lower -}}
 {{- $secret := randAlphaNum 40 -}}
-{{- if $existing -}}
+{{- if $existing }}
 {{- $access = index $existing.data "accessKey" | b64dec -}}
 {{- $secret = index $existing.data "secretKey" | b64dec -}}
-{{- end -}}
+{{- end }}
 apiVersion: v1
 kind: Secret
 metadata:
@@ -70,16 +70,26 @@ spec:
         {{- include "minio.selector" . | nindent 8 }}
         {{- include "minio.labels" . | nindent 8 }}
     spec:
+      securityContext:
+        # The Bitnami image runs as 1001 and the volume has to be writable by it.
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: minio
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
-          args:
-            - server
-            - /data
-            - --address=:{{ .Values.service.port }}
-            - --console-address=:{{ .Values.service.consolePort }}
+          # No args on purpose: the image's entrypoint runs `minio server` on
+          # MINIO_DATA_DIR, so the data path and the skipped client setup are env.
           env:
+            - name: MINIO_DATA_DIR
+              value: /data
+            - name: MINIO_SKIP_CLIENT
+              # Without this the entrypoint downloads the mc client from
+              # dl.min.io, which now answers 410 and would fail the start-up.
+              value: "yes"
             - name: MINIO_ROOT_USER
               valueFrom:
                 secretKeyRef:
@@ -112,8 +122,6 @@ spec:
             periodSeconds: 20
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
-          # The image runs as root and writes to /data, so the pod cannot be
-          # non-root here; the escalation and capability drop still apply.
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:

@@ -4,10 +4,17 @@
 # Only cmd/persist-lab talks to it, over the S3 API.
 
 image:
-  repository: quay.io/minio/minio
-  # MinIO tags are date-stamped releases. Bump deliberately: the persist arm's
-  # PUT/GET behaviour is measured against the server it was tested with.
-  tag: RELEASE.2024-10-13T13-34-11Z
+  # MinIO ended community distribution: quay.io/minio/minio now answers 401 to an
+  # anonymous pull, docker.io/minio/minio was archived, and the release binaries
+  # at dl.min.io return 410. The last publicly pullable MinIO is Bitnami's
+  # packaging, archived in the bitnamilegacy namespace: 2025.7.23-debian-12-r5
+  # is MinIO RELEASE.2025-07-23T15-54-02Z.
+  #
+  # This is the one place in the repo pinned to an archive. If the store has to
+  # outlive the experiment, the choice is a subscription at quay.io or a store
+  # that is still published — not a floating tag here.
+  repository: docker.io/bitnamilegacy/minio
+  tag: 2025.7.23-debian-12-r5
   pullPolicy: IfNotPresent
 
 # Name of the Secret holding the root credentials. It is created by this chart
