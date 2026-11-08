@@ -10,11 +10,11 @@ tags: [session-lifecycle, persistence, storage, index]
 
 | | |
 |---|---|
-| Status | First arm measured (`20261108T200728Z`), four defects found |
+| Status | Two runs recorded: the arm (`20261108T200728Z`), then MinIO with a restore (`20261108T232328Z`) |
 | Date | 2026-11-06 |
 | Question | Once a session's restorable state exists, where does it go, how is it written, and what does it cost at 300k sessions a day? |
-| Harness | `apps/session-lab` — capture is built, restore is built but not wired into the load arm |
-| Notes | [01 — the persist gateway, the flag and the budget](01-persist-gateway-and-budget.md) · [02 — the first persist arm](02-persist-arm-first-run.md) |
+| Harness | `apps/session-lab` — capture and restore both run against MinIO; the workload still writes no state |
+| Notes | [01 — the persist gateway, the flag and the budget](01-persist-gateway-and-budget.md) · [02 — the first persist arm](02-persist-arm-first-run.md) · [03 — the first MinIO run](03-first-minio-run.md) |
 
 ## Scope
 
@@ -29,18 +29,18 @@ superseded here and is not used in any arithmetic in this study.
 
 ## Open
 
-Note 02 records the first run of the capture arm: 50 sessions, 20 % selected, 19 blobs of 68
-bytes each, 50/50 sessions successful. It found four defects in the arm — a budget that
-refuses in the counter and writes anyway, a hardcoded generation, a capture hook that fires
-on failed context creation, and a rate selector that delivers 38 % when asked for 20 % at
-small id ranges.
+Note 03 records the first run against MinIO: 50 sessions, 7 blobs of 68 bytes, and a restore
+arm that booted 2 of them on a fresh claim in 461 ms mean. The write→read path is proven end
+to end. What is not proven is that *state* survives, because the workload performs no
+actions: every blob is `{"version":1,"origin":"https://example.com"}` and every restore
+reports zero cookies and zero items.
 
 Three things are open:
 
-- **The restore arm.** `cmd/persist-lab` writes blobs and never reads one back, so nothing
-  yet answers whether a session can boot from a stored blob under load.
-- **MinIO as the store.** The design in note 01 puts blobs in MinIO behind the ledger's
-  reserve/commit/evict path; the code writes to a local directory. The directory is the
-  control arm for the comparison.
-- **Real blob sizes.** Every size in note 01 §6 is a projection until a page carrying
-  cookies and `localStorage` is captured.
+- **A workload that writes state.** A fixture page that sets a cookie and a `localStorage`
+  item on load, and an assertion read back in the restored context. Without it every run
+  reports zeros.
+- **Capture CPU.** `persist-lab` supplies no `Sampler`, so no run has costed the capture;
+  note 01 §5's 0.28 cores at a 60 s cadence is still `[U]`.
+- **Eviction under a budget.** `--persist-budget` is exercised only by unit tests against an
+  in-memory store; no run has made MinIO delete anything.

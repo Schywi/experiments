@@ -685,8 +685,8 @@ func (k *Kube) SecretData(ctx context.Context, namespace, name string) (map[stri
 }
 
 // ServiceEndpoint is host:port at which a Service is reachable from the runner.
-// A NodePort or LoadBalancer is reached on the node's InternalIP, because the
-// runner is a host process and not a pod; a ClusterIP is used as it stands.
+// A LoadBalancer answers on the address Cilium assigned it, a NodePort on the
+// node's InternalIP, and a ClusterIP on the address itself.
 func (k *Kube) ServiceEndpoint(ctx context.Context, namespace, name string, servicePort int32) (string, error) {
 	service, err := k.core.CoreV1().Services(namespace).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
@@ -699,27 +699,41 @@ func (k *Kube) ServiceEndpoint(ctx context.Context, namespace, name string, serv
 			break
 		}
 	}
-	if service.Spec.Type != corev1.ServiceTypeNodePort && service.Spec.Type != corev1.ServiceTypeLoadBalancer {
+	switch service.Spec.Type {
+	case corev1.ServiceTypeLoadBalancer:
+		for _, ingress := range service.Status.LoadBalancer.Ingress {
+			if ingress.IP != "" {
+				return net.JoinHostPort(ingress.IP, strconv.Itoa(int(port))), nil
+			}
+			if ingress.Hostname != "" {
+				return net.JoinHostPort(ingress.Hostname, strconv.Itoa(int(port))), nil
+			}
+		}
+		// Not a dial to a guess: an unassigned address is a broken network
+		// object and the run says so instead of writing into the void.
+		return "", fmt.Errorf("service %s/%s has no load-balancer address assigned", namespace, name)
+	case corev1.ServiceTypeNodePort:
+		nodePort := int32(0)
+		for _, candidate := range service.Spec.Ports {
+			if candidate.Port == port {
+				nodePort = candidate.NodePort
+				break
+			}
+		}
+		if nodePort == 0 {
+			return "", fmt.Errorf("service %s/%s exposes no node port for %d", namespace, name, port)
+		}
+		ip, err := k.nodeInternalIP(ctx)
+		if err != nil {
+			return "", err
+		}
+		return net.JoinHostPort(ip, strconv.Itoa(int(nodePort))), nil
+	default:
 		if service.Spec.ClusterIP == "" || service.Spec.ClusterIP == corev1.ClusterIPNone {
 			return "", fmt.Errorf("service %s/%s has no cluster IP", namespace, name)
 		}
 		return net.JoinHostPort(service.Spec.ClusterIP, strconv.Itoa(int(port))), nil
 	}
-	nodePort := int32(0)
-	for _, candidate := range service.Spec.Ports {
-		if candidate.Port == port {
-			nodePort = candidate.NodePort
-			break
-		}
-	}
-	if nodePort == 0 {
-		return "", fmt.Errorf("service %s/%s exposes no node port for %d", namespace, name, port)
-	}
-	ip, err := k.nodeInternalIP(ctx)
-	if err != nil {
-		return "", err
-	}
-	return net.JoinHostPort(ip, strconv.Itoa(int(nodePort))), nil
 }
 
 // nodeInternalIP is the address a host process reaches this cluster on.

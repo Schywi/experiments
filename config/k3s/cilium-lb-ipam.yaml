@@ -17,6 +17,14 @@ spec:
   blocks:
     - start: 192.168.0.240
       stop: 192.168.0.250
+    # Four more, because the first block is fully allocated: every address from
+    # .240 to .250 is held by a live Service (ingress, hubble, neo4j, assistant,
+    # fuwa, grafana, victoriametrics, argocd, two kargo-gateway Services and the
+    # sandbox console), and Cilium reported 0 available. .251-.254 are outside
+    # the count because .255 is this subnet's broadcast address (host is
+    # 192.168.0.28/24, brd 192.168.0.255). MinIO takes .251.
+    - start: 192.168.0.251
+      stop: 192.168.0.254
 ---
 # Announce the pool's IPs on suitable interfaces (no `interfaces` selector:
 # Cilium picks the interface whose subnet matches the pool, i.e. the LAN NIC).
