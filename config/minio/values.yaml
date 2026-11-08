@@ -34,11 +34,13 @@ storage:
 service:
   port: 9000
   consolePort: 9001
-  # NodePort with a fixed port, because persist-lab runs on the host and the
-  # runner derives its endpoint from this Service. Pinned here rather than passed
-  # with --set at install time, so the repository describes what the cluster runs.
-  type: NodePort
-  nodePort: 30900
+  # A LoadBalancer address from config/k3s/cilium-lb-ipam.yaml (lan-pool), so the
+  # store answers on the LAN like every other service here rather than on a node
+  # port. .251 is in the second block added because the first was fully
+  # allocated; the kernel's broadcast address for this /24 is .255, so the block
+  # stops at .254.
+  type: LoadBalancer
+  loadBalancerIP: 192.168.0.251
 
 resources:
   requests:
@@ -48,3 +50,23 @@ resources:
   # the store exactly when the node is busy.
   limits:
     memory: 512Mi
+
+# The console gateway: a proxy that logs in to MinIO once and injects the
+# session, so the UI opens with no form. Same shape as config/kargo/gateway.
+gateway:
+  enabled: true
+  image:
+    repository: docker.io/library/python
+    tag: 3.13-alpine
+    pullPolicy: IfNotPresent
+  # Its own address from lan-pool, because a Service cannot share an IP with the
+  # MinIO Service that already holds 192.168.0.251.
+  loadBalancerIP: 192.168.0.252
+  port: 80
+  containerPort: 8080
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      memory: 96Mi

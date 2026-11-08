@@ -1,0 +1,113 @@
+{{- if .Values.gateway.enabled }}
+
+# The console proxy's source. A ConfigMap rather than a built image, exactly like
+# config/kargo/gateway: the script is small, and a config change is a pod
+# restart instead of a registry push.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: minio-console-gateway
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "minio.labels" . | nindent 4 }}
+data:
+  proxy.py: |
+{{ .Files.Get "gateway/proxy.py" | indent 4 }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: minio-console-gateway
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "minio.labels" . | nindent 4 }}
+    app.kubernetes.io/component: console-gateway
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: minio
+      app.kubernetes.io/component: console-gateway
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: minio
+        app.kubernetes.io/component: console-gateway
+        app.kubernetes.io/part-of: session-lab
+        app.kubernetes.io/managed-by: {{ .Release.Service }}
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: gateway
+          image: "{{ .Values.gateway.image.repository }}:{{ .Values.gateway.image.tag }}"
+          imagePullPolicy: {{ .Values.gateway.image.pullPolicy }}
+          command: ["python3", "/app/proxy.py"]
+          env:
+            - name: MINIO_UPSTREAM
+              value: "http://minio.{{ .Release.Namespace }}.svc:{{ .Values.service.consolePort }}"
+            - name: PORT
+              value: {{ .Values.gateway.containerPort | quote }}
+            - name: MINIO_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.credentialsSecret }}
+                  key: accessKey
+            - name: MINIO_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.credentialsSecret }}
+                  key: secretKey
+          ports:
+            - name: http
+              containerPort: {{ .Values.gateway.containerPort }}
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 20
+          resources:
+            {{- toYaml .Values.gateway.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: proxy
+              mountPath: /app
+              readOnly: true
+      volumes:
+        - name: proxy
+          configMap:
+            name: minio-console-gateway
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: minio-console
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "minio.labels" . | nindent 4 }}
+    app.kubernetes.io/component: console-gateway
+  annotations:
+    io.cilium/lb-ipam-ips: {{ .Values.gateway.loadBalancerIP | quote }}
+spec:
+  type: LoadBalancer
+  loadBalancerIP: {{ .Values.gateway.loadBalancerIP }}
+  selector:
+    app.kubernetes.io/name: minio
+    app.kubernetes.io/component: console-gateway
+  ports:
+    - name: http
+      port: {{ .Values.gateway.port }}
+      targetPort: http
+{{- end }}

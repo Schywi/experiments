@@ -67,7 +67,6 @@ spec:
   template:
     metadata:
       labels:
-        {{- include "minio.selector" . | nindent 8 }}
         {{- include "minio.labels" . | nindent 8 }}
     spec:
       securityContext:
@@ -81,15 +80,16 @@ spec:
         - name: minio
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
-          # No args on purpose: the image's entrypoint runs `minio server` on
-          # MINIO_DATA_DIR, so the data path and the skipped client setup are env.
+          # The binary directly, not the image entrypoint: the entrypoint sets up
+          # an mc client that no longer downloads, and it starts the server
+          # without a console address, which leaves 9001 refusing connections.
+          command: ["/opt/bitnami/minio/bin/minio"]
+          args:
+            - server
+            - /data
+            - --address=:{{ .Values.service.port }}
+            - --console-address=:{{ .Values.service.consolePort }}
           env:
-            - name: MINIO_DATA_DIR
-              value: /data
-            - name: MINIO_SKIP_CLIENT
-              # Without this the entrypoint downloads the mc client from
-              # dl.min.io, which now answers 410 and would fail the start-up.
-              value: "yes"
             - name: MINIO_ROOT_USER
               valueFrom:
                 secretKeyRef:
@@ -141,17 +141,23 @@ metadata:
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "minio.labels" . | nindent 4 }}
+  {{- with .Values.service.loadBalancerIP }}
+  annotations:
+    # Cilium LB IPAM takes the address from lan-pool and announces it over L2,
+    # the same way argocd, grafana and the ingress do.
+    io.cilium/lb-ipam-ips: {{ . | quote }}
+  {{- end }}
 spec:
   type: {{ .Values.service.type }}
+  {{- with .Values.service.loadBalancerIP }}
+  loadBalancerIP: {{ . }}
+  {{- end }}
   selector:
     {{- include "minio.selector" . | nindent 4 }}
   ports:
     - name: api
       port: {{ .Values.service.port }}
       targetPort: api
-      {{- if and (eq .Values.service.type "NodePort") .Values.service.nodePort }}
-      nodePort: {{ .Values.service.nodePort }}
-      {{- end }}
     - name: console
       port: {{ .Values.service.consolePort }}
       targetPort: console
