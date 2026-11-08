@@ -21,6 +21,7 @@ the reasoning: what was proposed, what was measured, what broke.
 | [Session lifecycle elasticity](session-lifecycle-elasticity/README.md) | 20 notes + handoff | What does a browser session cost, how many fit on this host, and where does the control plane stop? |
 | [CPU oversubscription](cpu-oversubscription/README.md) | 6 notes | How far can CPU requests be pushed below limits before the API server and Chromium suffer? |
 | [Swap as capacity](swap-capacity/README.md) | 1 study, 5 sections | Can zram swap raise concurrent sessions, by how much, and which compression ratio pays for it in CPU? |
+| [Browser session persistence](browser-session-persistence/README.md) | 1 note | Where a session's restorable state is written, how the budget is enforced, and what it costs at 300k sessions a day? |
 
 ## Feature contracts
 
