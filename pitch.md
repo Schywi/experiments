@@ -22,7 +22,7 @@ What a claim bought at that point: agent-sandbox `v1.0.7` (pinned release, sha25
 ## 1. What it is
 
 ```text
-              Fedora 44 · Intel i5-9400F (6 threads) · 15 GiB RAM + 8 GiB zram
+              Fedora 44 · Intel i5-9400F (6 threads) · 15 GiB RAM + 16 GiB zram
                         AMD RX 570 8 GB (also drives the desktop) · node 192.168.0.28
  ┌──────────────────────────────────────────────────────────────────────────────────────┐
  │  native k3s v1.36 · Cilium 1.20 only: eBPF, kube-proxy off, ingress + LB-IPAM .240-.250│
@@ -150,13 +150,16 @@ file and line it can be checked against.
 >                                                │
 >                                     slot = (instance, browserContextId)
 >                                                │
->                                     ceiling: 168 slots on this node
+>                                     ceiling: 352 slots, 306 concurrent served
 > ```
 >
-> A slot is the pair `(instance, browserContextId)`; one slot serves one session. The ceiling is
-> stated as: "So the honest statement is: **168 concurrent contexts is the slot ceiling on this node**"
-> ([18](research/session-lifecycle-elasticity/18-capacity-elasticity-and-kine.md) line 67, and line 62
-> for the arithmetic `~21 browsers × 8 = 168 slots`).
+> A slot is the pair `(instance, browserContextId)`; one slot serves one session. The ceiling
+> is the one in the [capacity ledger](research/session-lifecycle-elasticity/24-capacity-ledger.md):
+> **44 browsers × 8 = 352 slots, peak concurrency 306, 2986 of 3000 sessions successful** on
+> `20261107T235847Z` at `requests.cpu: 10m`. The 168 in
+> [18](research/session-lifecycle-elasticity/18-capacity-elasticity-and-kine.md) line 62 is the
+> same arithmetic at `100m` requests, where the scheduler bound at ~21 browsers; at 10m it does
+> not bind. That run's constraint was the API server refusing claim creation, not slots.
 
 > [!note]- The concurrency model: three classes, one queue, one scheduler
 > Quoted from [15](research/session-lifecycle-elasticity/15-capacity-plane-and-demand-plane.md) §2:
@@ -214,19 +217,25 @@ file and line it can be checked against.
 
 ## 3. GPU offload
 
-> GPU acceleration does **not** raise concurrent session capacity on this node for the
-> workload `session-lab` actually generates. The runner's hold is a sleep that samples
-> cgroups; it never requests a frame, so headless Chromium renders nothing and the GPU has
-> nothing to relieve. Measured node CPU was identical across arms: **1.53 vs 1.58 cores
-> out of 6** at 30 concurrent sessions.
+> The GPU cell is the one that carried the largest run on this node: **44 `browser-tpl-gpu`
+> browsers, 352 slots, 306 concurrent contexts, 2986 of 3000 sessions successful**
+> ([ledger](research/session-lifecycle-elasticity/24-capacity-ledger.md)). Two numbers kept
+> being collapsed into one; they are separate.
 >
-> The only case where the GPU moved a number is a forced render loop (40
-> `Page.captureScreenshot` calls per session), which `session-lab` does not implement
-> ([08 §9.2](research/session-lifecycle-elasticity/08.2-gpu-offload-feasibility.md) calls this the missing "drive phase"). There the
-> GPU cut CPU per browser **2.13 → 1.57 cores (−26%)** while screenshot latency rose
-> **244 → 279 ms (+14%)**.
+> **Density** — how many sessions a node holds — is not something the A/B below measured.
+> **Raster cost** — CPU per browser while rendering — is, and there the answer depends on
+> whether the workload asks for a frame. The runner's hold sleeps and samples cgroups, so
+> headless Chromium renders nothing and node CPU was identical across arms: **1.53 vs 1.58
+> cores out of 6** at 30 concurrent sessions.
+>
+> Give it frames and it moves: with 40 `Page.captureScreenshot` calls per session — which
+> `session-lab` does not implement ([08 §9.2](research/session-lifecycle-elasticity/08.2-gpu-offload-feasibility.md)
+> calls this the missing "drive phase") — the GPU cut CPU per browser **2.13 → 1.57 cores
+> (−26 %)** while screenshot latency rose **244 → 279 ms (+14 %)**.
 
-Source: [`19-gpu-pool-a-b.md`](research/session-lifecycle-elasticity/19-gpu-pool-a-b.md) §1, lines 27–37.
+Source: [`19-gpu-pool-a-b.md`](research/session-lifecycle-elasticity/19-gpu-pool-a-b.md) §1, and
+[`24-capacity-ledger.md`](research/session-lifecycle-elasticity/24-capacity-ledger.md) for the
+density row.
 
 ## 4. Overload run
 
@@ -243,11 +252,15 @@ Source: [`07-overload-and-suspend.md`](research/session-lifecycle-elasticity/07-
 
 ## 5. Slots
 
-> | Scheduler (CPU requests) | ~21 browsers × 8 = **168 slots**; 27 if browsers had no neighbours | `FailedScheduling … Insufficient cpu` at 23:59 with 21 instances |
+> | Scheduler (CPU requests) | ~21 browsers × 8 = **168 slots** at `100m` requests — historical | `FailedScheduling … Insufficient cpu` at 23:59 with 21 instances |
 
-> So the honest statement is: **168 concurrent contexts is the slot ceiling on this node,
+> The measured ceiling is in the [ledger](research/session-lifecycle-elasticity/24-capacity-ledger.md):
+> **44 browsers × 8 = 352 slots, peak concurrency 306, 2986 of 3000 sessions successful** at
+> `requests.cpu: 10m`. The 168 above is the same arithmetic at 100m, where the scheduler bound
+> at ~21 browsers; at 10m it does not bind, and the run's constraint was the API server.
 
-Source: [`18-capacity-elasticity-and-kine.md`](research/session-lifecycle-elasticity/18-capacity-elasticity-and-kine.md) lines 62 and 67.
+Source: [`24-capacity-ledger.md`](research/session-lifecycle-elasticity/24-capacity-ledger.md),
+[`18-capacity-elasticity-and-kine.md`](research/session-lifecycle-elasticity/18-capacity-elasticity-and-kine.md) line 62.
 
 ## 6. Capacity arithmetic, as registered
 
@@ -257,7 +270,8 @@ Source: [`18-capacity-elasticity-and-kine.md`](research/session-lifecycle-elasti
 >
 > | Bound | Concurrency | sessions/s | sessions / 24 h |
 > |---|---|---|---|
-> | Slots | 168 | 2.24 | 193 500 |
+> | Slots at 100m requests (historical) | 168 | 2.24 | 193 500 |
+> | Slots at 10m requests, measured ([ledger](research/session-lifecycle-elasticity/24-capacity-ledger.md)) | 352 | 4.69 **[I]** | 405 000 |
 > | CPU, measured 2.0 core-seconds per session over ~2.7 free cores | 135 | 1.35 | 116 600 |
 > | Control plane (what actually broke) | — | ~2 | ~170 000 theoretical, **0 observed** |
 > | A defensible soak target | 75 | 1.0 | 86 400 |
@@ -284,17 +298,24 @@ Source: [`10-autoscaler-deployed.md`](research/session-lifecycle-elasticity/10-a
 
 ## 8. Swap and zram
 
-> **YES, by one concurrent session: 5 → 6 (+20 %)** at 3 vCPU / 4 GiB, and with zram
-> it also cuts tail latency ~70 % at equal load (§5b).
+> **On the host, at scale: yes.** The largest run on this node served **306 concurrent
+> contexts with zram at 5:1 in use** — 16.46 MiB allowance per pod, 2919 of 2986 sessions
+> swapping, 11.7 GiB of node swap occupied, memory floor 16.3 %, zero OOM kills, zero
+> throttled sessions. The constraint it hit was the API server (14 claim refusals), not
+> memory ([ledger](research/session-lifecycle-elasticity/24-capacity-ledger.md)).
 
-> **[M] Swap buys exactly one more concurrent session: 5 → 6, +20 %**, i.e. 15 → 18
-> sessions/min at a 20 s hold. Not more, on this box.
+> **In the VM lab, on the compression trade:** YES, by one concurrent session there —
+> 5 → 6 (+20 %) at 3 vCPU / 4 GiB, and with zram it also cuts tail latency ~70 % at equal
+> load (§5b). **[M] Swap buys exactly one more concurrent session: 5 → 6, +20 %**, i.e.
+> 15 → 18 sessions/min at a 20 s hold, on that box.
 
 > | `zram-2to1` | lz4 | 39 409 ms | **31/31 ok** | **6.38** | **7** |
 > | `zram-5to1` | zstd | **740 ms** | 24 ok, 7 failed (API `Delete` timeout) | 7.25 | 6 |
 > | **latency at rung 6** — same 27 sessions, same box | **zstd (5:1)**: 740 ms vs 22.7 s vs 39.4 s p95 | 30–50× better |
 
-Source: [`swap-capacity/README.md`](research/swap-capacity/README.md) lines 23–24, 141–142, 303–312.
+Source: [`swap-capacity/README.md`](research/swap-capacity/README.md) §5b and §5d.1 for the VM
+arms, and [`24-capacity-ledger.md`](research/session-lifecycle-elasticity/24-capacity-ledger.md)
+for the host row.
 
 <figure>
 <img src="research/swap-capacity/assets/zram-ratio-benchmark.png" alt="The zram compression ratio benchmark capture" loading="lazy">
