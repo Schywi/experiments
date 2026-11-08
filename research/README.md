@@ -22,6 +22,7 @@ the reasoning: what was proposed, what was measured, what broke.
 | [CPU oversubscription](cpu-oversubscription/README.md) | 6 notes | How far can CPU requests be pushed below limits before the API server and Chromium suffer? |
 | [Swap as capacity](swap-capacity/README.md) | 1 study, 5 sections | Can zram swap raise concurrent sessions, by how much, and which compression ratio pays for it in CPU? |
 | [Browser session persistence](browser-session-persistence/README.md) | 1 note | Where a session's restorable state is written, how the budget is enforced, and what it costs at 300k sessions a day? |
+| [Agent context](agent-context/README.md) | 2 notes | When a user hands work to an agent, who owns the browser, what bounds the agent's actions, and what one unit of that work costs in session-seconds and inference-seconds? |
 
 ## Feature contracts
 
