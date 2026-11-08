@@ -16,7 +16,6 @@ spec:
   template:
     metadata:
       labels:
-        {{- include "session-lab.selector" . | nindent 8 }}
         {{- include "session-lab.labels" . | nindent 8 }}
       annotations:
         prometheus.io/scrape: "true"
