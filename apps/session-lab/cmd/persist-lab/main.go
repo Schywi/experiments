@@ -53,7 +53,14 @@ func run() error {
 		contexts      = flag.Int("contexts-per-browser", 8, "sessions one Chromium serves")
 		persistRate   = flag.Float64("persist-rate", 0.2, "fraction of sessions that persist, 0 to 1")
 		persistDir    = flag.String("persist-dir", "", "blob directory; defaults to <out>/persist")
-		persistBudget = flag.Int64("persist-budget", 0, "bytes the blob directory may hold; 0 is unbounded")
+		persistBudget = flag.Int64("persist-budget", 0, "bytes the blob store may hold; 0 is unbounded")
+		s3Endpoint    = flag.String("persist-s3-endpoint", "", "S3/MinIO endpoint host:port; set it to store blobs in the cluster's MinIO instead of a directory")
+		s3Bucket      = flag.String("persist-s3-bucket", "session-lab", "bucket the blobs go to")
+		s3Access      = flag.String("persist-s3-access-key", os.Getenv("PERSIST_S3_ACCESS_KEY"), "access key; defaults to PERSIST_S3_ACCESS_KEY")
+		s3Secret      = flag.String("persist-s3-secret-key", os.Getenv("PERSIST_S3_SECRET_KEY"), "secret key; defaults to PERSIST_S3_SECRET_KEY")
+		s3Secure      = flag.Bool("persist-s3-secure", false, "use TLS for the endpoint")
+		s3Prefix      = flag.String("persist-s3-prefix", "", "key prefix; defaults to runs/<run-id>")
+		restoreRate   = flag.Float64("restore-rate", 0, "fraction of stored blobs to boot after the run, 0 to 1")
 		out           = flag.String("out", "", "output directory for the run database and report (required)")
 		kubeconfig    = flag.String("kubeconfig", "", "kubeconfig path; empty uses the default")
 		namespace     = flag.String("namespace", "sandbox-demo", "namespace holding the pool and the claims")
@@ -121,16 +128,33 @@ func run() error {
 		return err
 	}
 
-	if *persistDir == "" {
-		*persistDir = filepath.Join(abs, "persist")
+	// The blob store: MinIO over S3 when an endpoint is given, a local directory
+	// otherwise. The directory stays the control arm for the comparison.
+	var blobs persist.Store
+	if *s3Endpoint != "" {
+		prefix := *s3Prefix
+		if prefix == "" {
+			prefix = "runs/" + cfg.RunID
+		}
+		blobs, err = persist.NewS3(context.Background(), persist.S3Options{
+			Endpoint: *s3Endpoint, Secure: *s3Secure,
+			AccessKey: *s3Access, SecretKey: *s3Secret,
+			Bucket: *s3Bucket, Prefix: prefix,
+			Rate: *persistRate, Budget: *persistBudget, Log: logger,
+		})
+	} else {
+		dir := *persistDir
+		if dir == "" {
+			dir = filepath.Join(abs, "persist")
+		}
+		blobs, err = persist.NewDir(persist.Options{
+			Dir: dir, Rate: *persistRate, Budget: *persistBudget, Log: logger,
+		})
 	}
-	writer, err := persist.NewDir(persist.Options{
-		Dir: *persistDir, Rate: *persistRate, Budget: *persistBudget, Log: logger,
-	})
 	if err != nil {
 		return err
 	}
-	logger.Printf("%s", writer.String())
+	logger.Printf("%s", blobs)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -140,7 +164,7 @@ func run() error {
 		Store:   st,
 		Plan:    plan,
 		Log:     logger,
-		Persist: writer,
+		Persist: blobs,
 		HostMemory: func() (int64, int64, int64, int64) {
 			memory := measure.ReadHostMemory()
 			return memory.TotalBytes, memory.AvailableBytes, memory.SwapTotalBytes, memory.SwapFreeBytes
@@ -162,7 +186,7 @@ func run() error {
 
 	// The persistence arm's own numbers, written beside the report and printed as
 	// one line a reviewer can read without opening anything.
-	stats := writer.Stats()
+	stats := blobs.Stats()
 	payload, err := json.MarshalIndent(stats, "", "  ")
 	if err != nil {
 		return err
@@ -171,9 +195,30 @@ func run() error {
 	if err := os.WriteFile(statsPath, payload, 0o644); err != nil {
 		return err
 	}
-	fmt.Printf("\nstorage: persist-rate %.0f%%, %d blobs, %d bytes, mean %.0f B, refused %d, failed %d, budget %d\n",
-		stats.Rate*100, stats.Blobs, stats.Bytes, stats.MeanBytes, stats.Refused, stats.Failed, stats.Budget)
+	fmt.Printf("\nstorage: persist-rate %.0f%%, %d blobs, %d bytes retained, %d bytes ingested, %d evicted, mean %.0f B, refused %d, failed %d, budget %d\n",
+		stats.Rate*100, stats.Blobs, stats.Bytes, stats.IngestBytes, stats.EvictedBytes,
+		stats.MeanBytes, stats.Refused, stats.Failed, stats.Budget)
 	logger.Printf("report: %s", reportPath)
 	logger.Printf("persist: %s", statsPath)
+
+	// The restore arm boots a session from the blobs this run stored, on a fresh
+	// claim: that is the capability the experiment exists to prove.
+	if *restoreRate > 0 {
+		logger.Printf("restore: booting %.0f%% of the stored blobs", *restoreRate*100)
+		restored, err := restoreStored(ctx, adapter, cfg, blobs, *restoreRate, logger)
+		if err != nil {
+			logger.Printf("restore: %v", err)
+		} else {
+			fmt.Printf("\n%s\n", restored)
+			restorePath := filepath.Join(abs, cfg.RunID+"-restore.json")
+			if payload, err := json.MarshalIndent(restored, "", "  "); err != nil {
+				logger.Printf("restore: marshal: %v", err)
+			} else if err := os.WriteFile(restorePath, payload, 0o644); err != nil {
+				logger.Printf("restore: %s: %v", restorePath, err)
+			} else {
+				logger.Printf("restore: %s", restorePath)
+			}
+		}
+	}
 	return nil
 }

@@ -1,0 +1,149 @@
+{{- define "minio.labels" -}}
+app.kubernetes.io/name: minio
+app.kubernetes.io/component: object-store
+app.kubernetes.io/part-of: session-lab
+app.kubernetes.io/managed-by: {{ .Release.Service }}
+{{- end -}}
+{{- define "minio.selector" -}}
+app.kubernetes.io/name: minio
+app.kubernetes.io/component: object-store
+{{- end -}}
+
+# The credentials are generated on first install and read back on every upgrade,
+# so the Secret survives `helm upgrade` and no password is ever committed.
+{{- $name := .Values.credentialsSecret -}}
+{{- $existing := lookup "v1" "Secret" .Release.Namespace $name -}}
+{{- $access := randAlphaNum 20 | lower -}}
+{{- $secret := randAlphaNum 40 -}}
+{{- if $existing -}}
+{{- $access = index $existing.data "accessKey" | b64dec -}}
+{{- $secret = index $existing.data "secretKey" | b64dec -}}
+{{- end -}}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ .Values.credentialsSecret }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "minio.labels" . | nindent 4 }}
+type: Opaque
+data:
+  accessKey: {{ $access | b64enc | quote }}
+  secretKey: {{ $secret | b64enc | quote }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: minio-data
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "minio.labels" . | nindent 4 }}
+spec:
+  accessModes: ["ReadWriteOnce"]
+  {{- with .Values.storage.storageClass }}
+  storageClassName: {{ . }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.storage.size }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: minio
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "minio.labels" . | nindent 4 }}
+spec:
+  # One replica on one PVC. The persist arm's budget is what bounds this store;
+  # a replicated MinIO needs its own erasure-set sizing, which is a different
+  # experiment.
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "minio.selector" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "minio.selector" . | nindent 8 }}
+        {{- include "minio.labels" . | nindent 8 }}
+    spec:
+      containers:
+        - name: minio
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - server
+            - /data
+            - --address=:{{ .Values.service.port }}
+            - --console-address=:{{ .Values.service.consolePort }}
+          env:
+            - name: MINIO_ROOT_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.credentialsSecret }}
+                  key: accessKey
+            - name: MINIO_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.credentialsSecret }}
+                  key: secretKey
+          ports:
+            - name: api
+              containerPort: {{ .Values.service.port }}
+            - name: console
+              containerPort: {{ .Values.service.consolePort }}
+          # A 200 here means the server answers S3, which is what persist-lab
+          # needs before it writes its first blob.
+          readinessProbe:
+            httpGet:
+              path: /minio/health/ready
+              port: api
+            initialDelaySeconds: 3
+            periodSeconds: 5
+            failureThreshold: 20
+          livenessProbe:
+            httpGet:
+              path: /minio/health/live
+              port: api
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          # The image runs as root and writes to /data, so the pod cannot be
+          # non-root here; the escalation and capability drop still apply.
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: minio-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: minio
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "minio.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.type }}
+  selector:
+    {{- include "minio.selector" . | nindent 4 }}
+  ports:
+    - name: api
+      port: {{ .Values.service.port }}
+      targetPort: api
+      {{- if and (eq .Values.service.type "NodePort") .Values.service.nodePort }}
+      nodePort: {{ .Values.service.nodePort }}
+      {{- end }}
+    - name: console
+      port: {{ .Values.service.consolePort }}
+      targetPort: console

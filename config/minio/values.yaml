@@ -1,0 +1,44 @@
+# MinIO, the object store behind apps/session-lab's persist arm.
+#
+# Nothing in the session path needs this: sessions run whether or not it exists.
+# Only cmd/persist-lab talks to it, over the S3 API.
+
+image:
+  repository: quay.io/minio/minio
+  # MinIO tags are date-stamped releases. Bump deliberately: the persist arm's
+  # PUT/GET behaviour is measured against the server it was tested with.
+  tag: RELEASE.2024-10-13T13-34-11Z
+  pullPolicy: IfNotPresent
+
+# Name of the Secret holding the root credentials. It is created by this chart
+# with generated values on first install, and preserved across upgrades by
+# reading the existing object back. Read them with:
+#   kubectl -n <ns> get secret minio-credentials \
+#     -o jsonpath='{.data.accessKey}' | base64 -d
+credentialsSecret: minio-credentials
+
+# The bucket itself is created by cmd/persist-lab on its first write, so there is
+# no init Job and no declarative bucket object.
+storage:
+  size: 10Gi
+  # Empty uses the cluster's default StorageClass.
+  storageClass: ""
+
+service:
+  port: 9000
+  consolePort: 9001
+  # What persist-lab can reach from where it runs. ClusterIP when the runner runs
+  # inside the cluster; NodePort or LoadBalancer when it runs on the host, which
+  # is how the current experiments run.
+  type: ClusterIP
+  # Only used when type is NodePort.
+  nodePort: null
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  # No CPU limit, the same rule the other charts here follow: a quota throttles
+  # the store exactly when the node is busy.
+  limits:
+    memory: 512Mi

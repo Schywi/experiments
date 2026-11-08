@@ -1,0 +1,6 @@
+apiVersion: v2
+name: minio
+description: MinIO — the object store the session persistence arm writes blobs to
+type: application
+version: 0.1.0
+appVersion: "RELEASE.2024-10-13T13-34-11Z"

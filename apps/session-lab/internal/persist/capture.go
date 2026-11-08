@@ -113,6 +113,59 @@ func Restore(ctx context.Context, conn *browser.Conn, session *browser.Session, 
 	return nil
 }
 
+// Verify reports what a context holds after a restore, comparing against the
+// blob: the number of its cookies present and the number of its localStorage
+// items present. A restore that returns nil but leaves nothing behind shows up
+// here as zeros.
+func Verify(ctx context.Context, conn *browser.Conn, session *browser.Session, id browser.ContextID, blob Blob) (cookies int, items int, err error) {
+	got, err := cookiesFor(ctx, conn, id)
+	if err != nil {
+		return 0, 0, err
+	}
+	wantCookies := map[string]bool{}
+	for _, raw := range blob.Cookies {
+		var parsed struct {
+			Name  string `json:"name"`
+			Value string `json:"value"`
+		}
+		if err := json.Unmarshal(raw, &parsed); err != nil {
+			continue
+		}
+		wantCookies[parsed.Name+"="+parsed.Value] = true
+	}
+	for _, raw := range got {
+		var parsed struct {
+			Name  string `json:"name"`
+			Value string `json:"value"`
+		}
+		if err := json.Unmarshal(raw, &parsed); err != nil {
+			continue
+		}
+		if wantCookies[parsed.Name+"="+parsed.Value] {
+			cookies++
+		}
+	}
+	for origin, list := range blob.Local {
+		if !usableOrigin(origin) {
+			continue
+		}
+		read, err := storageItems(ctx, session, origin)
+		if err != nil {
+			continue
+		}
+		have := map[string]bool{}
+		for _, item := range read {
+			have[item.Name+"="+item.Value] = true
+		}
+		for _, item := range list {
+			if have[item.Name+"="+item.Value] {
+				items++
+			}
+		}
+	}
+	return cookies, items, nil
+}
+
 // cookiesFor reads the context's cookies, HttpOnly included, replayable as they
 // came.
 func cookiesFor(ctx context.Context, conn *browser.Conn, id browser.ContextID) ([]json.RawMessage, error) {
