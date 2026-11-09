@@ -81,6 +81,12 @@ type Options struct {
 	// HealthInterval is how long a probe result stays valid. Zero means every
 	// assignment probes when Check is set.
 	HealthInterval time.Duration
+	// MaxProvisioning bounds instance creations in flight. One is what every
+	// run before this option did, and the provider waits for readiness inside
+	// that call, so the bound is a bound on cold boots at once. A larger value
+	// lets the fleet grow k pods per boot instead of one, at the cost of k
+	// concurrent CPU spikes on the node.
+	MaxProvisioning int
 	// Now is the clock, for tests.
 	Now func() time.Time
 }
@@ -98,8 +104,10 @@ type Pool struct {
 	inUse       int
 	// provisioning counts instance creations in flight, and wait is closed and
 	// replaced whenever one finishes, so a burst of sessions does not each
-	// create an instance of its own.
+	// create an instance of its own. max is how many may be in flight at once;
+	// one means the fleet grows one cold path at a time.
 	provisioning int
+	max          int
 	wait         chan struct{}
 }
 
@@ -119,9 +127,14 @@ func NewWithOptions(opts Options) *Pool {
 	if now == nil {
 		now = time.Now
 	}
+	maxProvisioning := opts.MaxProvisioning
+	if maxProvisioning < 1 {
+		maxProvisioning = 1
+	}
 	return &Pool{
 		perInstance: perInstance, provide: opts.Provide, check: opts.Check,
 		interval: opts.HealthInterval, now: now,
+		max:  maxProvisioning,
 		wait: make(chan struct{}),
 	}
 }
@@ -149,9 +162,9 @@ func (p *Pool) Take(ctx context.Context) (Lease, error) {
 			}
 			continue
 		}
-		if p.provisioning > 0 {
-			// Someone else is already creating an instance: wait for it and
-			// look again, because its free slots may be enough.
+		if p.provisioning >= p.max {
+			// The permitted number of creations is already in flight: wait and
+			// look again, because their free slots may be enough.
 			wait := p.wait
 			p.mu.Unlock()
 			select {
@@ -310,6 +323,9 @@ func (p *Pool) notifyLocked() {
 
 // Capacity reports the configured slots per instance.
 func (p *Pool) Capacity() int { return p.perInstance }
+
+// MaxProvisioning is how many instance creations may be in flight at once.
+func (p *Pool) MaxProvisioning() int { return p.max }
 
 // takeFreeLocked finds a slot, preferring an instance that already has sessions
 // so idle instances are drained to zero before new ones are filled. An entry

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/infra/sandbox"
 	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/runtime/slots"
@@ -125,5 +126,80 @@ func TestInUseOnCountsTheSessionsSharingOneBrowser(t *testing.T) {
 	pool.Give(second)
 	if got := pool.InUseOn(first.Instance); got != 1 {
 		t.Fatalf("InUseOn = %d after a release, want 1", got)
+	}
+}
+
+// TestMaxProvisioningAdmitsKSessionsAtOnce is the property the capacity ramp
+// depends on: with MaxProvisioning 1 the pool serialises cold paths, and with n it
+// lets n of them run at the same time. Without this the fleet grows one pod per
+// boot no matter how many sessions are waiting.
+func TestMaxProvisioningAdmitsKSessionsAtOnce(t *testing.T) {
+	const k = 3
+	var mu sync.Mutex
+	started, peak := 0, 0
+	release := make(chan struct{})
+
+	provide := func(ctx context.Context) (*sandbox.Instance, error) {
+		mu.Lock()
+		started++
+		if started > peak {
+			peak = started
+		}
+		mu.Unlock()
+		<-release // hold the call open so concurrency is observable
+		mu.Lock()
+		started--
+		mu.Unlock()
+		return &sandbox.Instance{ID: "instance"}, nil
+	}
+
+	pool := slots.NewWithOptions(slots.Options{PerInstance: 1, Provide: provide, MaxProvisioning: k})
+	if got := pool.MaxProvisioning(); got != k {
+		t.Fatalf("MaxProvisioning %d, want %d", got, k)
+	}
+
+	done := make(chan struct{})
+	for i := 0; i < k+1; i++ {
+		go func() {
+			_, _ = pool.Take(context.Background())
+			done <- struct{}{}
+		}()
+	}
+
+	// Wait until k creations are in flight, then check the (k+1)th is held back.
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		mu.Lock()
+		running := started
+		mu.Unlock()
+		if running >= k || time.Now().After(deadline) {
+			break
+		}
+		time.Sleep(time.Millisecond)
+	}
+	mu.Lock()
+	atPeak := peak
+	mu.Unlock()
+	if atPeak != k {
+		t.Fatalf("%d creations ran at once, want %d", atPeak, k)
+	}
+
+	close(release)
+	for i := 0; i < k+1; i++ {
+		select {
+		case <-done:
+		case <-time.After(5 * time.Second):
+			t.Fatal("a Take never returned")
+		}
+	}
+}
+
+// TestDefaultMaxProvisioningIsOne keeps the historical behaviour the default.
+func TestDefaultMaxProvisioningIsOne(t *testing.T) {
+	pool := slots.New(1, func(context.Context) (*sandbox.Instance, error) {
+		return &sandbox.Instance{ID: "i"}, nil
+	})
+	if got := pool.MaxProvisioning(); got != 1 {
+		t.Fatalf("default MaxProvisioning %d, want 1", got)
 	}
 }
