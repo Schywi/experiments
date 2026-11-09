@@ -96,6 +96,9 @@ build. The measurement exists; the configuration does not.
   `type(scope): what changed`; the body carries the issue identifier and one to
   three lines of what changed and why. No secrets, no hostnames, no personal
   paths, nothing from an ignored directory.
+- **Laya work is tagged.** Every commit for the Laya / Vulkan work ends its
+  subject with the literal suffix `-laya`, for example
+  `perf(laya): build laya.cpp with Vulkan and measure decision latency -laya`.
 - **Nothing untracked is left behind.** A file that must stay out of the
   repository goes into `.gitignore` with its reason, in the same commit. The
   working tree is clean when the task ends, and `git status` proves it.
@@ -189,6 +192,23 @@ and tables only where they carry facts.
 - NEVER use a worktree as a workaround for anything (locks, permissions, write
   scope, sandbox limits, "it's blocked").
 - Work directly in this repository checkout, on a branch, like a normal human.
+
+## Branches — LOCKED. NEVER SWITCH
+
+The branch this checkout is already on is the only branch it may be worked on.
+The user performs every branch operation; agents perform none.
+
+- NEVER run `git checkout`, `git checkout -b`, `git switch`, `git switch -c`,
+  `git branch -m`, `git branch -M`, `git branch -d`, or anything else whose
+  effect is to move `HEAD` to a different branch. No exceptions, no "quick" ones,
+  not even to return to where the work started.
+- NEVER create a branch, and never create one "to be safe".
+- NEVER propose switching branches as part of a plan. A plan that needs another
+  branch is a question for the user, not a step.
+- Commits land on the checked-out branch. If the work seems to need a different
+  base, stop and ask the user.
+- Read-only inspection is allowed and expected: `git branch --show-current`,
+  `git status`, `git log`, `git diff`.
 
 This project uses **bd** (beads) for issue tracking. Run `bd onboard` to get started.
 
