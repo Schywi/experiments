@@ -114,12 +114,15 @@ func runArm(lc liveConfig, installed bool) error {
 		Namespace:          lc.namespace,
 		Pool:               lc.pool,
 		ContextsPerBrowser: lc.cfg.fleet.SlotsPerPod,
-		MaxProvisioning:    lc.maxProv,
-		DemandPublish:      lc.publishCM,
-		CDPTransport:       "http",
-		TargetURL:          lc.targetURL,
-		TargetURLs:         []string{lc.targetURL},
-		OutDir:             dir,
+		// Ten seconds, the same interval session-lab samples at. A zero here used
+		// to reach time.NewTicker in the hold and panic the run.
+		SampleSeconds:   10,
+		MaxProvisioning: lc.maxProv,
+		DemandPublish:   lc.publishCM,
+		CDPTransport:    "http",
+		TargetURL:       lc.targetURL,
+		TargetURLs:      []string{lc.targetURL},
+		OutDir:          dir,
 	}
 
 	logger := log.New(os.Stdout, "", log.Ltime|log.Lmicroseconds)
