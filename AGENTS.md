@@ -127,10 +127,18 @@ top-level tree. Never commit anything from `/docs` or `/cv`.
 
 ```bash
 cd apps/assistant && python3 -m pytest -q     # unit tests, no cluster or model needed
+cd apps/session-lab && go test ./... -race    # see the caveat below before reading the result
 bash config/ci/validate.sh                    # Helm charts + kubeconform for config/ and apps/
 ```
 
 Do not claim a test run passed unless you actually ran it in this session.
+
+**`go test ./... -race` is red at `HEAD`, and the red is not yours.** `internal/runtime/session`
+has a family of data races on per-instance counters and boot-sampler bookkeeping that predate
+the queue work; a pristine `git archive HEAD` tree reproduces them. The sites, the one map race
+that is fixed, and how to tell a new defect from the known ones are in
+[note 29](research/session-lifecycle-elasticity/28-race-detector-audit.md). `internal/queue` is
+green under `-race` on its own, so any failure there is real.
 
 ## Writing Style
 

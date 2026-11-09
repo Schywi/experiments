@@ -36,6 +36,21 @@ The 100m row is why 168 appears in older notes: the scheduler bound at ~21 brows
 because each pod asked for a tenth of a core. The template now asks for 10m, and the
 scheduler stopped binding there **[M]** — 44 browsers were placed in the last run.
 
+### Unrecorded reports
+
+A ceiling that is reported but not measured does not get a row, and it does not get to
+replace one. It is listed here so the next reader does not mistake the newest row for the
+current maximum:
+
+| Date | Report | Status |
+|---|---|---|
+| 2026-11-09 | a run reached **58 or more instances** (~464 slots) | **[U]** no run id, no report file; append a row when one exists |
+
+**[U]** is unverified: neither the run database nor `docs/session-lab-runs/` holds it — the
+largest `instances.total` in that directory is 34 — so its arithmetic stays out of the notes
+until it has a run id. What it already settles is that 38 was never a ceiling: it was one of
+four runs on 2026-11-07, and the ledger's newest row is 44.
+
 ## The last run, in full
 
 `20261107T235847Z` — pool `browser-pool-gpu`, template `browser-tpl-gpu`

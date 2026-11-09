@@ -17,6 +17,7 @@ tags: [session-lifecycle, queue, multiplexing, latency, state-validated]
 | Phase | 8 — session lifecycle elasticity |
 | Branch | `docs-site` |
 | Related | [16.1 browser contexts and slots](16.1-browser-contexts-and-slots.md), [18 capacity elasticity and kine](18-capacity-elasticity-and-kine.md), [21 manual scaling runbook](21-manual-scaling-runbook.md) |
+| Superseded in part | The fleet below — 38 instances, 304 slots — is **one run of four** in [the capacity ledger](24-capacity-ledger.md), whose newest row is 44 instances. Later runs are reported higher still. The measurements here are that run's and stay as recorded; do not quote its fleet size as the current maximum |
 
 ---
 

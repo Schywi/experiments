@@ -18,11 +18,11 @@ the reasoning: what was proposed, what was measured, what broke.
 
 | Study | Notes | Question it answers |
 |---|---|---|
-| [Session lifecycle elasticity](session-lifecycle-elasticity/README.md) | 20 notes + handoff | What does a browser session cost, how many fit on this host, and where does the control plane stop? |
+| [Session lifecycle elasticity](session-lifecycle-elasticity/README.md) | 24 notes + handoff | What does a browser session cost, how many fit on this host, and where does the control plane stop? |
 | [CPU oversubscription](cpu-oversubscription/README.md) | 6 notes | How far can CPU requests be pushed below limits before the API server and Chromium suffer? |
 | [Swap as capacity](swap-capacity/README.md) | 1 study, 5 sections | Can zram swap raise concurrent sessions, by how much, and which compression ratio pays for it in CPU? |
 | [Browser session persistence](browser-session-persistence/README.md) | 6 notes | Where a session's restorable state is written, how the budget is enforced, what it costs at 300k sessions a day, and which Chromium surfaces are covered at what size? |
-| [Queue scheduling](queue-scheduling/README.md) | 2 notes + handoff | Which queue algorithm lowers the wait tail here, measured without disturbing the persistence or session-lab experiments? |
+| [Queue scheduling](queue-scheduling/README.md) | 5 notes + handoff | Which queue algorithm lowers the wait tail here, measured without disturbing the persistence or session-lab experiments? |
 
 ## Feature contracts
 
@@ -77,3 +77,12 @@ its table. Neither replaces the other.
 Notes state what was measured, what was inferred, and what is unknown. Numbers
 carry the run id, the commit or the file path that produced them; where none of
 those exist the note says so rather than rounding the gap away.
+
+**A number is current only as of its run.** A ceiling that is quoted without a run id
+and a date is stale by default, and the newest measurement in
+[the capacity ledger](session-lifecycle-elasticity/24-capacity-ledger.md) supersedes an
+older one without editing it: append the new row and leave the old row and the note that
+read it in place, so a later reader can see the series rather than only its last point.
+A measurement that has been superseded is not wrong; it is dated. Quoting it as the
+current state is the error, and it has been made once here already — the 38-instance fleet
+of `20261107T033326Z` was repeated as "the ceiling" after three later runs had passed it.
