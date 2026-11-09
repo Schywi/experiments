@@ -6,10 +6,16 @@
 # claims waiting for an instance — and the control is the pool's replica count.
 
 image:
-  # Built from apps/session-lab/Containerfile and pushed with
-  # config/registry/push-image.sh session-lab-autoscaler.
+  # Built from apps/session-lab/Containerfile, in-cluster, by
+  # scripts/build-session-lab-images.sh (kaniko) or config/registry/kaniko-build.sh.
+  #
+  # The tag names the arm. v1 is the autoscaler this repository shipped before the
+  # capacity work; v2 carries the published-demand source, the memory terms and the
+  # provisioning bound, each behind a flag whose zero value reproduces v1. A tag is
+  # what makes a v1 and a v2 run distinguishable after the fact, so it is not
+  # reused: a new behaviour gets a new tag.
   repository: 127.0.0.1:5000/session-lab-autoscaler
-  tag: local
+  tag: v2
   # Always, because :local is a mutable tag: Kaniko pushes a new digest under the
   # same tag, and IfNotPresent keeps the node's cached copy — which is how a
   # deployment ends up running code that was replaced hours ago. Verified once
@@ -36,10 +42,26 @@ autoscaler:
   minReplicas: 2
   maxReplicas: 120
   interval: 5s
+  # Which input sizes the pool. `claims` is v1: a session waiting in the gate or
+  # the slot pool has no claim, and a claim bound to a booting warm-pool sandbox is
+  # bound rather than pending, so it measures the fleet rather than the queue.
+  # `published` reads what the runner publishes each second and falls back to
+  # claims, saying so in its ConfigMap, until the first publish arrives.
+  demandSource: published
+  # ConfigMap the runner publishes its depth to (--publish-demand).
+  demandConfigMap: session-lab-demand
+  # The pool's own bound on creations in flight, published so a run records it.
+  # 1 is the historical serialisation: one cold path at a time.
+  maxProvisioning: 4
+  # Hold growth when available memory falls below this, or when memory PSI full
+  # avg10 exceeds the second number. 0 disables the term. The CPU-only guard this
+  # replaces could not see the resource that actually stops this host.
+  memoryReserveMB: 2048
+  memoryPressureHigh: 10
   # Sessions one browser replica carries. With 8, a run of 80 sessions at 8
   # contexts asks for 10 replicas, not 80 — without this the pool inflates by the
   # packing factor and sits there after the run.
-  contextsPerBrowser: 1
+  contextsPerBrowser: 8
   # Where the settings are published, so a run can record what was configured
   # rather than being told.
   configMap: session-lab-autoscaler

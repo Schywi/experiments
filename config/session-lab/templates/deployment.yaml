@@ -16,7 +16,9 @@ spec:
   template:
     metadata:
       labels:
-        {{- include "session-lab.selector" . | nindent 8 }}
+        {{- /* labels already carries the name, so including the selector as well
+               emitted app.kubernetes.io/name twice in one map and made the
+               rendered Deployment unappliable. */}}
         {{- include "session-lab.labels" . | nindent 8 }}
       annotations:
         prometheus.io/scrape: "true"
@@ -41,6 +43,12 @@ spec:
             - --contexts-per-browser={{ .Values.autoscaler.contextsPerBrowser }}
             - --configmap={{ .Values.autoscaler.configMap }}
             - --metrics-addr=:{{ .Values.metrics.port }}
+            - --demand-source={{ .Values.autoscaler.demandSource }}
+            - --demand-configmap={{ .Values.autoscaler.demandConfigMap }}
+            - --max-provisioning={{ .Values.autoscaler.maxProvisioning }}
+            - --image-tag={{ .Values.image.tag }}
+            - --memory-reserve-mb={{ .Values.autoscaler.memoryReserveMB }}
+            - --memory-pressure-high={{ .Values.autoscaler.memoryPressureHigh }}
           ports:
             - name: metrics
               containerPort: {{ .Values.metrics.port }}
