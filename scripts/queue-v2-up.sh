@@ -26,6 +26,9 @@ apply=0
 skip_build=0
 skip_run=0
 dry_run=0
+auto_commit=1
+commit_msg="chore(wip): snapshot before the in-cluster build"
+build_flags=()
 run_args=()
 
 say() { printf '%s\n' "$*" >&2; }
@@ -44,11 +47,15 @@ while (($# > 0)); do
     --branch) branch="${2:?--branch needs a value}"; shift 2 ;;
     --branch=*) branch="${1#*=}"; shift ;;
     --apply) apply=1; shift ;;
+    --allow-dirty) build_flags+=(--allow-dirty); shift ;;
+    --allow-unpushed) build_flags+=(--allow-unpushed); shift ;;
+    --no-commit) auto_commit=0; shift ;;
+    --message) commit_msg="${2:?--message needs a value}"; shift 2 ;;
     --skip-build) skip_build=1; shift ;;
     --no-run) skip_run=1; shift ;;
     --dry-run) dry_run=1; shift ;;
     --) shift; run_args=("$@"); break ;;
-    *) die "unknown argument $1 (see --help; workload flags go after --)" ;;
+    *) die "unknown argument $1. This script's flags go BEFORE the -- separator; only workload flags go after it." ;;
   esac
 done
 
@@ -66,10 +73,32 @@ run() {  # run <description> <command...>
   "$@"
 }
 
+# --- 0: the remote has this tree ---------------------------------------------------
+# Kaniko clones the remote, so anything uncommitted or unpushed is simply absent from
+# the image. That is what put a :v2 Deployment in ImagePullBackOff over an image built
+# as :persist-probe. This step commits and pushes the working tree so one command is
+# enough; --no-commit keeps the tree untouched and lets the build script refuse.
+if ((auto_commit == 1 && skip_build == 0)); then
+  dirty="$(git status --porcelain)"
+  unpushed="$(git log --oneline "origin/${branch}..HEAD" 2>/dev/null || true)"
+  if [[ -n "${dirty}" || -n "${unpushed}" ]]; then
+    say "==> commit and push ${branch} so the in-cluster build sees this tree"
+    if ((dry_run == 1)); then
+      printf '    git add -A && git commit -m %q && git push -u origin %s\n' "${commit_msg}" "${branch}"
+    else
+      git add -A
+      git commit -m "${commit_msg}" || say "    nothing to commit"
+      git push -u origin "${branch}"
+    fi
+  else
+    say "==> ${branch} is committed and pushed"
+  fi
+fi
+
 # --- 1: the image the cluster can pull --------------------------------------------
 if ((skip_build == 0)); then
   run "build ${tag} from ${branch}" \
-    bash "${repo}/scripts/build-session-lab-images.sh" --tag "${tag}" --branch "${branch}"
+    bash "${repo}/scripts/build-session-lab-images.sh" --tag "${tag}" --branch "${branch}" "${build_flags[@]}"
 else
   say "==> skipping the build; ${tag} must already be in the registry"
 fi

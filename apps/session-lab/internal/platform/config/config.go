@@ -55,7 +55,7 @@ func Parse(args []string) (*Config, error) {
 	fs.StringVar(&cfg.RunConfig.CDPTransport, "cdp-transport", "http", "http (in-pod bridge) or ws (direct DevTools connection)")
 	fs.IntVar(&cfg.RunConfig.CDPPort, "cdp-ws-port", 9224, "port the forwarding sidecar publishes on the pod IP")
 	fs.StringVar(&targetURL, "target-url", "", "page each session opens inside its context; a comma-separated list cycles one URL per session (default about:blank)")
-	fs.IntVar(&cfg.RunConfig.BootConcurrency, "boot-concurrency", 0, "instances allowed to boot at once; 0 is unbounded")
+	fs.IntVar(&cfg.RunConfig.BootConcurrency, "boot-concurrency", 0, "instances allowed to boot at once; -1 is explicitly unbounded, 0 derives it from a measured peak when one exists")
 	fs.IntVar(&cfg.RunConfig.MaxProvisioning, "max-provisioning", 0, "instance creations in flight inside the slot pool; 0 or 1 serialises cold boots")
 	fs.StringVar(&cfg.RunConfig.DemandPublish, "publish-demand", "", "publish live queue depth to this ConfigMap (namespace/name); empty publishes nothing")
 	fs.IntVar(&cfg.RunConfig.Admit, "admit", 0, "concurrent admissions; 0 is unbounded")

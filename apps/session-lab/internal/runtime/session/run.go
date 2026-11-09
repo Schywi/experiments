@@ -363,6 +363,11 @@ func (r *Runner) preflight(ctx context.Context) error {
 	// Boot concurrency is derived from measured spikes when the operator did not
 	// pin it. The chicken-and-egg — no peak exists before the first boot — is
 	// broken by reading prior runs' peaks from the output directory.
+	// A negative value means "explicitly unbounded": the gate is left at
+	// NewGate(-1), which admits everyone. Zero still means "derive it from a
+	// measured peak when one exists", which is why an experiment that wants k to
+	// be the only variable must pass -1 rather than 0 -- with 0 a stale peak from
+	// an earlier run silently re-serialises the boot permit.
 	if r.cfg.BootConcurrency == 0 {
 		if peak, err := r.bootPeak(); err != nil {
 			r.log.Printf("preflight: boot peak unavailable: %v", err)

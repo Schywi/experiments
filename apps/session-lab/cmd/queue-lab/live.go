@@ -28,6 +28,7 @@ type liveConfig struct {
 	compare    bool
 	admit      int
 	maxProv    int
+	bootConc   int
 	publishCM  string
 	kubeconfig string
 	namespace  string

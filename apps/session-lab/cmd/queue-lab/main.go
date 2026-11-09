@@ -42,6 +42,7 @@ func run() error {
 			"ordering policy: "+join(queue.Kinds)+"; --simulate and --replay accept all")
 		simulate = flag.Bool("simulate", false, "replay a generated or recorded trace through every policy, no cluster")
 		replayOn = flag.String("replay", "", "path to a session-lab run database; prints its wait split and replays it")
+		bootOn   = flag.String("boot-report", "", "path to a run database; reports boot latency per measured concurrency")
 		liveOn   = flag.Bool("live", false, "run one arm against the cluster, with --queue installed in the runner")
 		compare  = flag.Bool("compare", false, "run the control arm and --queue back to back, same seed")
 		traceIn  = flag.String("trace", "", "load a JSON trace instead of generating one")
@@ -72,6 +73,7 @@ func run() error {
 
 		admitLimit = flag.Int("admit", 1, "admission permits the live gate hands out")
 		maxProv    = flag.Int("max-provisioning", 0, "instance creations in flight inside the slot pool; 2+ lets the fleet grow k pods per boot")
+		bootConc   = flag.Int("boot-concurrency", 0, "runner boot permit; -1 is explicitly unbounded, 0 derives it from a past measured peak")
 		publishCM  = flag.String("publish-demand", "", "publish live queue depth to this ConfigMap (namespace/name)")
 		out        = flag.String("out", "docs/queue-lab-runs", "output directory")
 		runID      = flag.String("run-id", "", "run identifier; defaults to a timestamp")
@@ -127,6 +129,8 @@ func run() error {
 	}
 
 	switch {
+	case *bootOn != "":
+		return bootReport(*bootOn, *out, *runID)
 	case *replayOn != "":
 		return replayRun(cfg, *replayOn, *runID)
 	case *simulate && (*liveOn || *compare):
@@ -138,6 +142,7 @@ func run() error {
 			compare:    *compare,
 			admit:      *admitLimit,
 			maxProv:    *maxProv,
+			bootConc:   *bootConc,
 			publishCM:  *publishCM,
 			kubeconfig: *kubeconfig,
 			namespace:  *namespace,
