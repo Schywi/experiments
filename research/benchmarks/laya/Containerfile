@@ -1,0 +1,80 @@
+# Laya served by laya.cpp with the ggml **Vulkan** backend — the only GPU path
+# this host has. The Python package (apps/models/laya) accelerates through
+# TileLang/CUDA and therefore runs CPU here; laya.cpp runs the same checkpoints
+# on the RX 570's render node through Mesa RADV.
+#
+# Everything for this experiment lives in this directory. Nothing outside it is
+# edited, so deleting the directory removes the experiment.
+#
+# Build (host, rootless), context = this directory:
+#   buildah bud -t laya-cpp-vulkan:local -f research/benchmarks/laya/Containerfile research/benchmarks/laya
+#
+# Runtime needs the render node in the container's device cgroup, which is the
+# GPU device plugin's amd.com/render grant. A bare /dev/dri hostPath is denied
+# there — see benchmark/experiments/e3-amd-gpu/RESULTS.md, "Spike evidence".
+#
+# Weights are NOT baked: an init container runs the upstream download script
+# onto a PVC, and the server runs offline from that cache.
+FROM fedora:44 AS build
+
+# glslc compiles the ggml shaders at build time; vulkan-loader-devel and
+# spirv-headers are the link/include side. nlohmann_json and ICU are laya's own
+# required packages (find_package in CMakeLists.txt).
+RUN dnf -y install \
+      gcc-c++ cmake ninja-build git \
+      glslc spirv-headers-devel vulkan-loader-devel vulkan-headers \
+      nlohmann-json-devel libicu-devel \
+ && dnf clean all
+
+# Upstream is pinned to a commit, not a branch: the measurement has to be
+# reproducible from the repository alone. Submodules are the pinned third_party
+# checkouts (ggml, cpp-httplib).
+ARG LAYA_CPP_REPO=https://github.com/lkarlslund/laya.cpp
+ARG LAYA_CPP_SHA=e632da0428236be56978e53ddc92cdcd565fb493
+RUN git init /src \
+ && cd /src \
+ && git remote add origin "${LAYA_CPP_REPO}" \
+ && git fetch --depth 1 origin "${LAYA_CPP_SHA}" \
+ && git checkout --detach FETCH_HEAD \
+ && git submodule update --init --recursive --depth 1
+
+WORKDIR /src
+# CUDA off: there is no NVIDIA toolkit on this host. BUILD_TESTING off: the test
+# targets include Vulkan GPU precision tests that want their own device grant.
+RUN cmake -S . -B build-vulkan -G Ninja \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DLAYA_CUDA=OFF \
+      -DLAYA_VULKAN=ON \
+      -DBUILD_TESTING=OFF \
+ && cmake --build build-vulkan
+
+# A Vulkan build without the flag is a misconfigured build; fail it here rather
+# than measuring a silently CPU-only binary later. laya.cpp refuses an
+# unavailable backend instead of falling back to CPU, so this is belt and brace.
+RUN /src/build-vulkan/bin/laya-cli --help | grep -q -- '--vulkan'
+
+FROM fedora:44
+
+# mesa-vulkan-drivers supplies the RADV userspace the host's amdgpu driver needs;
+# the loader is separate from the driver. The runtime carries no compiler.
+RUN dnf -y install \
+      mesa-vulkan-drivers vulkan-loader vulkan-tools libicu libgomp \
+      python3 python3-pip \
+ && dnf clean all \
+ && pip install --no-cache-dir --break-system-packages "huggingface_hub>=0.20,<2" \
+ && dnf clean all
+
+COPY --from=build /src/build-vulkan/bin/laya-cli /usr/local/bin/laya-cli
+COPY --from=build /src/scripts/download_model.py /opt/laya/scripts/download_model.py
+
+# The upstream script resolves its checkpoint store as
+# `<__file__>/../../models/laya`, so it must sit at /opt/laya/scripts/ for the
+# weights to land in /opt/laya/models/laya — the layout the repo itself uses.
+WORKDIR /opt/laya
+
+EXPOSE 8080
+# Plain FP32 on purpose: the compensated path (--tensor-core-fp32) needs
+# VK_KHR_cooperative_matrix, which gfx803 does not have.
+ENTRYPOINT ["/usr/local/bin/laya-cli"]
+CMD ["--vulkan", "--server", "--host", "0.0.0.0", "--port", "8080", \
+     "--model", "/opt/laya/models/laya", "--variant", "english"]

@@ -1,0 +1,161 @@
+# Laya on the GPU through laya.cpp + Vulkan (ggml), AMD RX 570 / Mesa RADV.
+#
+# Hand-applied for a measurement run and deleted afterwards — the lifecycle
+# benchmark/experiments/e3-amd-gpu and e4-gpu-e2e already use for their arms.
+# Nothing here is GitOps-managed, so it cannot leak into the platform.
+#
+#   kubectl apply -f research/benchmarks/laya/manifests/laya-vulkan.yaml
+#   kubectl -n gpu-exp logs -f deploy/laya-vulkan
+#   kubectl delete -f research/benchmarks/laya/manifests/laya-vulkan.yaml
+#
+# The GPU is taken the way E3 proved works: `amd.com/render: 1` from the device
+# plugin, which adds renderD128 to the container's device cgroup and mounts it.
+# Check the grant exists before applying:
+#
+#   kubectl get node -o jsonpath='{.items[*].status.allocatable.amd\.com/render}'
+#
+# It must print 1. On 2026-11-09 this printed 0 while the plugin logged
+# "advertising 1 render node(s) [renderD128]": kubelet and the plugin are out of
+# sync, and the pod would stay Pending. Repairing that is an imperative step
+# outside this experiment and is recorded in the note, not automated here.
+#
+# One variant only. `english` is 421M params and runs FP32 on this card (gfx803
+# has no FP16 arithmetic and no VK_KHR_cooperative_matrix), i.e. ~1.7 GB of the
+# 4 GB VRAM the desktop compositor also draws from. All three checkpoints do not
+# fit, so the multilingual and typed-decisions variants need their own run.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: laya-vulkan-models
+  namespace: gpu-exp
+  labels:
+    app.kubernetes.io/name: laya-vulkan
+    app.kubernetes.io/part-of: gpu-lab
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 8Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: laya-vulkan
+  namespace: gpu-exp
+  labels:
+    app.kubernetes.io/name: laya-vulkan
+    app.kubernetes.io/part-of: gpu-lab
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: laya-vulkan
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: laya-vulkan
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        # laya.cpp's own pinned download script (revision 1c5edc17…).
+        - name: fetch-weights
+          image: 127.0.0.1:5000/laya-cpp-vulkan:local
+          imagePullPolicy: IfNotPresent
+          command: ["python3", "/opt/laya/scripts/download_model.py", "--variant", "english"]
+          env:
+            - name: PYTHONDONTWRITEBYTECODE
+              value: "1"
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 1Gi
+          volumeMounts:
+            - name: models
+              mountPath: /opt/laya/models
+      containers:
+        - name: laya
+          image: 127.0.0.1:5000/laya-cpp-vulkan:local
+          imagePullPolicy: IfNotPresent
+          # --no-batching: the server otherwise folds concurrent requests into one
+          # GPU batch, which changes what a single decision costs. Sequential
+          # measurement against a single client needs the unbatched path.
+          args: ["--vulkan", "--server", "--host", "0.0.0.0", "--port", "8080",
+                 "--model", "/opt/laya/models/laya", "--variant", "english",
+                 "--no-batching"]
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: HF_HUB_OFFLINE
+              value: "1"
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: "1"
+              memory: 3Gi
+              amd.com/render: 1
+            limits:
+              cpu: "4"
+              memory: 6Gi
+              amd.com/render: 1
+          # Checkpoint load plus SPIR-V pipeline compilation happen before the
+          # listener opens; give it five minutes.
+          startupProbe:
+            tcpSocket:
+              port: http
+            periodSeconds: 5
+            failureThreshold: 60
+          readinessProbe:
+            tcpSocket:
+              port: http
+            periodSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            tcpSocket:
+              port: http
+            periodSeconds: 30
+            failureThreshold: 3
+          volumeMounts:
+            - name: models
+              mountPath: /opt/laya/models
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: models
+          persistentVolumeClaim:
+            claimName: laya-vulkan-models
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: laya-vulkan
+  namespace: gpu-exp
+  labels:
+    app.kubernetes.io/name: laya-vulkan
+    app.kubernetes.io/part-of: gpu-lab
+spec:
+  selector:
+    app.kubernetes.io/name: laya-vulkan
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
