@@ -268,6 +268,14 @@ type RunConfig struct {
 	// DevTools connection; CDPPort is the port the sidecar publishes.
 	CDPTransport string `json:"cdp_transport,omitempty"`
 	CDPPort      int    `json:"cdp_port,omitempty"`
+	// MaxProvisioning bounds instance creations in flight inside the slot pool.
+	// One is the behaviour before this field existed: the pool serialises the
+	// whole cold path, so the fleet grows one pod per boot.
+	MaxProvisioning int `json:"max_provisioning,omitempty"`
+	// DemandPublish is where the runner publishes its live queue depth, as
+	// "namespace/name" of a ConfigMap, so an autoscaler can size the pool from
+	// demand instead of from claims it cannot see. Empty disables publishing.
+	DemandPublish string `json:"demand_publish,omitempty"`
 	// BootConcurrency bounds how many instances may boot at once. A cold
 	// Chromium spikes to hundreds of millicores; overlapping spikes saturate the
 	// node while average CPU still reads idle.

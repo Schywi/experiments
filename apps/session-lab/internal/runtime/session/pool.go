@@ -63,6 +63,9 @@ func (r *Runner) spoolFor(pool string) *slots.Pool {
 	}
 	spool := slots.NewWithOptions(slots.Options{
 		PerInstance: r.cfg.ContextsPerBrowser,
+		// The pool's own bound on creations in flight. One is the historical
+		// serialisation; --max-provisioning raises it.
+		MaxProvisioning: r.cfg.MaxProvisioning,
 		Provide: func(ctx context.Context) (*sandbox.Instance, error) {
 			return r.acquireInstance(ctx, pool)
 		},
