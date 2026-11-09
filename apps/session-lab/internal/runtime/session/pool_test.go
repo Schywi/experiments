@@ -3,6 +3,7 @@ package session
 import (
 	"context"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -97,10 +98,10 @@ func TestDeriveBootConcurrency(t *testing.T) {
 		{6, 1.9, 2}, // (6*0.8)/1.9 = 2.52
 		{6, 1.5, 3}, // 4.8/1.5 = 3.2
 		{6, 1.74, 2},
-		{6, 0.5, 9},  // 4.8/0.5 = 9.6
-		{6, 10, 1},   // clamps to one
-		{0, 1.9, 0},  // no cores: nothing to derive
-		{6, 0, 0},    // no peak: nothing to derive
+		{6, 0.5, 9}, // 4.8/0.5 = 9.6
+		{6, 10, 1},  // clamps to one
+		{0, 1.9, 0}, // no cores: nothing to derive
+		{6, 0, 0},   // no peak: nothing to derive
 	}
 	for _, c := range cases {
 		if got := deriveBootConcurrency(c.cores, c.peak); got != c.want {
@@ -185,5 +186,37 @@ func TestSharedPathRoutesClaimsByClass(t *testing.T) {
 		if row.Pool != "gpu-pool" {
 			t.Fatalf("session %d recorded pool %q, want gpu-pool", row.ID, row.Pool)
 		}
+	}
+}
+
+// TestSpoolForIsSafeUnderConcurrentSessions is the test the race detector needs to
+// report the defect it caught: spoolFor is called from one goroutine per session,
+// and it read and wrote the spool map with no lock. A Go map with a concurrent read
+// and write does not merely race; it can fault the process, which is a run lost to
+// a scheduling accident.
+func TestSpoolForIsSafeUnderConcurrentSessions(t *testing.T) {
+	r := &Runner{
+		cfg:    model.RunConfig{ContextsPerBrowser: 8},
+		spools: map[string]*slots.Pool{},
+	}
+	pools := []string{"cpu-pool", "gpu-pool", "bulk-pool"}
+	var wg sync.WaitGroup
+	for i := 0; i < 60; i++ {
+		wg.Add(1)
+		go func(pool string) {
+			defer wg.Done()
+			if got := r.spoolFor(pool); got == nil {
+				t.Errorf("spoolFor(%q) returned nil", pool)
+			}
+			// The other two readers of the same map, on the same goroutine.
+			r.retireEverywhere(&sandbox.Instance{ID: "nobody"})
+			r.poolShape()
+		}(pools[i%len(pools)])
+	}
+	wg.Wait()
+	r.spoolsMu.Lock()
+	defer r.spoolsMu.Unlock()
+	if len(r.spools) != len(pools) {
+		t.Fatalf("%d spools for %d pools: one creation was lost", len(r.spools), len(pools))
 	}
 }

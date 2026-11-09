@@ -56,6 +56,8 @@ func (r *Runner) spoolFor(pool string) *slots.Pool {
 	if r.spools == nil {
 		return nil
 	}
+	r.spoolsMu.Lock()
+	defer r.spoolsMu.Unlock()
 	if spool, ok := r.spools[pool]; ok {
 		return spool
 	}
@@ -89,7 +91,16 @@ func (r *Runner) retireEverywhere(instance *sandbox.Instance) {
 	if r.spools == nil {
 		return
 	}
+	// Copy under the lock and retire outside it: Retire takes the pool's own
+	// mutex, and holding this one across that call would be a lock order nobody
+	// needs.
+	r.spoolsMu.Lock()
+	pools := make([]*slots.Pool, 0, len(r.spools))
 	for _, spool := range r.spools {
+		pools = append(pools, spool)
+	}
+	r.spoolsMu.Unlock()
+	for _, spool := range pools {
 		spool.Retire(instance)
 	}
 }
