@@ -57,7 +57,9 @@ type Client struct {
 	Namespace string
 	Port      string
 	Token     string
-	HTTP      *http.Client
+	// AdoptTimeout bounds the wait for a claim to bind a sandbox.
+	AdoptTimeout time.Duration
+	HTTP         *http.Client
 }
 
 // NewClient fills in the cluster defaults for anything left empty.
@@ -77,23 +79,113 @@ func NewClient(console, router string) *Client {
 	}
 }
 
-// Claim takes one sandbox from the warm pool and returns its id.
+// Tile is one sandbox as the console's tile list reports it.
+type Tile struct {
+	ID    string `json:"id"`
+	Phase string `json:"phase"`
+	Claim string `json:"claim"`
+	URL   string `json:"url"`
+}
+
+// Claim creates a session on the platform and returns the sandbox id.
+//
+// `POST /sandboxes` answers with a claim name and the namespace the claim landed in.
+// The sandbox id comes back in the same reply only when a url was supplied and
+// admission finished inside the console's adoption window; otherwise the claim exists
+// and the sandbox appears a moment later, so the id is discovered from the tile list.
 func (c *Client) Claim(ctx context.Context, url string) (string, error) {
 	payload := map[string]any{"kind": "claim"}
 	if url != "" {
 		payload["url"] = url
 	}
 	var body struct {
-		Sandbox string `json:"sandbox"`
+		Sandbox   *string `json:"sandbox"`
+		Name      string  `json:"name"`
+		Claim     string  `json:"claim"`
+		Namespace string  `json:"namespace"`
+		URL       string  `json:"url"`
 	}
 	if err := c.do(ctx, http.MethodPost, c.Console+"/sandboxes", payload, nil, &body); err != nil {
 		return "", err
 	}
-	if body.Sandbox == "" {
-		return "", &ConsoleError{Method: http.MethodPost, URL: c.Console + "/sandboxes",
-			Body: "claim did not bind a sandbox"}
+	if body.Namespace != "" {
+		// The router routes on X-Sandbox-Namespace, so the namespace the claim
+		// reports is the one every later CDP call has to carry.
+		c.Namespace = body.Namespace
 	}
-	return body.Sandbox, nil
+	if body.Sandbox != nil && *body.Sandbox != "" {
+		if url == "" || body.URL != "" {
+			return *body.Sandbox, nil
+		}
+		// The claim landed on a sandbox the console had not navigated yet.
+		if err := c.Navigate(ctx, *body.Sandbox, url); err != nil {
+			return "", err
+		}
+		return *body.Sandbox, nil
+	}
+	claim := body.Claim
+	if claim == "" {
+		claim = body.Name
+	}
+	id, err := c.adopt(ctx, claim)
+	if err != nil {
+		return "", err
+	}
+	if url != "" {
+		if err := c.Navigate(ctx, id, url); err != nil {
+			return "", err
+		}
+	}
+	return id, nil
+}
+
+// Tiles lists the sandboxes the console can see.
+func (c *Client) Tiles(ctx context.Context) ([]Tile, error) {
+	var body struct {
+		Tiles []Tile `json:"tiles"`
+	}
+	if err := c.do(ctx, http.MethodGet, c.Console+"/api/sandboxes", nil, nil, &body); err != nil {
+		return nil, err
+	}
+	return body.Tiles, nil
+}
+
+// adopt waits for a claim to bind a sandbox and returns its id. It is the watch the
+// pane does, bounded so a stuck pool fails loudly.
+func (c *Client) adopt(ctx context.Context, claim string) (string, error) {
+	if claim == "" {
+		return "", &ConsoleError{Method: "claim", URL: c.Console + "/sandboxes",
+			Body: "reply carried no claim name and no sandbox"}
+	}
+	deadline := time.Now().Add(c.adoptTimeout())
+	for {
+		if err := ctx.Err(); err != nil {
+			return "", err
+		}
+		if tiles, err := c.Tiles(ctx); err == nil {
+			for _, t := range tiles {
+				if t.Claim == claim && t.ID != "" {
+					return t.ID, nil
+				}
+			}
+		}
+		if time.Now().After(deadline) {
+			return "", &ConsoleError{Method: "claim", URL: c.Console + "/api/sandboxes",
+				Body: "claim " + claim + " did not bind a sandbox in time"}
+		}
+		select {
+		case <-ctx.Done():
+			return "", ctx.Err()
+		case <-time.After(500 * time.Millisecond):
+		}
+	}
+}
+
+func (c *Client) adoptTimeout() time.Duration {
+	if c.AdoptTimeout > 0 {
+		return c.AdoptTimeout
+	}
+	return 90 * time.Second
 }
 
 // Release deletes a claimed sandbox.

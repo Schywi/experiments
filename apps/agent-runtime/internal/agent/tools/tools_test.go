@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/lucasmirandoliveira/experiments/apps/agent-runtime/internal/agent"
 )
@@ -274,4 +275,108 @@ func mustJSON(t *testing.T, value any) json.RawMessage {
 		t.Fatalf("marshal: %v", err)
 	}
 	return encoded
+}
+
+// TestClaimAdoptsASandboxWhenTheReplyCarriesNoID is the wiring defect this test
+// exists to prevent: the console answers a claim with a claim name only, and the
+// sandbox id shows up in the tile list a moment later.
+func TestClaimAdoptsASandboxWhenTheReplyCarriesNoID(t *testing.T) {
+	polls := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/sandboxes":
+			fmt.Fprint(w, `{"kind":"claim","name":"claim-abc","namespace":"sandbox-demo"}`)
+		case r.URL.Path == "/api/sandboxes":
+			polls++
+			if polls < 2 {
+				fmt.Fprint(w, `{"tiles":[]}`)
+				return
+			}
+			fmt.Fprint(w, `{"tiles":[{"id":"sb-7","claim":"claim-abc","phase":"ready"}]}`)
+		default:
+			fmt.Fprint(w, `{}`)
+		}
+	}))
+	t.Cleanup(srv.Close)
+
+	client := NewClient(srv.URL, srv.URL)
+	client.AdoptTimeout = 5 * time.Second
+	id, err := client.Claim(context.Background(), "")
+	if err != nil {
+		t.Fatalf("claim: %v", err)
+	}
+	if id != "sb-7" {
+		t.Fatalf("id = %q, want sb-7", id)
+	}
+	if polls < 2 {
+		t.Fatalf("polls = %d, want the tile list to be watched until the claim binds", polls)
+	}
+}
+
+func TestClaimTakesTheNamespaceForLaterCDPCalls(t *testing.T) {
+	gotNamespace := make(chan string, 1)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/sandboxes":
+			fmt.Fprint(w, `{"sandbox":"sb-9","namespace":"sandbox-b","url":"http://page.test/"}`)
+		case r.URL.Path == "/cdp":
+			gotNamespace <- r.Header.Get("X-Sandbox-Namespace")
+			fmt.Fprint(w, `{"result":{}}`)
+		default:
+			fmt.Fprint(w, `{}`)
+		}
+	}))
+	t.Cleanup(srv.Close)
+
+	client := NewClient(srv.URL, srv.URL)
+	if _, err := client.Claim(context.Background(), "http://page.test/"); err != nil {
+		t.Fatalf("claim: %v", err)
+	}
+	if _, err := client.CDP(context.Background(), "sb-9", "Runtime.evaluate", nil); err != nil {
+		t.Fatalf("cdp: %v", err)
+	}
+	if ns := <-gotNamespace; ns != "sandbox-b" {
+		t.Fatalf("X-Sandbox-Namespace = %q, want the namespace the claim reported", ns)
+	}
+}
+
+func TestClaimNavigatesWhenTheConsoleDidNot(t *testing.T) {
+	navigated := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/sandboxes":
+			fmt.Fprint(w, `{"sandbox":"sb-1","namespace":"sandbox-demo"}`)
+		case strings.HasSuffix(r.URL.Path, "/url"):
+			navigated++
+			fmt.Fprint(w, `{"ok":true}`)
+		default:
+			fmt.Fprint(w, `{}`)
+		}
+	}))
+	t.Cleanup(srv.Close)
+
+	client := NewClient(srv.URL, srv.URL)
+	if _, err := client.Claim(context.Background(), "http://page.test/targets.html"); err != nil {
+		t.Fatalf("claim: %v", err)
+	}
+	if navigated != 1 {
+		t.Fatalf("navigations = %d, want 1: a claim that did not land on the page must be navigated", navigated)
+	}
+}
+
+func TestClaimReportsAClaimThatNeverBinds(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/sandboxes" {
+			fmt.Fprint(w, `{"name":"claim-slow","namespace":"sandbox-demo"}`)
+			return
+		}
+		fmt.Fprint(w, `{"tiles":[]}`)
+	}))
+	t.Cleanup(srv.Close)
+
+	client := NewClient(srv.URL, srv.URL)
+	client.AdoptTimeout = 50 * time.Millisecond
+	if _, err := client.Claim(context.Background(), ""); err == nil {
+		t.Fatal("a claim that never binds must fail rather than return an empty id")
+	}
 }
