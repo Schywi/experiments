@@ -24,6 +24,18 @@ func ReadHostCPUPressureFull() (float64, error) {
 	return parsePressureFullAvg10(string(body))
 }
 
+// ReadHostMemoryPressureFull returns the memory PSI "full avg10" value as a
+// percentage (0..100): the share of the last ten seconds in which every task was
+// stalled on reclaim. A kernel without CONFIG_PSI returns an error, and the
+// caller keeps sizing without the term.
+func ReadHostMemoryPressureFull() (float64, error) {
+	body, err := os.ReadFile("/proc/pressure/memory")
+	if err != nil {
+		return 0, err
+	}
+	return parsePressureFullAvg10(string(body))
+}
+
 // parsePressureFullAvg10 extracts "full avg10" from a PSI file body.
 func parsePressureFullAvg10(body string) (float64, error) {
 	for _, line := range strings.Split(body, "\n") {

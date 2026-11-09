@@ -45,6 +45,12 @@ func run() error {
 		interval    = flag.Duration("interval", 5*time.Second, "reconcile interval")
 		configMap   = flag.String("configmap", "session-lab-autoscaler", "ConfigMap to publish settings to")
 		metricsAt   = flag.String("metrics-addr", ":9110", "address to serve /metrics on; empty disables it")
+		demandSrc   = flag.String("demand-source", "claims", "claims (as before) or published (the runner's own counts)")
+		demandCM    = flag.String("demand-configmap", "session-lab-demand", "ConfigMap the runner publishes demand to")
+		maxProv     = flag.Int("max-provisioning", 0, "the pool's bound, published so a run records its arm")
+		imageTag    = flag.String("image-tag", "", "this autoscaler's image tag, published so a run records its arm")
+		memReserve  = flag.Float64("memory-reserve-mb", 0, "hold growth when MemAvailable falls below this; 0 disables")
+		memHigh     = flag.Float64("memory-pressure-high", 0, "hold growth when memory PSI full avg10 exceeds this; 0 disables")
 		kubeconfig  = flag.String("kubeconfig", "", "kubeconfig path; empty uses the default config")
 		contextName = flag.String("context", "", "kubeconfig context")
 	)
@@ -87,10 +93,15 @@ func run() error {
 
 	hostCPU := &measure.NodeCPUUtilization{}
 
+	reader := &demandReader{core: core, namespace: *namespace, name: *demandCM}
+
 	scaler := poolscaler.New(poolscaler.Config{
 		Namespace: *namespace, Pool: *pool, ContextsPerBrowser: *contexts,
 		Min: int32(*minR), Max: int32(*maxR),
 		Interval: *interval, ConfigMap: *configMap, Log: logger,
+		DemandSource: *demandSrc, DemandReader: reader.Read,
+		MemoryReserveMB: *memReserve, MemPressureHigh: *memHigh,
+		MaxProvisioning: *maxProv, ImageTag: *imageTag,
 		NodeLoad: func() (poolscaler.NodeLoad, error) {
 			util, _, err := hostCPU.Utilization()
 			if err != nil {
@@ -100,7 +111,16 @@ func run() error {
 			if err != nil {
 				return poolscaler.NodeLoad{}, err
 			}
-			return poolscaler.NodeLoad{Utilization: util, PressureFull: pressure}, nil
+			load := poolscaler.NodeLoad{Utilization: util, PressureFull: pressure}
+			// Memory is read best-effort: a host without /proc/pressure/memory
+			// keeps sizing on CPU, demand and the capacity bounds.
+			memory := measure.ReadHostMemory()
+			load.MemTotalMB = float64(memory.TotalBytes) / (1 << 20)
+			load.MemAvailableMB = float64(memory.AvailableBytes) / (1 << 20)
+			if memPressure, err := measure.ReadHostMemoryPressureFull(); err == nil {
+				load.MemoryPressureFull = memPressure
+			}
+			return load, nil
 		},
 	}, kube, &publisher{core: core, namespace: *namespace}, metrics)
 
@@ -149,3 +169,34 @@ func (p *publisher) Publish(ctx context.Context, name string, settings poolscale
 }
 
 var _ poolscaler.Publisher = (*publisher)(nil)
+
+// demandReader reads the queue depth the runner publishes. A absent ConfigMap is
+// not an error: it means the run has not started or does not publish, and the
+// scaler falls back to claims and says so in its settings.
+type demandReader struct {
+	core      kubernetes.Interface
+	namespace string
+	name      string
+}
+
+func (d *demandReader) Read(ctx context.Context) (poolscaler.Demand, bool, error) {
+	cm, err := d.core.CoreV1().ConfigMaps(d.namespace).Get(ctx, d.name, metav1.GetOptions{})
+	if apierrors.IsNotFound(err) {
+		return poolscaler.Demand{}, false, nil
+	}
+	if err != nil {
+		return poolscaler.Demand{}, false, err
+	}
+	body, ok := cm.Data["demand.json"]
+	if !ok {
+		return poolscaler.Demand{}, false, nil
+	}
+	var demand poolscaler.Demand
+	if err := json.Unmarshal([]byte(body), &demand); err != nil {
+		return poolscaler.Demand{}, false, fmt.Errorf("%s/demand.json: %w", d.name, err)
+	}
+	if demand.Live == 0 {
+		return poolscaler.Demand{}, false, nil
+	}
+	return demand, true, nil
+}

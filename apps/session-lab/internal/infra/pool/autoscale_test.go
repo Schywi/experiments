@@ -273,3 +273,123 @@ var errNodeLoad = &nodeLoadError{}
 type nodeLoadError struct{}
 
 func (e *nodeLoadError) Error() string { return "no /proc" }
+
+// publishedScaler builds a scaler whose demand comes from the runner's counts.
+func publishedScaler(t *testing.T, min, max int32, live int, ok bool) (*Scaler, *sandbox.Fake) {
+	t.Helper()
+	fake := sandbox.NewFake()
+	scaler := New(Config{
+		Namespace: "sandbox-demo", Pool: "browser-pool",
+		Min: min, Max: max, Interval: time.Second,
+		Log:          log.New(io.Discard, "", 0),
+		DemandSource: "published",
+		DemandReader: func(context.Context) (Demand, bool, error) {
+			if !ok {
+				return Demand{}, false, nil
+			}
+			return Demand{Live: live, Contexts: 8}, true, nil
+		},
+		ImageTag: "v2", MaxProvisioning: 4,
+	}, fake, nil, nil)
+	return scaler, fake
+}
+
+func TestPublishedDemandSizesTheFleetFromSessions(t *testing.T) {
+	// Claims cannot see these sessions: nothing is Pending because the runner
+	// serialises cold paths. The published count says 800 live sessions, which at
+	// 8 contexts per browser is 100 replicas.
+	scaler, fake := publishedScaler(t, 1, 200, 800, true)
+	fake.Stats = sandbox.ClaimStats{Ready: 4, Pending: 0}
+
+	settings, err := scaler.Step(context.Background())
+	if err != nil {
+		t.Fatalf("step: %v", err)
+	}
+	if settings.DemandSource != "published" || settings.DemandFallback {
+		t.Fatalf("demand source %q fallback %v, want published and no fallback",
+			settings.DemandSource, settings.DemandFallback)
+	}
+	if settings.DemandPods != 100 || settings.Target != 100 {
+		t.Fatalf("demand %d target %d, want 100 and 100", settings.DemandPods, settings.Target)
+	}
+	if settings.ImageTag != "v2" || settings.MaxProvisioning != 4 {
+		t.Fatalf("settings do not identify the arm: %+v", settings)
+	}
+}
+
+func TestPublishedDemandFallsBackToClaimsAndSaysSo(t *testing.T) {
+	// No publish has arrived yet: size on claims, and mark the settings so a
+	// report cannot read a fallback as a published number.
+	scaler, fake := publishedScaler(t, 1, 200, 0, false)
+	fake.Stats = sandbox.ClaimStats{Ready: 4, Pending: 8}
+
+	settings, err := scaler.Step(context.Background())
+	if err != nil {
+		t.Fatalf("step: %v", err)
+	}
+	if !settings.DemandFallback {
+		t.Fatalf("fallback not reported: %+v", settings)
+	}
+	if settings.DemandSource != "claims" {
+		t.Fatalf("demand source %q, want claims", settings.DemandSource)
+	}
+	if settings.Target != 12 {
+		t.Fatalf("target %d, want 12 from claims", settings.Target)
+	}
+}
+
+func TestMemoryReserveHoldsGrowthEvenWhenTheNodeLooksFree(t *testing.T) {
+	// The failure this closes: a CPU-free node at 89 % memory grew toward demand.
+	fake := sandbox.NewFake()
+	scaler := New(Config{
+		Namespace: "sandbox-demo", Pool: "browser-pool",
+		Min: 1, Max: 200, Interval: time.Second,
+		Log:             log.New(io.Discard, "", 0),
+		MemoryReserveMB: 4096,
+		NodeLoad: func() (NodeLoad, error) {
+			return NodeLoad{Utilization: 0.1, PressureFull: 1, MemAvailableMB: 2048, MemTotalMB: 16384}, nil
+		},
+	}, fake, nil, nil)
+	if err := fake.SetPoolReplicas(context.Background(), "sandbox-demo", "browser-pool", 10); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	fake.Stats = sandbox.ClaimStats{Ready: 10, Pending: 30}
+
+	settings, err := scaler.Step(context.Background())
+	if err != nil {
+		t.Fatalf("step: %v", err)
+	}
+	if settings.Target != 9 {
+		t.Fatalf("target %d, want 9: available memory is below the reserve, so the pool relieves the node", settings.Target)
+	}
+	if settings.MemAvailableMB != 2048 {
+		t.Fatalf("settings do not carry memory: %+v", settings)
+	}
+}
+
+func TestMemoryPressureTermHoldsInsideTheCpuBand(t *testing.T) {
+	// CPU inside its hysteresis band would hold anyway; memory pressure high must
+	// also shrink, because that is the term the CPU guard cannot see.
+	fake := sandbox.NewFake()
+	scaler := New(Config{
+		Namespace: "sandbox-demo", Pool: "browser-pool",
+		Min: 1, Max: 200, Interval: time.Second,
+		Log:             log.New(io.Discard, "", 0),
+		MemPressureHigh: 10,
+		NodeLoad: func() (NodeLoad, error) {
+			return NodeLoad{Utilization: 0.75, PressureFull: 10, MemoryPressureFull: 25}, nil
+		},
+	}, fake, nil, nil)
+	if err := fake.SetPoolReplicas(context.Background(), "sandbox-demo", "browser-pool", 10); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	fake.Stats = sandbox.ClaimStats{Ready: 10, Pending: 30}
+
+	settings, err := scaler.Step(context.Background())
+	if err != nil {
+		t.Fatalf("step: %v", err)
+	}
+	if settings.Target != 9 {
+		t.Fatalf("target %d, want 9 on high memory pressure", settings.Target)
+	}
+}

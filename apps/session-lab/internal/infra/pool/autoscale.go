@@ -21,6 +21,18 @@ import (
 	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/infra/sandbox"
 )
 
+// Demand is what the runner publishes about its own queue. It is the only input
+// that comes from the process holding the waiters: claims cannot carry it,
+// because a session waiting in the gate or the slot pool has no claim.
+type Demand struct {
+	Live     int `json:"live"`
+	Waiting  int `json:"waiting"`
+	Contexts int `json:"contexts_per_browser"`
+}
+
+// DemandReader reads the published demand. A nil reader keeps sizing on claims.
+type DemandReader func(ctx context.Context) (Demand, bool, error)
+
 // NodeLoad is the autoscaler's second input: how busy the node is. It is what
 // turns demand-only sizing into pressure-aware sizing.
 type NodeLoad struct {
@@ -29,6 +41,12 @@ type NodeLoad struct {
 	// PressureFull is the CPU PSI "full avg10" value, 0..100: the share of the
 	// last ten seconds in which everything was stalled waiting for a core.
 	PressureFull float64
+	// MemAvailableMB and MemTotalMB are the node's memory, and
+	// MemoryPressureFull is the memory PSI full avg10. Zero means not read: a
+	// run on a host without /proc keeps sizing on CPU and demand.
+	MemAvailableMB     float64
+	MemTotalMB         float64
+	MemoryPressureFull float64
 }
 
 // NodeLoadFunc reads the node's current load. A nil func, or a func that
@@ -39,10 +57,10 @@ type NodeLoadFunc func() (NodeLoad, error)
 // Pressure thresholds. The band between the two pairs is hysteresis: inside it
 // the autoscaler holds, so it cannot oscillate every reconcile.
 const (
-	pressureHigh = 25.0  // above this, relieve the node
-	pressureLow  = 5.0   // below this and util below utilLow, grow toward demand
-	utilHigh     = 0.85  // cores in use fraction above which to shrink
-	utilLow      = 0.70  // below which to grow, when pressure also says free
+	pressureHigh = 25.0 // above this, relieve the node
+	pressureLow  = 5.0  // below this and util below utilLow, grow toward demand
+	utilHigh     = 0.85 // cores in use fraction above which to shrink
+	utilLow      = 0.70 // below which to grow, when pressure also says free
 )
 
 // Config is one autoscaler's settings.
@@ -60,8 +78,24 @@ type Config struct {
 	// the autoscaler was configured to do.
 	ConfigMap string
 	Log       *log.Logger
-	// NodeLoad reads node CPU utilisation and pressure each step.
+	// NodeLoad reads node CPU utilisation, pressure and memory each step.
 	NodeLoad NodeLoadFunc
+	// DemandSource is "claims" (the default, and the behaviour before this
+	// field) or "published". Published demand is read through DemandReader and
+	// falls back to claims when the runner has not published anything yet.
+	DemandSource string
+	DemandReader DemandReader
+	// MemoryReserveMB holds growth when MemAvailable falls below it, and
+	// MemPressureHigh holds growth when memory PSI full exceeds it. Zero
+	// disables each term, which is the behaviour of every autoscaler before
+	// this field existed.
+	MemoryReserveMB float64
+	MemPressureHigh float64
+	// MaxProvisioning and ImageTag are published, not used: they are what a run
+	// records about the arm it ran, so two arms are distinguishable from their
+	// own ConfigMap.
+	MaxProvisioning int
+	ImageTag        string
 }
 
 // Settings is the published form: what a run reads back.
@@ -83,6 +117,19 @@ type Settings struct {
 	Utilization float64 `json:"utilization,omitempty"`
 	// PressureFull is the CPU PSI full avg10 percentage seen at this step.
 	PressureFull float64 `json:"pressure_full,omitempty"`
+	// MemAvailableMB and MemoryPressureFull are the memory inputs, when read.
+	MemAvailableMB     float64 `json:"mem_available_mb,omitempty"`
+	MemoryPressureFull float64 `json:"memory_pressure_full,omitempty"`
+	// ImageTag and MaxProvisioning identify the arm: a run records the ConfigMap
+	// it found, so a v1 and a v2 run cannot be confused afterwards.
+	ImageTag        string `json:"image_tag,omitempty"`
+	MaxProvisioning int    `json:"max_provisioning,omitempty"`
+	// DemandSource is which input sized the pool, and DemandPods is what it said.
+	DemandSource string `json:"demand_source,omitempty"`
+	DemandPods   int32  `json:"demand_pods,omitempty"`
+	// DemandFallback is set when published demand was asked for and claims were
+	// used instead, so a report cannot read a fallback as a published number.
+	DemandFallback bool `json:"demand_fallback,omitempty"`
 }
 
 // Publisher writes the settings somewhere the cluster can read them.
@@ -126,15 +173,40 @@ func (s *Scaler) Step(ctx context.Context) (Settings, error) {
 		return Settings{}, err
 	}
 
-	// Demand is every claim that holds an instance plus every claim still
-	// waiting for one: that is the pool size that would serve this instant with
-	// no queue at all.
-	slots := stats.Ready + stats.Pending
 	perBrowser := s.cfg.ContextsPerBrowser
 	if perBrowser < 1 {
 		perBrowser = 1
 	}
+
+	// Claims describe the fleet, not the queue: a session waiting in the
+	// admission gate or the slot pool has no claim, and a claim bound to a
+	// booting warm-pool sandbox is bound rather than pending. "published" reads
+	// the runner's own counts instead and falls back to claims until the first
+	// publish arrives.
+	slots := stats.Ready + stats.Pending
 	demand := int32((int(slots) + perBrowser - 1) / perBrowser)
+	demandSource := "claims"
+	demandFallback := false
+	switch {
+	case s.cfg.DemandSource == "published" && s.cfg.DemandReader != nil:
+		published, ok, err := s.cfg.DemandReader(ctx)
+		switch {
+		case err != nil:
+			s.log.Printf("autoscaler: published demand unavailable: %v; sizing on claims", err)
+			demandFallback = true
+		case !ok:
+			demandFallback = true
+		default:
+			contexts := published.Contexts
+			if contexts < 1 {
+				contexts = perBrowser
+			}
+			demand = int32((published.Live + contexts - 1) / contexts)
+			demandSource = "published"
+		}
+	case s.cfg.DemandSource == "published":
+		demandFallback = true
+	}
 
 	// The node's own load is the second input. When it is unavailable the
 	// autoscaler sizes on demand alone, which is the historical behaviour and
@@ -153,10 +225,19 @@ func (s *Scaler) Step(ctx context.Context) (Settings, error) {
 	// hold inside the band so the loop cannot oscillate at the reconcile rate.
 	target := demand
 	if s.cfg.NodeLoad != nil {
+		// Memory joins the pressure decision when it is read and configured: the
+		// resource that stops this host is memory, and the CPU guard cannot see
+		// it. A zero threshold disables that term, which is v1's behaviour.
+		saturated := load.PressureFull > pressureHigh || load.Utilization > utilHigh ||
+			(s.cfg.MemoryReserveMB > 0 && load.MemAvailableMB > 0 && load.MemAvailableMB < s.cfg.MemoryReserveMB) ||
+			(s.cfg.MemPressureHigh > 0 && load.MemoryPressureFull > s.cfg.MemPressureHigh)
+		free := load.PressureFull < pressureLow && load.Utilization < utilLow &&
+			(s.cfg.MemoryReserveMB == 0 || load.MemAvailableMB == 0 || load.MemAvailableMB > s.cfg.MemoryReserveMB) &&
+			(s.cfg.MemPressureHigh == 0 || load.MemoryPressureFull < s.cfg.MemPressureHigh)
 		switch {
-		case load.PressureFull > pressureHigh || load.Utilization > utilHigh:
+		case saturated:
 			target = pool.Desired - 1 // relieve the node
-		case load.PressureFull < pressureLow && load.Utilization < utilLow:
+		case free:
 			target = demand // grow toward what is waiting
 		default:
 			target = pool.Desired // hold
@@ -186,6 +267,9 @@ func (s *Scaler) Step(ctx context.Context) (Settings, error) {
 			Target: pool.Desired, Ready: stats.Ready, Pending: stats.Pending,
 			Failed: stats.Failed, Desired: pool.Desired, Paused: true,
 			Utilization: load.Utilization, PressureFull: load.PressureFull,
+			MemAvailableMB: load.MemAvailableMB, MemoryPressureFull: load.MemoryPressureFull,
+			ImageTag: s.cfg.ImageTag, MaxProvisioning: s.cfg.MaxProvisioning,
+			DemandSource: demandSource, DemandPods: demand, DemandFallback: demandFallback,
 		}
 		if s.pub != nil && s.cfg.ConfigMap != "" {
 			if err := s.pub.Publish(ctx, s.cfg.ConfigMap, settings); err != nil {
@@ -204,6 +288,9 @@ func (s *Scaler) Step(ctx context.Context) (Settings, error) {
 		UpdatedNS: time.Now().UnixNano(),
 		Target:    target, Ready: stats.Ready, Pending: stats.Pending, Failed: stats.Failed,
 		Desired: pool.Desired, Utilization: load.Utilization, PressureFull: load.PressureFull,
+		MemAvailableMB: load.MemAvailableMB, MemoryPressureFull: load.MemoryPressureFull,
+		ImageTag: s.cfg.ImageTag, MaxProvisioning: s.cfg.MaxProvisioning,
+		DemandSource: demandSource, DemandPods: demand, DemandFallback: demandFallback,
 	}
 
 	changed := false
@@ -220,8 +307,8 @@ func (s *Scaler) Step(ctx context.Context) (Settings, error) {
 		}
 		settings.Desired = target
 		changed = true
-		s.log.Printf("scale %s: desired %d -> %d (pending %d, ready %d, max %d)",
-			direction, pool.Desired, target, stats.Pending, stats.Ready, s.cfg.Max)
+		s.log.Printf("scale %s: desired %d -> %d (pending %d, ready %d, demand %d from %s, max %d)",
+			direction, pool.Desired, target, stats.Pending, stats.Ready, demand, demandSource, s.cfg.Max)
 		if direction == "up" && s.scaleUp == nil {
 			now := time.Now()
 			s.scaleUp = &now
