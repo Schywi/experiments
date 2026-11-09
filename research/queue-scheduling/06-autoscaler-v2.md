@@ -74,9 +74,23 @@ Build first, in-cluster, with Kaniko — the image a measurement came from has t
 reproducible from the tree:
 
 ```bash
-scripts/build-session-lab-images.sh v2                      # the arm under test
-scripts/build-session-lab-images.sh v2 <ref-before-v2> v1   # optional: cut the control
+scripts/build-session-lab-images.sh --tag v2                              # branch = the checkout
+scripts/build-session-lab-images.sh --tag v2 --branch <pushed-branch>     # explicit
+scripts/build-session-lab-images.sh --tag v2 --branch <b> --control-ref main --control-tag v1
 ```
+
+**Kaniko clones the remote, so it builds what the remote has.** Two failure modes came out
+of the first attempt, and the script now refuses both before it submits a Job:
+
+| What the remote lacks | What kaniko said | What the script says now |
+|---|---|---|
+| the branch | `error resolving source context: reference not found`, after the full ten-minute timeout | the branch is not on the remote, the `git push -u origin <branch>` line, and the branches that do exist |
+| the commits (branch pushed, work not) | nothing — it built the **older tree** and pushed it under the tag | the unpushed commits under `apps/session-lab`, and a refusal to tag an image that lacks them |
+
+A dirty tree under `apps/session-lab` is refused for the same reason: the build cannot see
+it. `--allow-unpushed` and `--allow-dirty` exist for building an older tree deliberately.
+The wait is now on the Job's `Failed`/`Complete` condition rather than on the clock, because
+a rejected build is decided in seconds and the reason is the first line of the log.
 
 Then apply the charts (an operator step; this repository does not `kubectl apply` from an
 agent), and run one arm:
