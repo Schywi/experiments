@@ -16,6 +16,25 @@ tags: [queue, scheduling, isolation, design, state-implemented]
 | Scope | The queue experiment as an isolated lab: what it owns, the one seam it needs in the runner, the code that exists, and the comparison the simulator already produces |
 | Related | [HANDOFF](HANDOFF.md) · [01 — queueing theory](01-queueing-theory.md) · [22 — queue audit](../session-lifecycle-elasticity/22-queue-multiplexing-audit-and-latency-breakdown.md) |
 
+## 0. Correction, later on 2026-11-09
+
+Two things in this note are superseded by the capacity ledger, and neither changes its
+conclusions:
+
+- **The fleet baseline.** §5's table was produced against 38 instances × 8 = 304 slots, which was one
+  run of four on 2026-11-07. The ledger's newest row is **44 instances / 352 slots**
+  ([note 24](../session-lifecycle-elasticity/24-capacity-ledger.md)), and a later run is reported at
+  58+. At 352 slots the recorded shape's utilisation is ρ ≈ 11.0 and its drain bound is 15.8 minutes
+  [D]. The ordering comparison is unchanged in direction and slightly compressed in scale; the
+  predictions in note 03 are stated at the ledger's numbers.
+- **The decision-cost framing in §6.** Aggregate decision time is not request latency: 9,004
+  decisions of ~100 µs is 0.9 s across a 31-minute makespan, which says nothing about contention.
+  The claim the measurement supports is narrower — a shared queue buys no latency — and
+  [note 04](04-redis-decision.md) makes it in those terms.
+
+The 22-minute wait this note opens with is a capacity-ramp effect, not an ordering effect; that is
+[note 25](../session-lifecycle-elasticity/25-capacity-ramp-and-provisioning.md)'s subject.
+
 ## 1. The boundary
 
 The precedent is `cmd/persist-lab`: its logic lives in `internal/persist`, its binary in
