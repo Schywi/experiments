@@ -54,6 +54,7 @@ func run() error {
 		fixedArr  = flag.Bool("fixed-arrival", false, "space arrivals evenly instead of Poisson")
 		seed      = flag.Int64("seed", 1, "trace seed; two arms with the same seed share their arrivals")
 		estNoise  = flag.Float64("estimate-noise", 0, "spread the arriving estimate by ±this fraction, for the classification arm")
+		classes   = flag.String("classes", "three", "class partition: two (normal/bulk, the chosen arm) or three (normal/batch/bulk)")
 		classNorm = flag.Duration("class-normal", 30*time.Second, "hold at or below which a session is the normal class")
 		classBat  = flag.Duration("class-batch", 2*time.Minute, "hold at or below which a session is the batch class")
 
@@ -70,6 +71,8 @@ func run() error {
 		wBulk     = flag.Int("weight-bulk", 1, "drr weight of the bulk class")
 
 		admitLimit = flag.Int("admit", 1, "admission permits the live gate hands out")
+		maxProv    = flag.Int("max-provisioning", 0, "instance creations in flight inside the slot pool; 2+ lets the fleet grow k pods per boot")
+		publishCM  = flag.String("publish-demand", "", "publish live queue depth to this ConfigMap (namespace/name)")
 		out        = flag.String("out", "docs/queue-lab-runs", "output directory")
 		runID      = flag.String("run-id", "", "run identifier; defaults to a timestamp")
 		kubeconfig = flag.String("kubeconfig", "", "kubeconfig path; empty uses the default")
@@ -82,6 +85,14 @@ func run() error {
 	if *runID == "" {
 		*runID = time.Now().UTC().Format("20060102T150405Z")
 	}
+	classOf := queue.ClassByHold(int64(*classNorm), int64(*classBat))
+	switch *classes {
+	case "two":
+		classOf = queue.ClassByHoldTwo(int64(*classNorm))
+	case "three":
+	default:
+		return fmt.Errorf("--classes %q is two or three", *classes)
+	}
 	cfg := simulationConfig{
 		kind:     *kind,
 		sessions: *sessions,
@@ -92,7 +103,8 @@ func run() error {
 		fixedArr: *fixedArr,
 		seed:     *seed,
 		estNoise: *estNoise,
-		classOf:  queue.ClassByHold(int64(*classNorm), int64(*classBat)),
+		classOf:  classOf,
+		classes:  *classes,
 		traceIn:  *traceIn,
 		fleet: queue.Config{
 			Slots:           *slots,
@@ -125,6 +137,8 @@ func run() error {
 			runID:      *runID,
 			compare:    *compare,
 			admit:      *admitLimit,
+			maxProv:    *maxProv,
+			publishCM:  *publishCM,
 			kubeconfig: *kubeconfig,
 			namespace:  *namespace,
 			pool:       *pool,
@@ -141,20 +155,23 @@ func run() error {
 
 // simulationConfig is everything the no-cluster modes need.
 type simulationConfig struct {
-	kind     string
-	sessions int
-	rate     float64
-	hold     time.Duration
-	mix      string
-	overload float64
-	fixedArr bool
-	seed     int64
-	estNoise float64
-	classOf  queue.ClassOf
-	traceIn  string
-	fleet    queue.Config
-	options  queue.Options
-	out      string
+	kind      string
+	sessions  int
+	rate      float64
+	hold      time.Duration
+	mix       string
+	overload  float64
+	fixedArr  bool
+	seed      int64
+	estNoise  float64
+	classes   string
+	maxProv   int
+	publishCM string
+	classOf   queue.ClassOf
+	traceIn   string
+	fleet     queue.Config
+	options   queue.Options
+	out       string
 }
 
 // policies builds the named policy, or every policy when the name is "all".

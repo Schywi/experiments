@@ -27,6 +27,8 @@ type liveConfig struct {
 	runID      string
 	compare    bool
 	admit      int
+	maxProv    int
+	publishCM  string
 	kubeconfig string
 	namespace  string
 	pool       string
@@ -112,6 +114,8 @@ func runArm(lc liveConfig, installed bool) error {
 		Namespace:          lc.namespace,
 		Pool:               lc.pool,
 		ContextsPerBrowser: lc.cfg.fleet.SlotsPerPod,
+		MaxProvisioning:    lc.maxProv,
+		DemandPublish:      lc.publishCM,
 		CDPTransport:       "http",
 		TargetURL:          lc.targetURL,
 		TargetURLs:         []string{lc.targetURL},
@@ -131,6 +135,14 @@ func runArm(lc liveConfig, installed bool) error {
 	}
 
 	opts := session.Options{Adapter: adapter, Store: st, Plan: plan, Log: logger}
+	if lc.publishCM != "" {
+		sink, err := newDemandSink(lc.kubeconfig, lc.publishCM, lc.runID)
+		if err != nil {
+			return err
+		}
+		opts.DemandSink = sink
+		fmt.Printf("%s: publishing queue depth to configmap %s\n", runID, lc.publishCM)
+	}
 
 	var arm *armQueue
 	if installed {

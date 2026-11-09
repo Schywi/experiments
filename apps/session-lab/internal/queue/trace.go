@@ -33,6 +33,19 @@ func ClassByHold(fastNS, normalNS int64) ClassOf {
 	}
 }
 
+// ClassByHoldTwo is the two-class variant: normal at or below normalNS, bulk
+// above it. The queue study's owner chose a normal/bulk partition, so this is the
+// classifier the live arms use; batch is left empty on purpose rather than made
+// unreachable by setting two thresholds equal.
+func ClassByHoldTwo(normalNS int64) ClassOf {
+	return func(_ string, hold int64) model.Class {
+		if hold <= 0 || hold <= normalNS {
+			return model.ClassNormal
+		}
+		return model.ClassBulk
+	}
+}
+
 // FixedClass gives every session one class, which is what a single-class run is.
 func FixedClass(class model.Class) ClassOf {
 	return func(string, int64) model.Class { return class }

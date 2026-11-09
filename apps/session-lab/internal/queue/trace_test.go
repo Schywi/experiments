@@ -132,3 +132,20 @@ func TestSaveAndLoadTraceRoundTrip(t *testing.T) {
 		t.Fatalf("first request changed: %+v vs %+v", back[0], trace[0])
 	}
 }
+
+func TestClassByHoldTwoLeavesBatchEmpty(t *testing.T) {
+	// The chosen arm is normal/bulk: batch must be unreachable rather than
+	// reachable-by-accident, so no hold maps to it.
+	classOf := ClassByHoldTwo(30 * sec)
+	for _, hold := range []int64{0, sec, 30 * sec, 31 * sec, 5 * min_, 300 * min_} {
+		if got := classOf("", hold); got == model.ClassBatch {
+			t.Fatalf("hold %d classed batch under the two-class partition", hold)
+		}
+	}
+	if got := classOf("", 30*sec); got != model.ClassNormal {
+		t.Fatalf("30s classed %s, want normal", got)
+	}
+	if got := classOf("", 31*sec); got != model.ClassBulk {
+		t.Fatalf("31s classed %s, want bulk", got)
+	}
+}
