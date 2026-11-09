@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/infra/sandbox"
 	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/platform/model"
 	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/runtime/admission"
 )
@@ -161,5 +162,32 @@ func TestCapacityCeilingUsesMemoryAndPodCap(t *testing.T) {
 				c.name, got.BrowsersByMemory, got.BrowsersByPods, got.Browsers, got.NeededBrowsers,
 				c.wantMem, c.wantPods, c.wantCeil, c.wantNeeded)
 		}
+	}
+}
+
+// TestHoldWithoutASampleIntervalDoesNotPanic is the regression test for a panic
+// that reached a live run: a caller that never set SampleSeconds gave the hold a
+// zero ticker interval, and time.NewTicker(0) panics. queue-lab was that caller.
+// A zero interval means "sample at the boundaries", and the hold has to say so
+// rather than crash the process and leave claims behind.
+func TestHoldWithoutASampleIntervalDoesNotPanic(t *testing.T) {
+	r := &Runner{cfg: model.RunConfig{SampleSeconds: 0}}
+	instance := &sandbox.Instance{ID: "lab-1"}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	done := make(chan holdResult, 1)
+	go func() { done <- r.hold(ctx, instance, 10*time.Millisecond) }()
+
+	select {
+	case got := <-done:
+		if !got.Completed {
+			t.Fatalf("hold did not complete: %+v", got)
+		}
+		if got.Sampled {
+			t.Fatalf("a runner with no sampler reported samples: %+v", got)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("hold never returned with a zero sample interval")
 	}
 }

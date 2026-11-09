@@ -14,7 +14,7 @@ tags: [session-lifecycle, persistence, storage, index]
 | Date | 2026-11-06 |
 | Question | Once a session's restorable state exists, where does it go, how is it written, and what does it cost at 300k sessions a day? |
 | Harness | `apps/session-lab` — capture and restore both run against MinIO; the workload still writes no state |
-| Notes | [01 — the persist gateway, the flag and the budget](01-persist-gateway-and-budget.md) · [02 — the first persist arm](02-persist-arm-first-run.md) · [03 — the first MinIO run](03-first-minio-run.md) · [04 — the stress runbook](04-stress-runbook.md) · [05 — coverage, sizes and access](05-persistence-coverage.md) |
+| Notes | [01 — the persist gateway, the flag and the budget](01-persist-gateway-and-budget.md) · [02 — the first persist arm](02-persist-arm-first-run.md) · [03 — the first MinIO run](03-first-minio-run.md) · [04 — the stress runbook](04-stress-runbook.md) · [05 — coverage, sizes and access](05-persistence-coverage.md) · [06 — RFC: a bounded queue over MinIO](06-rfc-bounded-queue.md) |
 
 ## Scope
 
