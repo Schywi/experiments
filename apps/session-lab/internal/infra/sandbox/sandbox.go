@@ -47,6 +47,61 @@ type Instance struct {
 	// into, read from the pod annotation session-lab.io/spill. Recorded per
 	// instance because one run can draw from two pools with two tiers.
 	SpillTier string
+
+	// mu guards the fields below, which one goroutine per session writes while the
+	// report and the store read them. It is unexported so callers use the methods
+	// rather than reaching for the lock: an Instance is shared by every session
+	// multiplexed onto it.
+	mu sync.Mutex
+}
+
+// CountSession records one completed session on this instance.
+func (i *Instance) CountSession() {
+	i.mu.Lock()
+	i.Sessions++
+	i.mu.Unlock()
+}
+
+// SetBootPeak records what the boot cost in CPU cores.
+func (i *Instance) SetBootPeak(cores float64) {
+	i.mu.Lock()
+	i.BootCPUPeakCores = cores
+	i.mu.Unlock()
+}
+
+// Counters reads the mutable fields in one consistent snapshot. Every reader that
+// copies an Instance into a row goes through this, so the number a report prints
+// is one instant rather than a mixture.
+func (i *Instance) Counters() (sessions, resets, suspends, resumes int64, bootPeak float64) {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	return i.Sessions, i.Resets, i.Suspends, i.Resumes, i.BootCPUPeakCores
+}
+
+// Lock and Unlock are for an adapter that fills several fields from one API read.
+// A caller must not call another method of this Instance while holding it.
+func (i *Instance) Lock()   { i.mu.Lock() }
+func (i *Instance) Unlock() { i.mu.Unlock() }
+
+// SetReadyAt records the moment the browser answered.
+func (i *Instance) SetReadyAt(readyNS int64) {
+	i.mu.Lock()
+	i.ReadyNS = readyNS
+	i.mu.Unlock()
+}
+
+// Placement reads where the sandbox landed, and its readiness.
+func (i *Instance) Placement() (node, podUID string, readyNS int64, warm bool) {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	return i.Node, i.PodUID, i.ReadyNS, i.Warm
+}
+
+// SuspendedNow reports whether the browser is parked.
+func (i *Instance) SuspendedNow() bool {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	return i.Suspended
 }
 
 // BrowserSession is one session's own browsing context inside a Chromium. It

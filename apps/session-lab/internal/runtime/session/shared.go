@@ -267,7 +267,7 @@ func (r *Runner) sessionSharedAttempt(ctx context.Context, planned schedule.Plan
 			logging.F("instance", lease.Instance.ID), logging.F("reason", held.Reason),
 			logging.F("hold_ms", (session.HoldEndNS-session.HoldStartNS)/1e6))
 		_, _ = r.closeIsolated(ctx, lease.Instance, isolatedState)
-		lease.Instance.Sessions++
+		lease.Instance.CountSession()
 		r.persistInstance(lease.Instance)
 		spool.Give(lease)
 		outcome := model.OutcomeWaiting
@@ -309,7 +309,7 @@ func (r *Runner) sessionSharedAttempt(ctx context.Context, planned schedule.Plan
 	if r.rec != nil {
 		r.rec.Reset(string(r.cfg.Policy), float64(session.ResetEndNS-session.ResetStartNS)/1e9)
 	}
-	lease.Instance.Sessions++
+	lease.Instance.CountSession()
 	r.persistInstance(lease.Instance)
 
 	if r.cfg.Policy == model.PolicyDestroy {

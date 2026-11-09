@@ -203,6 +203,11 @@ func (k *Kube) fillFromSandbox(ctx context.Context, instance *sandbox.Instance) 
 	if err != nil {
 		return false, nil
 	}
+	// One API read fills several fields, and a session multiplexed onto this
+	// sandbox reads them from another goroutine. Hold the instance's own lock for
+	// the whole block rather than per field, so a reader never sees half of it.
+	instance.Lock()
+	defer instance.Unlock()
 	instance.Warm = sandbox.GetCreationTimestamp().UnixNano() < instance.CreatedNS
 	if ips, ok, _ := unstructured.NestedStringSlice(sandbox.Object, "status", "podIPs"); ok && len(ips) > 0 {
 		instance.PodIP = ips[0]
@@ -421,10 +426,14 @@ func (k *Kube) setOperatingMode(ctx context.Context, instance *sandbox.Instance,
 	}
 	if mode == "Suspended" {
 		instance.Suspends++
+		instance.Lock()
 		instance.Suspended = true
+		instance.Unlock()
 	} else {
 		instance.Resumes++
+		instance.Lock()
 		instance.Suspended = false
+		instance.Unlock()
 	}
 	return nil
 }

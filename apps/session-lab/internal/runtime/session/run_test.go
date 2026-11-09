@@ -82,6 +82,11 @@ func TestEverySessionGetsATerminalOutcome(t *testing.T) {
 
 func TestReuseServesManySessionsOnOneInstance(t *testing.T) {
 	cfg := config(model.PolicyReuse, 12, 5*time.Millisecond)
+	// One worker, so a session starts after the previous one gave its instance
+	// back. The assertion is about the policy reusing an instance, and without
+	// this it was also an assertion about how fast the host is: under -race the
+	// sessions overlap, each needs its own browser, and reuse never happens.
+	cfg.Workers = 1
 	st, _ := execute(t, cfg, sandbox.NewFake())
 
 	instances, err := st.Instances()

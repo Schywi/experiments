@@ -41,7 +41,11 @@ func (r *Runner) sampleBoot(ctx context.Context, instance *sandbox.Instance, don
 	// the API server (each check is one Get plus one List).
 	resolve := time.NewTicker(200 * time.Millisecond)
 	defer resolve.Stop()
-	for instance.PodUID == "" {
+	for {
+		_, bootPodUID, _, _ := instance.Placement()
+		if bootPodUID != "" {
+			break
+		}
 		select {
 		case <-ctx.Done():
 			return
@@ -64,7 +68,8 @@ func (r *Runner) sampleBoot(ctx context.Context, instance *sandbox.Instance, don
 	var peakCores float64
 	var lastCPU int64
 	var lastAt time.Time
-	if reading, ok, err := r.smp.Sample(ctx, instance.PodUID, instance.Node); err == nil && ok {
+	node, podUID, _, _ := instance.Placement()
+	if reading, ok, err := r.smp.Sample(ctx, podUID, node); err == nil && ok {
 		lastCPU, lastAt = reading.CPUUsec, r.now()
 	}
 	for {
@@ -76,7 +81,8 @@ func (r *Runner) sampleBoot(ctx context.Context, instance *sandbox.Instance, don
 			r.recordBootCPU(instance, peakCores)
 			return
 		case <-ticker.C:
-			reading, ok, err := r.smp.Sample(ctx, instance.PodUID, instance.Node)
+			node, podUID, _, _ := instance.Placement()
+			reading, ok, err := r.smp.Sample(ctx, podUID, node)
 			if err != nil || !ok {
 				continue
 			}
@@ -98,7 +104,7 @@ func (r *Runner) recordBootCPU(instance *sandbox.Instance, peakCores float64) {
 	if peakCores <= 0 {
 		return
 	}
-	instance.BootCPUPeakCores = peakCores
+	instance.SetBootPeak(peakCores)
 	if r.rec != nil {
 		r.rec.BootCPU(peakCores)
 	}

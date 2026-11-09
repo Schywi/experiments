@@ -78,7 +78,7 @@ func applyClaimEvent(cache map[string]claimObservation, event watch.Event) {
 
 // markReady records the transition and reads the sandbox the claim adopted.
 func (k *Kube) markReady(ctx context.Context, instance *sandbox.Instance, sandbox string) error {
-	instance.ReadyNS = time.Now().UnixNano()
+	instance.SetReadyAt(time.Now().UnixNano())
 	if sandbox == "" {
 		return nil
 	}

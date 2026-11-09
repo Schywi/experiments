@@ -97,6 +97,10 @@ type Options struct {
 	// the gate orders exactly as it always has, and nothing else in the run
 	// changes. See queue.go for what a queue may and may not assume.
 	Queue Queue
+	// DemandSink publishes live queue depth each second so a controller can
+	// size the pool from demand. Nil publishes nothing, which is every run that
+	// ran before this option existed.
+	DemandSink DemandSink
 }
 
 // Runner executes one plan.
@@ -142,6 +146,8 @@ type Runner struct {
 	// order replaces gate's ordering when the run supplies one. Nil is the
 	// default and means the gate decides.
 	order Queue
+	// demand publishes the live queue depth when the run supplies a sink.
+	demand DemandSink
 	// boot bounds simultaneous instance startups. Separate from gate: gate
 	// bounds admissions, boot bounds the CPU spikes those admissions cause.
 	boot *admission.Gate
@@ -205,7 +211,7 @@ func New(cfg model.RunConfig, opts Options) *Runner {
 	gate := admission.NewGate(cfg.Admit)
 	runner := &Runner{
 		cfg: cfg, ad: opts.Adapter, st: opts.Store, smp: opts.Sampler, plan: opts.Plan,
-		gate: gate, queue: admission.NewQueue(), order: opts.Queue,
+		gate: gate, queue: admission.NewQueue(), order: opts.Queue, demand: opts.DemandSink,
 		boot: admission.NewGate(cfg.BootConcurrency), browsers: map[string]*browser.Conn{},
 		log: logger, lg: lg, now: now, all: map[string]*sandbox.Instance{}, counts: map[model.Outcome]int{},
 		hostMemory: opts.HostMemory,
@@ -230,6 +236,9 @@ func (r *Runner) running() bool {
 
 func (r *Runner) Run(ctx context.Context) error {
 	r.start = r.now()
+	if r.demand != nil {
+		go r.publishDemand(ctx)
+	}
 	if err := r.st.StartRun(r.cfg, r.start); err != nil {
 		return err
 	}
@@ -633,7 +642,7 @@ func (r *Runner) session(ctx context.Context, planned schedule.Planned) {
 	instance, _ := r.take()
 	if instance != nil {
 		session.Instance = instance.ID
-		if instance.Suspended {
+		if instance.SuspendedNow() {
 			session.ResumeStartNS = r.now().UnixNano()
 			if err := r.ad.Resume(ctx, instance); err != nil {
 				r.settle(session.ID, model.OutcomeResetFailed, "resume: "+err.Error(), nil)
@@ -648,10 +657,12 @@ func (r *Runner) session(ctx context.Context, planned schedule.Planned) {
 				r.put(instance)
 				return
 			}
-			session.ReadyNS = instance.ReadyNS
+			_, _, readyNS, _ := instance.Placement()
+			session.ReadyNS = readyNS
 			session.ResumeEndNS = r.now().UnixNano()
 			session.Node = instance.Node
-			session.PodUID = instance.PodUID
+			_, podUID, _, _ := instance.Placement()
+			session.PodUID = podUID
 			r.persistInstance(instance)
 			if r.rec != nil {
 				r.rec.Resume(string(r.cfg.Policy), float64(session.ResumeEndNS-session.ResumeStartNS)/1e9)
@@ -721,7 +732,8 @@ func (r *Runner) session(ctx context.Context, planned schedule.Planned) {
 			r.settle(session.ID, outcome, "ready: "+err.Error(), &session)
 			return
 		}
-		session.ReadyNS = instance.ReadyNS
+		_, _, readyNS, _ := instance.Placement()
+		session.ReadyNS = readyNS
 		session.LaunchType = launchType(instance)
 		r.leaveQueue()
 		if r.rec != nil {
@@ -732,7 +744,8 @@ func (r *Runner) session(ctx context.Context, planned schedule.Planned) {
 			r.rec.Acquire(string(r.cfg.Policy), session.LaunchType, float64(session.ReadyNS-session.ArrivalNS)/1e9)
 		}
 		session.Node = instance.Node
-		session.PodUID = instance.PodUID
+		_, podUID, _, _ := instance.Placement()
+		session.PodUID = podUID
 		r.persistInstance(instance)
 		r.save(session)
 	}
@@ -783,7 +796,7 @@ func (r *Runner) session(ctx context.Context, planned schedule.Planned) {
 		if r.rec != nil {
 			r.rec.Reset(string(r.cfg.Policy), float64(session.ResetEndNS-session.ResetStartNS)/1e9)
 		}
-		instance.Sessions++
+		instance.CountSession()
 		r.persistInstance(instance)
 		r.put(instance)
 	case model.PolicySuspend:
@@ -792,7 +805,7 @@ func (r *Runner) session(ctx context.Context, planned schedule.Planned) {
 			r.release(ctx, instance)
 			return
 		}
-		instance.Sessions++
+		instance.CountSession()
 		r.persistInstance(instance)
 		r.put(instance)
 	case model.PolicyDestroy:
@@ -805,7 +818,7 @@ func (r *Runner) session(ctx context.Context, planned schedule.Planned) {
 		if r.rec != nil && session.GoneNS > 0 {
 			r.rec.Release(string(r.cfg.Policy), float64(session.GoneNS-session.DeleteCalledNS)/1e9)
 		}
-		instance.Sessions++
+		instance.CountSession()
 		r.persistInstance(instance)
 		r.mu.Lock()
 		delete(r.all, instance.ID)
@@ -925,7 +938,7 @@ func applyReading(session *model.Session, reading Reading, sampled bool) {
 }
 
 func launchType(instance *sandbox.Instance) string {
-	if instance.Warm {
+	if _, _, _, warm := instance.Placement(); warm {
 		return "warm"
 	}
 	return "cold"
@@ -1057,13 +1070,15 @@ func (r *Runner) save(session model.Session) {
 }
 
 func (r *Runner) persistInstance(instance *sandbox.Instance) {
+	sessions, resets, suspends, resumes, bootPeak := instance.Counters()
+	node, podUID, readyNS, _ := instance.Placement()
 	err := r.st.SaveInstance(model.Instance{
 		ID: instance.ID, Kind: string(instance.Kind), Namespace: instance.Namespace,
-		Node: instance.Node, PodUID: instance.PodUID, CreatedNS: instance.CreatedNS,
-		ReadyNS: instance.ReadyNS, DeletedNS: instance.DeletedNS,
-		Suspends: instance.Suspends, Resumes: instance.Resumes,
-		Resets: instance.Resets, Sessions: instance.Sessions,
-		BootCPUPeakCores:   instance.BootCPUPeakCores,
+		Node: node, PodUID: podUID, CreatedNS: instance.CreatedNS,
+		ReadyNS: readyNS, DeletedNS: instance.DeletedNS,
+		Suspends: suspends, Resumes: resumes,
+		Resets: resets, Sessions: sessions,
+		BootCPUPeakCores:   bootPeak,
 		Class:              classKey(r.cfg.Class),
 		ContextsPerBrowser: r.cfg.ContextsPerBrowser,
 	})
