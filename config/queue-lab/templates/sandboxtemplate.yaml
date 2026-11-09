@@ -1,0 +1,83 @@
+apiVersion: extensions.agents.x-k8s.io/v1beta1
+kind: SandboxTemplate
+metadata:
+  name: {{ .Values.template.name }}
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    {{- include "queue-lab.labels" . | nindent 4 }}
+spec:
+  # Managed, like the other browser templates: the controller writes a
+  # NetworkPolicy per template, so a queue-lab sandbox cannot reach the cluster
+  # network even if this experiment misbehaves.
+  networkPolicyManagement: Managed
+  podTemplate:
+    metadata:
+      labels:
+        {{- include "queue-lab.selector" . | nindent 8 }}
+    spec:
+      restartPolicy: Never
+      terminationGracePeriodSeconds: 1
+      containers:
+        - name: browser
+          image: "{{ .Values.template.image.repository }}:{{ .Values.template.image.tag }}"
+          imagePullPolicy: {{ .Values.template.image.pullPolicy }}
+          ports:
+            - name: cdp
+              containerPort: {{ .Values.template.cdpPort }}
+          env:
+            - name: CDP_PORT
+              value: {{ .Values.template.cdpPort | quote }}
+            - name: TARGET_URL
+              value: {{ .Values.template.targetUrl | quote }}
+            - name: WINDOW_SIZE
+              value: "1280,600"
+          # Ready means Chromium answers /json/version, which is what a claimed
+          # slot is waiting for. A cold boot on this host is ~40 s, so the failure
+          # threshold covers a slow start rather than reporting the normal case.
+          readinessProbe:
+            httpGet:
+              path: /json/version
+              port: cdp
+            periodSeconds: 2
+            failureThreshold: 30
+          resources:
+            {{- toYaml .Values.template.resources | nindent 12 }}
+          volumeMounts:
+            - name: shm
+              mountPath: /dev/shm
+        # Chromium binds DevTools to the pod's loopback, so the queue experiment's
+        # ws arm needs this splice. The http arm talks to the browser container
+        # directly; both are covered by the probes below.
+        - name: cdp-forward
+          image: "{{ .Values.template.forwarder.repository }}:{{ .Values.template.forwarder.tag }}"
+          imagePullPolicy: {{ .Values.template.forwarder.pullPolicy }}
+          ports:
+            - name: cdp-ws
+              containerPort: {{ .Values.template.forwarder.port }}
+          env:
+            - name: CDP_FORWARD_LISTEN
+              value: ":{{ .Values.template.forwarder.port }}"
+            - name: CDP_FORWARD_UPSTREAM
+              value: "127.0.0.1:{{ .Values.template.cdpPort }}"
+          readinessProbe:
+            httpGet:
+              path: /json/version
+              port: cdp-ws
+            periodSeconds: 2
+            failureThreshold: 30
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              memory: 64Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+      volumes:
+        - name: shm
+          emptyDir:
+            medium: Memory
+            sizeLimit: {{ .Values.template.dshmSizeLimit }}

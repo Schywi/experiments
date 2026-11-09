@@ -1,0 +1,15 @@
+apiVersion: extensions.agents.x-k8s.io/v1beta1
+kind: SandboxWarmPool
+metadata:
+  name: {{ .Values.pool.name }}
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    {{- include "queue-lab.labels" . | nindent 4 }}
+spec:
+  # Pinned, and pinned on purpose: an autoscaler that reacts to queue depth would
+  # change the fleet while a policy is being compared, and the comparison would no
+  # longer be about ordering. Sizing the warm pool from queue depth is its own
+  # experiment.
+  replicas: {{ .Values.pool.replicas }}
+  sandboxTemplateRef:
+    name: {{ .Values.template.name }}

@@ -1,0 +1,47 @@
+# The queue experiment's cluster footprint, and nothing else.
+#
+# queue-lab has its own namespace and its own warm pool so a queue run never takes
+# a replica that a persist or session-lab run is waiting on. The pool is the only
+# capacity this chart creates; the runner itself runs from the host, like
+# session-lab and persist-lab, and writes to docs/queue-lab-runs/.
+#
+# Read this before changing a value here: config/session-lab's pool and namespace
+# are the control arm's, and touching them makes the A/B incomparable.
+
+namespace:
+  # Its own namespace, so claims, sandboxes and the pool are all scoped here and
+  # a leaked claim cannot be mistaken for a session-lab one.
+  name: queue-lab
+
+template:
+  # One template, the same browser the other experiments run. It is declared here
+  # rather than shared because a SandboxTemplate is namespaced: the copy in
+  # sandbox-demo cannot serve a claim in queue-lab.
+  name: queue-lab-tpl
+  image:
+    repository: 127.0.0.1:5000/browser-sandbox
+    tag: local
+    pullPolicy: Always
+  cdpPort: 9222
+  targetUrl: "https://example.com/"
+  resources:
+    requests:
+      cpu: 100m
+      memory: 512Mi
+    limits:
+      # No CPU limit, the same policy the other templates follow: a limit here
+      # throttles the browser during boot, which is the cost the run is measuring.
+      memory: 1Gi
+  dshmSizeLimit: 256Mi
+  forwarder:
+    repository: 127.0.0.1:5000/session-lab-cdp-forward
+    tag: local
+    pullPolicy: Always
+    port: 9224
+
+pool:
+  # The warm pool a queue run claims from. Replicas are pinned by design: the A/B
+  # compares ordering policies, and a pool that reacts to the queue it is ordering
+  # would change capacity and ordering in the same run.
+  name: queue-lab-pool
+  replicas: 2

@@ -1,0 +1,6 @@
+apiVersion: v2
+name: queue-lab
+description: the queue experiment's own namespace, SandboxTemplate and warm pool
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
