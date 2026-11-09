@@ -1,0 +1,111 @@
+{{- if .Values.autoscaler.enabled }}
+{{- /* The queue experiment's own autoscaler, pinned to its own pool and its own
+       image tag. Two arms are two tags: v1 reproduces the old sizing, v2 carries
+       the published-demand source, the memory terms and the provisioning bound.
+       Nothing here touches sandbox-demo. */}}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: queue-lab-autoscaler
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    {{- include "queue-lab.labels" . | nindent 4 }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: queue-lab-autoscaler
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    {{- include "queue-lab.labels" . | nindent 4 }}
+rules:
+  - apiGroups: ["extensions.agents.x-k8s.io"]
+    resources: ["sandboxclaims"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["extensions.agents.x-k8s.io"]
+    resources: ["sandboxwarmpools"]
+    verbs: ["get", "list", "watch", "patch", "update"]
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "create", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: queue-lab-autoscaler
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    {{- include "queue-lab.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: queue-lab-autoscaler
+subjects:
+  - kind: ServiceAccount
+    name: queue-lab-autoscaler
+    namespace: {{ .Values.namespace.name }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: queue-lab-autoscaler
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    {{- include "queue-lab.labels" . | nindent 4 }}
+spec:
+  # One replica: two autoscalers patching the same pool would fight. Zero is the
+  # supported off switch, which is what a fixed-pool arm uses.
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "queue-lab.selector" . | nindent 6 }}
+      component: autoscaler
+  template:
+    metadata:
+      labels:
+        {{- include "queue-lab.labels" . | nindent 8 }}
+        component: autoscaler
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: {{ .Values.autoscaler.metricsPort | quote }}
+    spec:
+      serviceAccountName: queue-lab-autoscaler
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: autoscaler
+          image: "{{ .Values.autoscaler.image.repository }}:{{ .Values.autoscaler.image.tag }}"
+          imagePullPolicy: {{ .Values.autoscaler.image.pullPolicy }}
+          args:
+            - --namespace={{ .Values.namespace.name }}
+            - --pool={{ .Values.pool.name }}
+            - --min={{ .Values.autoscaler.min }}
+            - --max={{ .Values.autoscaler.max }}
+            - --interval={{ .Values.autoscaler.interval }}
+            - --contexts-per-browser={{ .Values.autoscaler.contextsPerBrowser }}
+            - --configmap={{ .Values.autoscaler.configMap }}
+            - --demand-source={{ .Values.autoscaler.demandSource }}
+            - --demand-configmap={{ .Values.autoscaler.demandConfigMap }}
+            - --max-provisioning={{ .Values.autoscaler.maxProvisioning }}
+            - --image-tag={{ .Values.autoscaler.image.tag }}
+            - --memory-reserve-mb={{ .Values.autoscaler.memoryReserveMB }}
+            - --memory-pressure-high={{ .Values.autoscaler.memoryPressureHigh }}
+            - --metrics-addr=:{{ .Values.autoscaler.metricsPort }}
+          ports:
+            - name: metrics
+              containerPort: {{ .Values.autoscaler.metricsPort }}
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+{{- end }}

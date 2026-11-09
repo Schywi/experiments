@@ -45,3 +45,32 @@ pool:
   # would change capacity and ordering in the same run.
   name: queue-lab-pool
   replicas: 2
+
+autoscaler:
+  # The experiment's own autoscaler, in its own namespace, against its own pool.
+  # enabled=false is the supported off switch for a fixed-pool arm.
+  enabled: true
+  image:
+    # Same image the platform runs; the tag is what names the arm. v1 is the
+    # sizing this repository shipped, v2 adds --demand-source=published, the
+    # memory terms and --max-provisioning, each with a zero value that reproduces
+    # v1. A run records the tag from this autoscaler's ConfigMap.
+    repository: 127.0.0.1:5000/session-lab-autoscaler
+    tag: v2
+    pullPolicy: Always
+  min: 2
+  max: 60
+  interval: 5s
+  contextsPerBrowser: 8
+  # Published demand: the runner writes its live and waiting counts to this
+  # ConfigMap each second. Falls back to claims, and says so, until it exists.
+  demandSource: published
+  demandConfigMap: queue-lab-demand
+  # Creations in flight inside the slot pool. 1 is the historical serialisation;
+  # 4 lets the fleet grow four pods per boot.
+  maxProvisioning: 4
+  # Hold growth below this available memory, or above this memory PSI full avg10.
+  memoryReserveMB: 2048
+  memoryPressureHigh: 10
+  configMap: queue-lab-autoscaler
+  metricsPort: 9110
