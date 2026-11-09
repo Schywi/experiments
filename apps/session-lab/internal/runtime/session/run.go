@@ -21,10 +21,10 @@ import (
 
 	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/infra/measure"
 	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/infra/sandbox"
+	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/persist"
 	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/platform/logging"
 	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/platform/model"
 	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/platform/store"
-	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/persist"
 	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/runtime/admission"
 	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/runtime/browser"
 	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/runtime/schedule"
@@ -93,6 +93,10 @@ type Options struct {
 	// AutoscalerInfo returns what autoscaling exists for this run, as JSON. The
 	// runner records it rather than being told what to assume.
 	AutoscalerInfo func(ctx context.Context) (string, error)
+	// Queue replaces the ordering admission.Gate performs. Nil is the default:
+	// the gate orders exactly as it always has, and nothing else in the run
+	// changes. See queue.go for what a queue may and may not assume.
+	Queue Queue
 }
 
 // Runner executes one plan.
@@ -135,6 +139,9 @@ type Runner struct {
 	// record of who is waiting. Both are built from the run configuration.
 	gate  *admission.Gate
 	queue *admission.Queue
+	// order replaces gate's ordering when the run supplies one. Nil is the
+	// default and means the gate decides.
+	order Queue
 	// boot bounds simultaneous instance startups. Separate from gate: gate
 	// bounds admissions, boot bounds the CPU spikes those admissions cause.
 	boot *admission.Gate
@@ -142,7 +149,13 @@ type Runner struct {
 	// spools hands out browsing slots when one Chromium serves several
 	// sessions, keyed by warm pool so a run can route classes to different
 	// pools. Nil when the run uses the historical one-session-per-instance path.
+	//
+	// One goroutine per session calls spoolFor, and an instance retiring walks it
+	// from another, so the map has its own lock. It is separate from mu so that no
+	// caller of this map can deadlock against a caller of mu: a plain Go map with a
+	// concurrent read and write does not merely race, it faults.
 	spools      map[string]*slots.Pool
+	spoolsMu    sync.Mutex
 	instanceSeq int
 
 	// tiers maps a warm pool name to the memory tier its template declares. It is
@@ -192,7 +205,8 @@ func New(cfg model.RunConfig, opts Options) *Runner {
 	gate := admission.NewGate(cfg.Admit)
 	runner := &Runner{
 		cfg: cfg, ad: opts.Adapter, st: opts.Store, smp: opts.Sampler, plan: opts.Plan,
-		gate: gate, queue: admission.NewQueue(), boot: admission.NewGate(cfg.BootConcurrency), browsers: map[string]*browser.Conn{},
+		gate: gate, queue: admission.NewQueue(), order: opts.Queue,
+		boot: admission.NewGate(cfg.BootConcurrency), browsers: map[string]*browser.Conn{},
 		log: logger, lg: lg, now: now, all: map[string]*sandbox.Instance{}, counts: map[model.Outcome]int{},
 		hostMemory: opts.HostMemory,
 		rec:        opts.Recorder,
@@ -649,27 +663,32 @@ func (r *Runner) session(ctx context.Context, planned schedule.Planned) {
 		// Admission: wait for this class's turn before touching the cluster, so
 		// a bulk run cannot crowd out interactive work and the number of
 		// concurrent acquisitions stays bounded when an operator asks for it.
+		name := claimName(r.cfg.RunID, planned.ID)
 		if r.queue != nil {
-			r.queue.Push(claimName(r.cfg.RunID, planned.ID), r.cfg.Class)
+			r.queue.Push(name, r.cfg.Class)
+		}
+		// The order is admission.Gate unless the run supplied a queue of its own.
+		order := QueueRequest{
+			SessionID: planned.ID, Claim: name, Bucket: planned.Bucket,
+			Hold: planned.Hold, Class: r.cfg.Class,
 		}
 		admitStart := r.now()
-		if err := r.gate.Acquire(ctx, r.cfg.Class); err != nil {
+		if err := r.admitOrder(ctx, order); err != nil {
 			if r.queue != nil {
-				r.queue.Pop(claimName(r.cfg.RunID, planned.ID))
+				r.queue.Pop(name)
 			}
 			r.settle(session.ID, model.OutcomeWaiting, "admission: "+err.Error(), nil)
 			return
 		}
 		if r.queue != nil {
-			r.queue.Pop(claimName(r.cfg.RunID, planned.ID))
+			r.queue.Pop(name)
 		}
 		session.AdmissionWaitNS = r.now().Sub(admitStart).Nanoseconds()
 
-		name := claimName(r.cfg.RunID, planned.ID)
 		pool := r.poolFor(planned)
 		acquired, err := r.ad.Acquire(ctx, r.cfg.Namespace, pool, name, r.cfg.Class)
 		r.tagTier(acquired, pool)
-		r.gate.Release()
+		r.releaseOrder(order)
 		if err != nil {
 			outcome := model.OutcomeAcquisitionFailed
 			if ctx.Err() != nil {

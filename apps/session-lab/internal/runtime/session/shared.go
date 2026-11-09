@@ -151,8 +151,13 @@ func (r *Runner) sessionSharedAttempt(ctx context.Context, planned schedule.Plan
 	if r.queue != nil {
 		r.queue.Push(name, r.cfg.Class)
 	}
+	// The order is admission.Gate unless the run supplied a queue of its own.
+	order := QueueRequest{
+		SessionID: planned.ID, Claim: name, Bucket: planned.Bucket,
+		Hold: planned.Hold, Class: r.cfg.Class,
+	}
 	admitStart := r.now()
-	if err := r.gate.Acquire(ctx, r.cfg.Class); err != nil {
+	if err := r.admitOrder(ctx, order); err != nil {
 		if r.queue != nil {
 			r.queue.Pop(name)
 		}
@@ -163,7 +168,7 @@ func (r *Runner) sessionSharedAttempt(ctx context.Context, planned schedule.Plan
 		r.queue.Pop(name)
 	}
 	session.AdmissionWaitNS = r.now().Sub(admitStart).Nanoseconds()
-	defer r.gate.Release()
+	defer r.releaseOrder(order)
 
 	// One boot at a time per permit: a cold Chromium spikes, and overlapping
 	// spikes saturate the node while average CPU still looks idle.
@@ -466,8 +471,14 @@ func (r *Runner) poolShape() (slots.Snapshot, int) {
 	if r.spools == nil {
 		return slots.Snapshot{}, 0
 	}
-	var total slots.Snapshot
+	r.spoolsMu.Lock()
+	pools := make([]*slots.Pool, 0, len(r.spools))
 	for _, spool := range r.spools {
+		pools = append(pools, spool)
+	}
+	r.spoolsMu.Unlock()
+	var total slots.Snapshot
+	for _, spool := range pools {
 		snap := spool.Snapshot()
 		total.Instances += snap.Instances
 		total.Slots += snap.Slots
