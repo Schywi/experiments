@@ -849,8 +849,16 @@ func (r *Runner) hold(ctx context.Context, instance *sandbox.Instance, d time.Du
 		merged = merge(merged, reading)
 	}
 	sample()
-	ticker := time.NewTicker(time.Duration(r.cfg.SampleSeconds * float64(time.Second)))
-	defer ticker.Stop()
+	// A zero sample interval means "sample at the boundaries only". A ticker built
+	// from it panics — time.NewTicker(0) — which is what a caller that never set
+	// SampleSeconds produced; a nil channel blocks in the select below, which is the
+	// behaviour that interval describes.
+	var ticks <-chan time.Time
+	if interval := time.Duration(r.cfg.SampleSeconds * float64(time.Second)); interval > 0 {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		ticks = ticker.C
+	}
 	timer := time.NewTimer(d)
 	defer timer.Stop()
 	for {
@@ -861,7 +869,7 @@ func (r *Runner) hold(ctx context.Context, instance *sandbox.Instance, d time.Du
 		case <-timer.C:
 			sample()
 			return holdResult{Reading: merged, Sampled: have, Completed: true}
-		case <-ticker.C:
+		case <-ticks:
 			sample()
 		}
 	}
