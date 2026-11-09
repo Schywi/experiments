@@ -80,6 +80,26 @@ hook_paths=(
   "apps/session-lab/internal/runtime/session/shared.go"
   "apps/session-lab/internal/runtime/session/run.go"
 )
+# v2: the capacity-plane change the experiment now depends on, kept labelled so a
+# reviewer can see that the queue work reached slots, the pool autoscaler and the
+# run configuration on purpose. See research/queue-scheduling/06-autoscaler-v2.md.
+v2_paths=(
+  "apps/session-lab/internal/runtime/slots/slots.go"
+  "apps/session-lab/internal/runtime/slots/slots_test.go"
+  "apps/session-lab/internal/runtime/session/demand.go"
+  "apps/session-lab/internal/runtime/session/pool.go"
+  "apps/session-lab/internal/platform/model/model.go"
+  "apps/session-lab/internal/platform/config/config.go"
+  "apps/session-lab/internal/infra/pool/autoscale.go"
+  "apps/session-lab/internal/infra/pool/autoscale_test.go"
+  "apps/session-lab/internal/infra/measure/node.go"
+  "apps/session-lab/cmd/pool-autoscaler/main.go"
+  "config/session-lab/values.yaml"
+  "config/session-lab/templates/deployment.yaml"
+  "scripts/build-session-lab-images.sh"
+  "scripts/queue-v2-run.sh"
+)
+
 # defect: the one fix outside the experiment, and the reason it is here at all. Running
 # the suite under -race to verify the queue work surfaced a concurrent map read and write
 # on Runner.spools, which faults the whole process rather than merely racing. It is a
@@ -95,7 +115,7 @@ allowed_files=(
 
 check_boundaries() {
   local base="${1:-}"
-  local changed path leaked=0 hooks=0 defects=0
+  local changed path leaked=0 hooks=0 defects=0 v2=0
   if [[ -z "${base}" ]]; then
     if git -C "${repo}" rev-parse --verify -q origin/main >/dev/null; then
       base="$(git -C "${repo}" merge-base HEAD origin/main)"
@@ -127,6 +147,13 @@ check_boundaries() {
         say "  hook   ${path}"
       fi
     done
+    for file in "${v2_paths[@]}"; do
+      if [[ "${path}" == "${file}" ]]; then
+        ok=1
+        v2=$((v2 + 1))
+        say "  v2     ${path}"
+      fi
+    done
     for file in "${defect_paths[@]}"; do
       if [[ "${path}" == "${file}" ]]; then
         ok=1
@@ -144,7 +171,7 @@ check_boundaries() {
     printf 'script and say why in research/queue-scheduling/02-boundaries-and-plan.md.\n' >&2
     return 1
   fi
-  say "  ok: $(printf '%s\n' "${changed}" | wc -l) path(s), ${hooks} hook edit(s), ${defects} defect fix(es), nothing else"
+  say "  ok: $(printf '%s\n' "${changed}" | wc -l) path(s), ${hooks} hook edit(s), ${defects} defect fix(es), ${v2} v2 path(s), nothing else"
 }
 
 # --- preflight (cluster modes) ---------------------------------------------------
