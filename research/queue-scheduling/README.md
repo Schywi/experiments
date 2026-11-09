@@ -17,9 +17,10 @@ disturbing the persistence or session-lab experiments.
 | [03 — holds of 15 s to 2 min](03-hold-length-sensitivity.md) | Whether the ordering result survives shorter holds, and where the boot rate takes over as the tail |
 | [04 — the Redis decision](04-redis-decision.md) | What "use Redis for the queue" can mean, what the measurement does and does not prove, and the conditions that reopen it |
 | [05 — the external review](05-outside-review.md) | Which parts of an unsolicited architecture review hold against the code, and which do not |
+| [06 — autoscaler v2](06-autoscaler-v2.md) | What v2 changes, how a tagged arm is identified afterwards, how the normal/bulk prio-aging arm runs, and what the v2 run has to report |
 
-State: level 1 is built and measured (simulator, 32 tests, benchmarks). Level 2 — the live A/B in
-namespace `queue-lab` — is not run. Notes 03 and 04 were decided on analysis and measurement rather
+State: level 1 is built and measured (simulator, 33 tests, benchmarks). Autoscaler v2 and the
+two-class arm are implemented; the v2 run and the v1/v2 A/B are not run yet. Notes 03 and 04 were decided on analysis and measurement rather
 than on a live arm.
 
 The isolated lab:

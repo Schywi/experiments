@@ -103,6 +103,10 @@ and the runner's `boot` gate is the natural source for `k`, since it is already 
 measured boot CPU peak in preflight (`run.go:341-352`). Two gates doing the same job at different
 layers is the defect; one gate, in the pool, is the fix.
 
+**Shipped:** `slots.Options.MaxProvisioning`, `--max-provisioning`, and the publication of the
+bound in the autoscaler's settings — see
+[queue 06](../queue-scheduling/06-autoscaler-v2.md). The `k` sweep in §7 has not run.
+
 ## 6. The ordering question inside the ramp
 
 A cold path is an **order** with lead time `L` and yield `s`. What a pool should place is a

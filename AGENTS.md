@@ -133,12 +133,10 @@ bash config/ci/validate.sh                    # Helm charts + kubeconform for co
 
 Do not claim a test run passed unless you actually ran it in this session.
 
-**`go test ./... -race` is red at `HEAD`, and the red is not yours.** `internal/runtime/session`
-has a family of data races on per-instance counters and boot-sampler bookkeeping that predate
-the queue work; a pristine `git archive HEAD` tree reproduces them. The sites, the one map race
-that is fixed, and how to tell a new defect from the known ones are in
-[note 29](research/session-lifecycle-elasticity/28-race-detector-audit.md). `internal/queue` is
-green under `-race` on its own, so any failure there is real.
+`go test ./... -race` is part of the gate, not an optional extra. It was red at `HEAD` for a
+family of races on per-instance counters and boot-sampler bookkeeping; that family is fixed, and
+[note 28](research/session-lifecycle-elasticity/28-race-detector-audit.md) records what was wrong
+and how each site was closed. A red `-race` run is now a regression.
 
 ## Writing Style
 

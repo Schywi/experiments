@@ -11,7 +11,7 @@ tags: [session-lifecycle, concurrency, testing, audit, state-validated]
 
 | | |
 |---|---|
-| Status | Audit. One family fixed with a regression test; the rest recorded and open |
+| Status | Audited and then closed: the map race and the instance counters are fixed, and `go test ./... -race` passes |
 | Date | 2026-11-09 |
 | Scope | `go test ./... -race` in `apps/session-lab`: what fails, what is fixed, and what the failures are |
 | Related | [25 — capacity ramp](25-capacity-ramp-and-provisioning.md) · [26 — claim binding](26-claim-binding-and-warm-taxonomy.md) · AGENTS.md § Testing |
@@ -22,9 +22,10 @@ tags: [session-lifecycle, concurrency, testing, audit, state-validated]
 cd apps/session-lab && go test ./... -count=1 -race
 ```
 
-**Fails at HEAD.** It fails in `internal/runtime/session`, on data races reported by the detector,
-not on an assertion. The count of warnings is not stable across runs — the detector reports what an
-interleaving happened to produce — so a single number is a reading, not a property:
+**It failed at `HEAD` and now passes.** At the time of this audit it failed in
+`internal/runtime/session`, on data races reported by the detector, not on an assertion. The count
+of warnings was not stable across runs — the detector reports what an interleaving happened to
+produce — so a single number is a reading, not a property:
 
 | Run | Warnings |
 |---|---|
@@ -67,7 +68,26 @@ map write` kills the process, which is a run lost with nothing in the report to 
 The test was verified as a regression test rather than a tautology: with the lock removed it reports
 four `DATA RACE` warnings; with the lock it passes.
 
-## 4. What remains, and why it is not fixed here
+## 4. What remained, and how it was closed
+
+The remainder was fixed after the audit, in two parts. First, `sandbox.Instance` grew a mutex with
+methods — `CountSession`, `SetBootPeak`, `Counters`, `Placement`, `SetReadyAt`, `SuspendedNow`, and
+`Lock`/`Unlock` for an adapter filling several fields from one API read — so the counters and the
+placement of a shared sandbox are read and written under one lock. Every session site that
+incremented `Sessions` now calls `CountSession`, the boot sampler calls `SetBootPeak`, the kube
+adapter holds the instance lock across `fillFromSandbox`, and `persistInstance` takes a single
+`Counters`/`Placement` snapshot so a row is one instant rather than a mixture. `go test ./... -race`
+then passed across the module.
+
+Second, one test had to stop asserting the host's speed. `TestReuseServesManySessionsOnOneInstance`
+relied on sessions finishing fast enough to hand their instance back; under `-race` they overlap,
+each needs its own browser, and reuse never happens. It now runs with `Workers: 1`, which is what
+its name claims to test.
+
+The original reasoning for leaving it alone is kept below, because it explains why the counters were
+not touched during the queue work:
+
+## 4a. Why it was not fixed during the queue experiment
 
 The remaining races are **counters shared between sessions that share an instance** and the
 bookkeeping around them:
@@ -98,12 +118,10 @@ Two reasons this is a separate piece of work rather than part of the queue exper
 - Then the suite can carry `-race` in CI, which is the point: today the check is red, so a real
   regression would be invisible in the noise.
 
-## 6. What this means for a reader of a red `-race` run
+## 6. What this means now
 
-Until §4 lands, a red `go test ./... -race` is the expected state. To tell a new defect from the
-known ones: it is new if it is **not** a counter or bookkeeping field on `Instance`, the boot
-sampler, or the run tallies; and `internal/queue` is green under `-race` on its own, so any failure
-there is real.
+`go test ./... -race` is green, so a red run is a regression rather than the expected state. The
+counts in §1 remain a record of what the detector saw before the fix.
 
 ## 7. Sources
 

@@ -117,6 +117,16 @@ So the signal fix is necessary and not sufficient, and the two notes are one exp
 dials. That is worth stating because the external review treated the signal as the top lever (see
 [queue 05](../queue-scheduling/05-outside-review.md) §2a).
 
+## 6a. What shipped
+
+`--demand-source=published` with `--demand-configmap`: the runner publishes `live`, `waiting`,
+per-class waits and the gate counts each second (`internal/runtime/session/demand.go`), the
+autoscaler reads them and falls back to claims when nothing has been published, marking
+`demand_fallback`. The memory reserve and memory-PSI terms are in `NodeLoad` behind thresholds
+that default to off. `pool-status` is deliberately unshipped: `replicas − readyReplicas` is a
+deficit, and sizing on it holds the pool where it is. See
+[queue 06](../queue-scheduling/06-autoscaler-v2.md) §1.
+
 ## 7. The experiment
 
 1. **Dry, no cluster:** replay a recorded run's rows through the controller's formula and compare the
