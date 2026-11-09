@@ -27,9 +27,10 @@ const (
 	minioBucket = "session-lab"
 )
 
-// openBlobStore returns a writer over the cluster's MinIO.
+// openBlobStore returns a writer over the cluster's MinIO. The plan rides along so
+// each capture is counted against the class of state its session carried.
 func openBlobStore(ctx context.Context, adapter *kube.Kube, namespace, runID string,
-	rate float64, budget int64, log *log.Logger) (persist.Store, error) {
+	rate float64, budget int64, plan persist.Plan, log *log.Logger) (persist.Store, error) {
 	endpoint, err := adapter.ServiceEndpoint(ctx, namespace, minioService, minioPort)
 	if err != nil {
 		return nil, fmt.Errorf("persist: %w", err)
@@ -51,6 +52,7 @@ func openBlobStore(ctx context.Context, adapter *kube.Kube, namespace, runID str
 		Prefix:    "runs/" + runID,
 		Rate:      rate,
 		Budget:    budget,
+		Dataset:   func(sessionID int64) string { return plan.For(sessionID).Label },
 		Log:       log,
 	})
 	if err != nil {

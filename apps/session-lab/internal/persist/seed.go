@@ -1,14 +1,13 @@
 package persist
 
-// Seeding: writing known state into a session's page before it is held, so a run
-// measures blobs of a realistic size instead of the 68 bytes an idle page
-// produces. A real product page carries cookies and a few hundred KiB of
-// localStorage; without this, every run reports sizes that say nothing about the
-// store's behaviour.
+// Seeding: writing a dataset into a session's page before it is held, so a run
+// measures blobs of the sizes a real product page carries. Without it every blob
+// is the 68 bytes an idle page produces, and the store's behaviour at 250 KiB is
+// a guess.
 //
 // The values are deterministic: the same session number produces the same bytes,
-// so two runs at one seed size are comparable, and the content is pseudo-random
-// rather than repeated, so gzip cannot collapse it to a rounding error.
+// and the content is pseudo-random rather than repeated, so gzip cannot collapse
+// a megabyte to a rounding error.
 
 import (
 	"context"
@@ -19,44 +18,48 @@ import (
 	"github.com/lucasmirandoliveira/experiments/apps/session-lab/internal/runtime/browser"
 )
 
-// Seeder writes state into a session's context before the session is held.
+// Seeder writes one dataset's state into a session's page before the hold.
 type Seeder interface {
 	Seed(ctx context.Context, session *browser.Session, sessionID int64) error
+	// Dataset names the class this session carries, so captures can be counted
+	// per class rather than in one aggregate.
+	Dataset(sessionID int64) string
 }
 
-// Seed writes `Bytes` of localStorage across `Items` keys, and `Cookies` cookies
-// on the page's origin. Zero for both means no seeding.
+// Seed writes the state its plan assigns to each session.
 type Seed struct {
-	Bytes   int
-	Items   int
-	Cookies int
-	Log     *log.Logger
+	Plan Plan
+	Log  *log.Logger
 }
 
-// Seed runs the script once on the session's page.
+// Dataset is the class this session carries.
+func (s Seed) Dataset(sessionID int64) string { return s.Plan.For(sessionID).Label }
+
+// Seed runs the dataset's script on the session's page.
 func (s Seed) Seed(ctx context.Context, session *browser.Session, sessionID int64) error {
-	if s.Total() == 0 {
+	dataset := s.Plan.For(sessionID)
+	if dataset.Kind == KindNone {
 		return nil
 	}
 	if session == nil {
 		return fmt.Errorf("seed: no session")
 	}
-	script := seedScript(sessionID, s.Bytes, s.Items, s.Cookies)
+	script := seedScript(dataset, sessionID)
 	result, err := session.Do(ctx, "Runtime.evaluate", map[string]any{
-		"expression": script,
-		// The script is synchronous; returnByValue keeps the reply small.
+		"expression":    script,
 		"returnByValue": true,
+		// Cache Storage and IndexedDB are promises; without this the script
+		// returns before it has written anything.
+		"awaitPromise": true,
 	})
 	if err != nil {
 		return fmt.Errorf("seed: %w", err)
 	}
-	// A page whose document has not committed yet answers with an exception
-	// rather than an error — localStorage on an opaque origin throws. That has
-	// to surface here, or a run reports "seeded" and captures 68 bytes.
+	// A throw is reported in exceptionDetails, not as an error. That is how the
+	// first version of this wrote into about:blank and reported success.
 	var reply struct {
 		Result struct {
-			Type  string `json:"type"`
-			Value int    `json:"value"`
+			Value json.RawMessage `json:"value"`
 		} `json:"result"`
 		ExceptionDetails *struct {
 			Text      string `json:"text"`
@@ -76,48 +79,69 @@ func (s Seed) Seed(ctx context.Context, session *browser.Session, sessionID int6
 		return fmt.Errorf("seed: %s", detail)
 	}
 	if s.Log != nil {
-		s.Log.Printf("persist: seeded session %d with %d bytes over %d keys and %d cookies (localStorage now holds %d keys)",
-			sessionID, s.Bytes, s.Keys(), s.Cookies, reply.Result.Value)
+		var summary string
+		if len(reply.Result.Value) > 0 {
+			summary = string(reply.Result.Value)
+		}
+		s.Log.Printf("persist: seeded session %d with %s %s", sessionID, dataset.Label, summary)
 	}
 	return nil
 }
 
-// Total reports whether this Seed writes anything.
-func (s Seed) Total() int { return s.Bytes + s.Cookies }
-
-// Keys is the number of localStorage keys the seed writes.
-func (s Seed) Keys() int {
-	if s.Items < 1 {
-		return 1
-	}
-	return s.Items
-}
-
-// seedScript is the JavaScript that writes the state. A xorshift generator keyed
-// by the session number fills each key, so the value is reproducible and
-// incompressible.
-func seedScript(sessionID int64, bytes, items, cookies int) string {
-	keys := items
-	if keys < 1 {
-		keys = 1
+// seedScript builds the JavaScript for one dataset. Every kind shares a
+// deterministic generator keyed by the session id, so two runs at one mix write
+// the same bytes into the same sessions.
+func seedScript(dataset Dataset, sessionID int64) string {
+	count := dataset.Count
+	if count < 1 {
+		count = 1
 	}
 	per := 0
-	if bytes > 0 {
-		per = bytes / keys
+	if dataset.Bytes > 0 {
+		per = dataset.Bytes / count
 	}
-	return fmt.Sprintf(`(function(){
+	header := fmt.Sprintf(`(async function(){
   var seed=%d>>>0, letters='abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
   function next(){seed^=seed<<13;seed>>>=0;seed^=seed>>>17;seed^=seed<<5;seed>>>=0;return seed;}
-  var per=%d, keys=%d;
-  for(var i=0;i<keys;i++){
-    var s='';
-    for(var n=0;n<per;n++){s+=letters.charAt(next()%%letters.length);}
-    localStorage.setItem('seed-'+i, s);
-  }
-  var cookies=%d;
-  for(var c=0;c<cookies;c++){
-    document.cookie='seed-'+c+'='+next().toString(36)+'; path=/';
-  }
-  return localStorage.length;
-})()`, sessionID, per, keys, cookies)
+  function fill(n){var s='';for(var i=0;i<n;i++){s+=letters.charAt(next()%%letters.length);}return s;}
+  var bytes=0, count=%d;`, sessionID, count)
+
+	switch dataset.Kind {
+	case KindLocal:
+		return header + fmt.Sprintf(`
+  for(var i=0;i<count;i++){var value=fill(%d);localStorage.setItem('seed-'+i,value);bytes+=value.length;}
+  return JSON.stringify({dataset:%q,keys:localStorage.length,bytes:bytes});})()`, per, dataset.Label)
+
+	case KindSession:
+		return header + fmt.Sprintf(`
+  for(var i=0;i<count;i++){var value=fill(%d);sessionStorage.setItem('seed-'+i,value);bytes+=value.length;}
+  return JSON.stringify({dataset:%q,keys:sessionStorage.length,bytes:bytes});})()`, per, dataset.Label)
+
+	case KindCookies:
+		return header + fmt.Sprintf(`
+  for(var i=0;i<count;i++){var value=fill(16);document.cookie='seed-'+i+'='+value+'; path=/';bytes+=value.length;}
+  return JSON.stringify({dataset:%q,cookies:document.cookie.split(';').length,bytes:bytes});})()`, dataset.Label)
+
+	case KindIndexedDB:
+		return header + fmt.Sprintf(`
+  var db=await new Promise(function(resolve,reject){
+    var request=indexedDB.open('seed-db',1);
+    request.onupgradeneeded=function(){request.result.createObjectStore('items',{keyPath:'id'});};
+    request.onsuccess=function(){resolve(request.result);};
+    request.onerror=function(){reject(request.error);};
+  });
+  var tx=db.transaction('items','readwrite'), store=tx.objectStore('items');
+  for(var i=0;i<count;i++){var body=fill(%d);store.put({id:i,blob:body});bytes+=body.length;}
+  await new Promise(function(resolve){tx.oncomplete=resolve;tx.onerror=resolve;tx.onabort=resolve;});
+  db.close();
+  return JSON.stringify({dataset:%q,records:count,bytes:bytes});})()`, per, dataset.Label)
+
+	case KindCache:
+		return header + fmt.Sprintf(`
+  var cache=await caches.open('seed-cache');
+  for(var i=0;i<count;i++){var body=fill(%d);await cache.put(new Request('/seed-'+i), new Response(body,{headers:{'Content-Type':'text/plain'}}));bytes+=body.length;}
+  return JSON.stringify({dataset:%q,entries:(await cache.keys()).length,bytes:bytes});})()`, per, dataset.Label)
+	}
+	return header + `
+  return JSON.stringify({dataset:'none',bytes:0});})()`
 }

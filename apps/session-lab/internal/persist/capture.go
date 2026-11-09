@@ -56,6 +56,19 @@ func Snapshot(ctx context.Context, conn *browser.Conn, session *browser.Session,
 	if len(items) > 0 {
 		blob.Local = map[string][]Item{origin: items}
 	}
+	// IndexedDB and Cache Storage are read through the page: one has a read-only
+	// CDP domain, the other has none. A page that cannot answer contributes
+	// nothing, and its error is carried in the blob rather than dropped: a
+	// silently empty surface is how a run reports a success it did not have.
+	state, err := ReadPageState(ctx, session)
+	if err != nil {
+		return Blob{}, fmt.Errorf("snapshot: %w", err)
+	}
+	blob.IndexedDB = state.IndexedDB
+	blob.Cache = state.Cache
+	blob.IndexedDBError = state.IndexedDBError
+	blob.CacheError = state.CacheError
+	blob.CacheProbe = state.CacheProbe
 	return blob, nil
 }
 
@@ -78,7 +91,7 @@ func Restore(ctx context.Context, conn *browser.Conn, session *browser.Session, 
 			return fmt.Errorf("restore: setCookies: %w", err)
 		}
 	}
-	if len(blob.Local) == 0 {
+	if len(blob.Local) == 0 && len(blob.IndexedDB) == 0 && len(blob.Cache) == 0 {
 		return nil
 	}
 	if session == nil {
@@ -122,18 +135,73 @@ func Restore(ctx context.Context, conn *browser.Conn, session *browser.Session, 
 			}
 		}
 	}
+
+	// IndexedDB and Cache Storage need a document at the origin. A blob that holds
+	// only those still has to land on its page first.
+	if len(origins) == 0 && (len(blob.IndexedDB) > 0 || len(blob.Cache) > 0) {
+		target := blob.URL
+		if target == "" {
+			target = blob.Origin
+		}
+		if !usableOrigin(target) {
+			return fmt.Errorf("restore: no page to put the state on")
+		}
+		if _, err := session.Navigate(ctx, target); err != nil {
+			return fmt.Errorf("restore: navigate %s: %w", target, err)
+		}
+		if err := session.WaitForLoad(ctx); err != nil {
+			return fmt.Errorf("restore: load %s: %w", target, err)
+		}
+	}
+
+	if len(blob.IndexedDB) > 0 || len(blob.Cache) > 0 {
+		state := PageState{IndexedDB: blob.IndexedDB, Cache: blob.Cache}
+		if err := WritePageState(ctx, session, state); err != nil {
+			return fmt.Errorf("restore: %w", err)
+		}
+		// The page has to run again with that state present: a document that
+		// loaded before the write cannot see it.
+		if _, err := session.Do(ctx, "Page.reload", nil); err != nil {
+			return fmt.Errorf("restore: reload: %w", err)
+		}
+		if err := session.WaitForLoad(ctx); err != nil {
+			return fmt.Errorf("restore: load after reload: %w", err)
+		}
+	}
 	return nil
 }
 
+// Verified is what a restored context holds, measured against the blob.
+type Verified struct {
+	Cookies       int `json:"cookies_restored"`
+	CookiesWanted int `json:"cookies_stored"`
+	Items         int `json:"items_restored"`
+	ItemsWanted   int `json:"items_stored"`
+	Records       int `json:"idb_records_restored"`
+	RecordsWanted int `json:"idb_records_stored"`
+	Entries       int `json:"cache_entries_restored"`
+	EntriesWanted int `json:"cache_entries_stored"`
+}
+
+// Complete reports whether every surface the blob held came back. A surface the
+// blob never carried is not missing anything.
+func (v Verified) Complete() bool {
+	return v.Cookies == v.CookiesWanted &&
+		v.Items == v.ItemsWanted &&
+		v.Records == v.RecordsWanted &&
+		v.Entries == v.EntriesWanted
+}
+
 // Verify reports what a context holds after a restore, comparing against the
-// blob: the number of its cookies present and the number of its localStorage
-// items present. A restore that returns nil but leaves nothing behind shows up
-// here as zeros.
-func Verify(ctx context.Context, conn *browser.Conn, session *browser.Session, id browser.ContextID, blob Blob) (cookies int, items int, err error) {
+// blob: cookies, localStorage items, IndexedDB records and Cache Storage entries.
+// A restore that returns nil but leaves nothing behind shows up here as zeros.
+func Verify(ctx context.Context, conn *browser.Conn, session *browser.Session, id browser.ContextID, blob Blob) (Verified, error) {
+	var verified Verified
 	got, err := cookiesFor(ctx, conn, id)
 	if err != nil {
-		return 0, 0, err
+		return verified, err
 	}
+	verified.CookiesWanted = len(blob.Cookies)
 	wantCookies := map[string]bool{}
 	for _, raw := range blob.Cookies {
 		var parsed struct {
@@ -154,9 +222,10 @@ func Verify(ctx context.Context, conn *browser.Conn, session *browser.Session, i
 			continue
 		}
 		if wantCookies[parsed.Name+"="+parsed.Value] {
-			cookies++
+			verified.Cookies++
 		}
 	}
+	verified.ItemsWanted = blob.Items()
 	for origin, list := range blob.Local {
 		if !usableOrigin(origin) {
 			continue
@@ -171,11 +240,21 @@ func Verify(ctx context.Context, conn *browser.Conn, session *browser.Session, i
 		}
 		for _, item := range list {
 			if have[item.Name+"="+item.Value] {
-				items++
+				verified.Items++
 			}
 		}
 	}
-	return cookies, items, nil
+	verified.RecordsWanted = blob.IDBRecords()
+	verified.EntriesWanted = blob.CacheEntries()
+	if verified.RecordsWanted > 0 || verified.EntriesWanted > 0 {
+		records, entries, err := CountPageState(ctx, session)
+		if err != nil {
+			return verified, err
+		}
+		verified.Records = min(records, verified.RecordsWanted)
+		verified.Entries = min(entries, verified.EntriesWanted)
+	}
+	return verified, nil
 }
 
 // cookiesFor reads the context's cookies, HttpOnly included, replayable as they

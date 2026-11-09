@@ -58,6 +58,9 @@ type Stats struct {
 	Refused      int     `json:"refused"`
 	Failed       int     `json:"failed"`
 	MeanBytes    float64 `json:"mean_bytes"`
+	// Datasets breaks the arm down by the class of state each session carried, so
+	// a run over a mix is readable instead of one aggregate.
+	Datasets []DatasetStats `json:"datasets,omitempty"`
 }
 
 // wants reports whether this session persists at the configured rate.

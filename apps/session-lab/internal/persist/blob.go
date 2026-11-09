@@ -47,6 +47,69 @@ type Blob struct {
 	URL     string            `json:"url,omitempty"`
 	Cookies []json.RawMessage `json:"cookies,omitempty"`
 	Local   map[string][]Item `json:"local_storage,omitempty"`
+	// IndexedDB and Cache hold the two surfaces that are read and written through
+	// the page itself: IndexedDB has a CDP domain that only reads, and Cache
+	// Storage has none at all. The two error fields record why a surface came back
+	// empty, so an unreadable surface is visible in the blob.
+	IndexedDB []IDBDatabase  `json:"indexeddb,omitempty"`
+	Cache     []CacheStorage `json:"cache_storage,omitempty"`
+
+	// IndexedDBError and CacheError are what the page reported when it could not
+	// be read. Empty means the surface was read and held nothing. CacheProbe says
+	// what the page made of the Cache Storage API, so an empty surface can be told
+	// apart from one that was never there.
+	IndexedDBError string `json:"indexeddb_error,omitempty"`
+	CacheError     string `json:"cache_error,omitempty"`
+	CacheProbe     string `json:"cache_probe,omitempty"`
+}
+
+// IDBDatabase is one IndexedDB database: its stores and their records.
+type IDBDatabase struct {
+	Name    string     `json:"name"`
+	Version int64      `json:"version,omitempty"`
+	Stores  []IDBStore `json:"stores"`
+}
+
+// IDBStore is one object store. Records are kept as the JSON text the page
+// returned, so a restore writes back exactly what the page held.
+type IDBStore struct {
+	Name    string   `json:"name"`
+	KeyPath string   `json:"key_path,omitempty"`
+	Records []string `json:"records"`
+}
+
+// CacheStorage is one Cache Storage cache and its entries.
+type CacheStorage struct {
+	Name    string       `json:"name"`
+	Entries []CacheEntry `json:"entries"`
+}
+
+// CacheEntry is one cached response. The body is base64 because a response body
+// is bytes.
+type CacheEntry struct {
+	URL         string `json:"url"`
+	ContentType string `json:"content_type,omitempty"`
+	BodyB64     string `json:"body_base64,omitempty"`
+}
+
+// IDBRecords reports how many IndexedDB records the blob holds.
+func (b Blob) IDBRecords() int {
+	total := 0
+	for _, database := range b.IndexedDB {
+		for _, store := range database.Stores {
+			total += len(store.Records)
+		}
+	}
+	return total
+}
+
+// CacheEntries reports how many Cache Storage entries the blob holds.
+func (b Blob) CacheEntries() int {
+	total := 0
+	for _, cache := range b.Cache {
+		total += len(cache.Entries)
+	}
+	return total
 }
 
 // Items reports how many localStorage entries the blob holds, across origins.

@@ -49,7 +49,10 @@ type S3Options struct {
 	// Budget is the most the bucket may hold, in compressed bytes. Zero means
 	// unbounded. Oldest blobs are deleted to stay under it.
 	Budget int64
-	Log    *log.Logger
+	// Dataset names the class of state a session carried, so captures are counted
+	// per class. Nil counts nothing.
+	Dataset func(sessionID int64) string
+	Log     *log.Logger
 }
 
 // S3 keeps blobs in a bucket and evicts the oldest to stay inside the budget.
@@ -70,6 +73,8 @@ type S3 struct {
 	refused int
 	failed  int
 	blobs   int
+	dataset func(sessionID int64) string
+	ledger  datasetLedger
 }
 
 // NewS3 connects to the endpoint and makes sure the bucket exists. Creating it
@@ -115,7 +120,7 @@ func NewS3WithStore(opts S3Options, store objectStore) *S3 {
 	}
 	return &S3{
 		store: store, bucket: opts.Bucket, prefix: prefix,
-		rate: opts.Rate, budget: opts.Budget, log: opts.Log,
+		rate: opts.Rate, budget: opts.Budget, dataset: opts.Dataset, log: opts.Log,
 		gens: map[int64]int{},
 	}
 }
@@ -146,8 +151,8 @@ func (s *S3) Capture(ctx context.Context, conn *browser.Conn, session *browser.S
 		return err
 	}
 	if s.log != nil {
-		s.log.Printf("persist: session %d %d bytes (%d cookies, %d items) in %dms",
-			sessionID, len(raw), len(blob.Cookies), blob.Items(),
+		s.log.Printf("persist: session %d %d bytes (%d cookies, %d items, %d idb records, %d cache entries) in %dms",
+			sessionID, len(raw), len(blob.Cookies), blob.Items(), blob.IDBRecords(), blob.CacheEntries(),
 			int64(time.Since(started)/time.Millisecond))
 	}
 	return nil
@@ -205,6 +210,10 @@ func (s *S3) Put(ctx context.Context, sessionID int64, raw []byte) error {
 	s.objects = append(s.objects, Object{Key: key, Bytes: size, At: time.Now()})
 	s.blobs++
 	s.mu.Unlock()
+
+	if s.dataset != nil {
+		s.ledger.record(s.dataset(sessionID), size)
+	}
 	return nil
 }
 
@@ -234,6 +243,7 @@ func (s *S3) Stats() Stats {
 		Rate: s.rate, Budget: s.budget, Blobs: s.blobs, Bytes: s.bytes,
 		IngestBytes: s.ingest, EvictedBytes: s.evicted,
 		Refused: s.refused, Failed: s.failed,
+		Datasets: s.ledger.list(),
 	}
 	if s.blobs > 0 {
 		stats.MeanBytes = float64(s.ingest) / float64(s.blobs)
