@@ -56,29 +56,41 @@ usage() {
   exit "${1:-0}"
 }
 
+dry_run=0
 while (($# > 0)); do
   case "$1" in
     -h|--help) usage 0 ;;
-    --tag=*) tag="${1#*=}" ;;
-    --queue=*) queue="${1#*=}" ;;
-    --aging=*) aging="${1#*=}" ;;
-    --admit=*) admit="${1#*=}" ;;
-    --max-provisioning=*) max_provisioning="${1#*=}" ;;
-    --classes=*) classes="${1#*=}" ;;
-    --class-normal=*) class_normal="${1#*=}" ;;
-    --mix=*) mix="${1#*=}" ;;
-    --sessions=*) sessions="${1#*=}" ;;
-    --hold=*) hold="${1#*=}" ;;
-    --rate=*) rate="${1#*=}" ;;
-    --seed=*) seed="${1#*=}" ;;
-    --run-id=*) run_id="${1#*=}" ;;
-    --*)
-      # Anything else belongs to queue-lab: --slots, --max-pods, --boot, --out, ...
-      passthrough+=("$1")
-      ;;
-    *) passthrough+=("$1") ;;
+    --dry-run) dry_run=1; shift ;;
+    --tag=*) tag="${1#*=}"; shift ;;
+    --tag) tag="${2:?--tag needs a value}"; shift 2 ;;
+    --queue=*) queue="${1#*=}"; shift ;;
+    --queue) queue="${2:?--queue needs a value}"; shift 2 ;;
+    --aging=*) aging="${1#*=}"; shift ;;
+    --aging) aging="${2:?--aging needs a value}"; shift 2 ;;
+    --admit=*) admit="${1#*=}"; shift ;;
+    --admit) admit="${2:?--admit needs a value}"; shift 2 ;;
+    --max-provisioning=*) max_provisioning="${1#*=}"; shift ;;
+    --max-provisioning) max_provisioning="${2:?--max-provisioning needs a value}"; shift 2 ;;
+    --classes=*) classes="${1#*=}"; shift ;;
+    --classes) classes="${2:?--classes needs a value}"; shift 2 ;;
+    --class-normal=*) class_normal="${1#*=}"; shift ;;
+    --class-normal) class_normal="${2:?--class-normal needs a value}"; shift 2 ;;
+    --mix=*) mix="${1#*=}"; shift ;;
+    --mix) mix="${2:?--mix needs a value}"; shift 2 ;;
+    --sessions=*) sessions="${1#*=}"; shift ;;
+    --sessions) sessions="${2:?--sessions needs a value}"; shift 2 ;;
+    --hold=*) hold="${1#*=}"; shift ;;
+    --hold) hold="${2:?--hold needs a value}"; shift 2 ;;
+    --rate=*) rate="${1#*=}"; shift ;;
+    --rate) rate="${2:?--rate needs a value}"; shift 2 ;;
+    --seed=*) seed="${1#*=}"; shift ;;
+    --seed) seed="${2:?--seed needs a value}"; shift 2 ;;
+    --run-id=*) run_id="${1#*=}"; shift ;;
+    --run-id) run_id="${2:?--run-id needs a value}"; shift 2 ;;
+    --) shift; passthrough+=("$@"); break ;;
+    --*) passthrough+=("$1"); shift ;;
+    *) passthrough+=("$1"); shift ;;
   esac
-  shift
 done
 
 [[ -n "${tag}" ]] || die "--tag is required: it is the arm, and a run without one is not a measurement"
@@ -141,6 +153,13 @@ if ((${#passthrough[@]} > 0)); then
   for arg in "${passthrough[@]}"; do
     [[ -n "${arg}" ]] && args+=("${arg}")
   done
+fi
+
+if ((dry_run == 1)); then
+  printf 'would run:'
+  printf ' %q' go run ./cmd/queue-lab "${args[@]}" "${workload[@]}"
+  printf '\n'
+  exit 0
 fi
 
 say "==> queue-lab ${args[*]} ${workload[*]}"
