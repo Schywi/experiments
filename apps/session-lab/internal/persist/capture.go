@@ -36,6 +36,11 @@ func Snapshot(ctx context.Context, conn *browser.Conn, session *browser.Session,
 		return Blob{}, fmt.Errorf("snapshot: origin: %w", err)
 	}
 	blob.Origin = origin
+	// The page itself, so a restore comes back to the same URL rather than the
+	// site root. Best-effort: a page without a location restores to its origin.
+	if href, err := evalString(ctx, session, "location.href"); err == nil {
+		blob.URL = href
+	}
 	if !usableOrigin(origin) {
 		// about:blank and a data: page have no origin storage, so there is
 		// nothing to read and nothing to restore.
@@ -94,11 +99,18 @@ func Restore(ctx context.Context, conn *browser.Conn, session *browser.Session, 
 		if !usableOrigin(origin) {
 			continue
 		}
-		if _, err := session.Navigate(ctx, origin); err != nil {
-			return fmt.Errorf("restore: navigate %s: %w", origin, err)
+		// The page the session was on, not its bare origin: the state belongs to
+		// the URL's origin either way, and the restored session should land where
+		// the work was.
+		target := blob.URL
+		if target == "" {
+			target = origin
+		}
+		if _, err := session.Navigate(ctx, target); err != nil {
+			return fmt.Errorf("restore: navigate %s: %w", target, err)
 		}
 		if err := session.WaitForLoad(ctx); err != nil {
-			return fmt.Errorf("restore: load %s: %w", origin, err)
+			return fmt.Errorf("restore: load %s: %w", target, err)
 		}
 		for _, item := range blob.Local[origin] {
 			if _, err := session.Do(ctx, "DOMStorage.setDOMStorageItem", map[string]any{

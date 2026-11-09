@@ -114,14 +114,33 @@ globbing.
 
 ## 6. What the next run needs
 
-To turn "a context booted from a blob" into "state survived", the workload has to write
-state before the capture. That means a fixture page that sets a cookie and a `localStorage`
-item on load, and an assertion that reads the same values in the restored context. Without
-it every run reports zeros and every restore is a transport test.
+`--seed-bytes` now writes state into each page before the hold, so a run no longer
+depends on a website happening to store something. Measured on `https://example.com/`
+with `--seed-bytes 65536 --seed-cookies 2`:
 
-Three numbers are still `[U]` and each has a cheap experiment: blob size on a page that
-carries state, capture CPU (`persist-lab` needs the `Sampler` wired in), and eviction under a
-budget (`--persist-budget`, which has never been exercised outside unit tests).
+| Quantity | Measured |
+|---|---|
+| seeded | 65536 bytes over 4 keys, plus 2 cookies |
+| blob | 49,438 bytes for 4 items and 2 cookies — gzip takes about a quarter off the alphanumeric payload |
+| capture | 47 ms and 65 ms |
+| restore | 2 of 2 ok, `items_restored 8` of `items_stored 8`, `cookies_restored 4` of 4, mean 392 ms, egress 98,874 bytes |
+
+Two defects had to be fixed before that number existed, both found by the Akali run:
+
+- the restore session never called `Page.enable`, so `Page.loadEventFired` never
+  arrived and every blob with `localStorage` died on `wait for load: no
+  loadEventFired` after the 30 s timeout;
+- seeding ran before the page committed its own document, so `localStorage`
+  was the initial `about:blank` origin and the write threw — silently, because
+  `Runtime.evaluate` reports a throw as `exceptionDetails`, not as an error. The
+  seeder now checks it, and waits for the load first.
+
+The blob also carries the page `url` now, so a restore returns to the page the
+session was on instead of the bare origin.
+
+Still `[U]`: IndexedDB (seeded is easy, captured is not implemented), capture CPU
+(`persist-lab` passes no `Sampler`), and eviction (`--persist-budget` has never
+fired outside unit tests).
 
 ## 7. How to check this note
 

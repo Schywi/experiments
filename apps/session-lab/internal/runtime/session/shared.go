@@ -230,6 +230,20 @@ func (r *Runner) sessionSharedAttempt(ctx context.Context, planned schedule.Plan
 		logging.F("instance", lease.Instance.ID), logging.F("context", session.BrowserContext),
 		logging.F("target", string(isolatedState.target)), logging.F("transport", r.cfg.CDPTransport))
 
+	// Known state goes into the page before the hold, so the capture has
+	// something to weigh. A run without a seeder writes nothing here. The page
+	// has to have committed its own document first: localStorage on the initial
+	// about:blank throws, and the write would vanish with the navigation.
+	if r.seed != nil && !isolatedState.viaHTTP {
+		if err := isolatedState.session.WaitForLoad(ctx); err != nil {
+			r.lg.Warn("persist seed: page never loaded", logging.F("session", session.ID),
+				logging.F("error", err.Error()))
+		} else if err := r.seed.Seed(ctx, isolatedState.session, session.ID); err != nil {
+			r.lg.Warn("persist seed failed", logging.F("session", session.ID),
+				logging.F("error", err.Error()))
+		}
+	}
+
 	session.HoldStartNS = r.now().UnixNano()
 	held := r.hold(ctx, lease.Instance, planned.Hold)
 	reading, sampled := held.Reading, held.Sampled

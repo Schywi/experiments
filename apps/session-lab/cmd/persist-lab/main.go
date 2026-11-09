@@ -52,6 +52,9 @@ func run() error {
 		persistRate   = flag.Float64("persist-rate", 0.2, "fraction of sessions that persist, 0 to 1")
 		persistBudget = flag.Int64("persist-budget", 0, "bytes the bucket may hold; 0 is unbounded")
 		restoreRate   = flag.Float64("restore-rate", 0, "fraction of stored blobs to boot after the run, 0 to 1")
+		seedBytes     = flag.Int("seed-bytes", 0, "localStorage bytes written into each page before the hold; 0 writes none")
+		seedItems     = flag.Int("seed-items", 4, "localStorage keys the seeded bytes are spread over")
+		seedCookies   = flag.Int("seed-cookies", 0, "cookies written into each page before the hold")
 		out           = flag.String("out", "", "output directory for the run database and report (required)")
 		kubeconfig    = flag.String("kubeconfig", "", "kubeconfig path; empty uses the default")
 		namespace     = flag.String("namespace", "sandbox-demo", "namespace holding the pool and the claims")
@@ -138,6 +141,7 @@ func run() error {
 		Plan:    plan,
 		Log:     logger,
 		Persist: blobs,
+		Seeder:  seeder(*seedBytes, *seedItems, *seedCookies, logger),
 		HostMemory: func() (int64, int64, int64, int64) {
 			memory := measure.ReadHostMemory()
 			return memory.TotalBytes, memory.AvailableBytes, memory.SwapTotalBytes, memory.SwapFreeBytes

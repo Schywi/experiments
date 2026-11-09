@@ -187,9 +187,14 @@ func TestS3GetReadsBackABlob(t *testing.T) {
 func TestS3BudgetRefusesTheWrite(t *testing.T) {
 	ctx := context.Background()
 	writer, store := newTestS3(t, 100)
-	for id, size := range map[int64]int{1: 60, 2: 30, 3: 30} {
-		if err := writer.Put(ctx, id, make([]byte, size)); err != nil {
-			t.Fatalf("put session %d: %v", id, err)
+	// A slice, not a map: eviction order is the thing under test, so the write
+	// order has to be fixed.
+	for _, put := range []struct {
+		id   int64
+		size int
+	}{{1, 60}, {2, 30}, {3, 30}} {
+		if err := writer.Put(ctx, put.id, make([]byte, put.size)); err != nil {
+			t.Fatalf("put session %d: %v", put.id, err)
 		}
 	}
 	stats := writer.Stats()

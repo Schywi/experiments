@@ -87,6 +87,9 @@ type Options struct {
 	// disposed. Nil disables persistence, which is what every run that does
 	// not ask for it gets: the runner's behaviour is unchanged.
 	Persist persist.Writer
+	// Seeder writes known state into the page before the hold, so a run measures
+	// blobs of a realistic size. Nil writes nothing.
+	Seeder persist.Seeder
 	// AutoscalerInfo returns what autoscaling exists for this run, as JSON. The
 	// runner records it rather than being told what to assume.
 	AutoscalerInfo func(ctx context.Context) (string, error)
@@ -120,6 +123,8 @@ type Runner struct {
 
 	// persist is the optional capture path; nil means nothing is captured.
 	persist persist.Writer
+	// seed writes known state into the page before the hold; nil writes nothing.
+	seed persist.Seeder
 
 	// minAvailable and memTotal are the node memory extremes the run saw.
 	minAvailable   int64
@@ -193,6 +198,7 @@ func New(cfg model.RunConfig, opts Options) *Runner {
 		rec:        opts.Recorder,
 		autoscaler: opts.AutoscalerInfo,
 		persist:    opts.Persist,
+		seed:       opts.Seeder,
 	}
 	if cfg.ContextsPerBrowser > 1 {
 		runner.spools = map[string]*slots.Pool{}

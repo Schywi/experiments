@@ -130,6 +130,14 @@ func restoreOne(ctx context.Context, conn *browser.Conn, blob persist.Blob) (int
 	}
 	defer func() { _ = session.Close(context.Background()) }()
 
+	// Page.enable first: Chromium emits Page.loadEventFired only for a session
+	// that enabled the domain, and Restore waits for that event after its
+	// navigation. Without this every restore of a blob with localStorage dies on
+	// "wait for load: no loadEventFired" after the full timeout.
+	if err := session.EnablePage(ctx); err != nil {
+		return 0, 0, fmt.Errorf("enable page: %w", err)
+	}
+
 	if err := persist.Restore(ctx, conn, session, contextID, blob); err != nil {
 		return 0, 0, err
 	}

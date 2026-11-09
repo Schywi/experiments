@@ -6,14 +6,13 @@
 // profile would be unsafe anyway; capture goes through the DevTools connection
 // the runtime already holds, over the CDP calls in capture.go.
 //
-// A blob holds cookies and localStorage per origin. It does not hold the DOM,
-// the HTTP cache, service workers, sessionStorage across a navigation, or
-// anything in the JavaScript heap: a restored session reloads its page and
-// re-authenticates.
+// A blob holds cookies, localStorage per origin and the page's own URL. It does
+// not hold the DOM, the HTTP cache, service workers, sessionStorage across a
+// navigation, IndexedDB, or anything in the JavaScript heap: a restored session
+// reloads its page and re-authenticates.
 //
-// The package knows nothing about where blobs are stored. Dir writes them to a
-// directory on the node, which is enough for the first experiments; another
-// destination is another implementation of Writer.
+// Blobs go to MinIO through the S3 writer in minio.go; this file is only the
+// format.
 package persist
 
 import (
@@ -40,8 +39,12 @@ type Item struct {
 // replays exactly the fields a capture saw and a Chromium that adds a field does
 // not lose it here.
 type Blob struct {
-	Version int               `json:"version"`
-	Origin  string            `json:"origin,omitempty"`
+	Version int `json:"version"`
+	// Origin is the page's security origin: the key localStorage is filed under.
+	Origin string `json:"origin,omitempty"`
+	// URL is the page the session was on, so a restore lands on the same page
+	// and not just the same site. A blob without it restores to Origin.
+	URL     string            `json:"url,omitempty"`
 	Cookies []json.RawMessage `json:"cookies,omitempty"`
 	Local   map[string][]Item `json:"local_storage,omitempty"`
 }
